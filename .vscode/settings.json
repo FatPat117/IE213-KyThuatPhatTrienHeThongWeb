@@ -1,0 +1,32 @@
+{
+  "editor.formatOnSave": true,
+  "editor.tabSize": 4,
+  "editor.insertSpaces": true,
+  "editor.detectIndentation": false,
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+  "[javascript]": {
+    "editor.tabSize": 4
+  },
+  "[typescript]": {
+    "editor.tabSize": 4
+  },
+  "[json]": {
+    "editor.tabSize": 4
+  },
+  "[jsonc]": {
+    "editor.tabSize": 4
+  },
+  "[html]": {
+    "editor.tabSize": 4
+  },
+  "[css]": {
+    "editor.tabSize": 4
+  },
+  "[markdown]": {
+    "editor.tabSize": 4
+  },
+  "[solidity]": {
+    "editor.tabSize": 4
+  }
+}
