@@ -53,40 +53,41 @@ IE213-KyThuatPhatTrienHeThongWeb/
 │   └── package.json
 │
 ├── frontend/             # Next.js + React + Wagmi/Viem
-│   ├── app/
-│   │   ├── page.tsx                       # Home page + How it works
-│   │   ├── campaigns/
-│   │   │   ├── page.tsx                  # Campaign list (search/filter/sort)
-│   │   │   ├── create/page.tsx           # Create campaign form
-│   │   │   └── [id]/
-│   │   │       ├── page.tsx              # Campaign detail + donate
-│   │   │       ├── edit/page.tsx         # Edit campaign (NEW!)
-│   │   ├── my-campaigns/page.tsx         # User's campaigns (NEW buttons!)
-│   │   ├── donations/page.tsx            # Donation history
-│   │   ├── status/page.tsx               # System status
-│   │   └── components/
-│   ├── lib/
-│   │   ├── contracts/                    # Contract config, hooks
-│   │   │   ├── hooks.ts                  # useWithdrawFunds, useRefundDonation (NEW!)
-│   │   ├── hooks/
-│   │   └── providers/
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── page.tsx                       # Home page + How it works
+│   │   │   ├── campaigns/
+│   │   │   │   ├── page.tsx                  # Campaign list (search/filter/sort)
+│   │   │   │   ├── create/page.tsx           # Create campaign form
+│   │   │   │   └── [id]/
+│   │   │   │       ├── page.tsx              # Campaign detail + donate
+│   │   │   │       ├── edit/page.tsx         # Edit campaign
+│   │   │   ├── my-campaigns/page.tsx         # User's campaigns
+│   │   │   ├── donations/page.tsx            # Donation history
+│   │   │   └── status/page.tsx               # System status
+│   │   ├── components/                       # Shared UI components
+│   │   └── lib/                              # Hooks, providers, contract utils
+│   ├── public/
 │   └── package.json
 │
 ├── smart_contracts/      # Solidity + Hardhat
 │   ├── contracts/
-│   │   └── FundRaising.sol               # Main contract (multi-campaign support)
+│   │   └── FundRaising.sol               # Main contract
 │   ├── test/
-│   │   └── FundRaising.test.js           # 67 comprehensive test cases
+│   │   └── FundRaising.test.js
 │   ├── scripts/
 │   │   └── deploy.js
 │   └── hardhat.config.js
 │
-├── docs/                 # Comprehensive documentation
+├── docs/                 # Documentation
+│   ├── frontend/                         # Frontend docs
 │   ├── ARCHITECTURE.md                   # System design & data flows
 │   ├── DEPLOYMENT_GUIDE.md               # Deployment instructions
 │   ├── OPTIMIZATION_REPORT.md            # Performance optimization
 │   └── README.md
 │
+├── tests/                # Automated tests (e2e/integration/unit)
+├── package.json          # Root workspace scripts
 ├── README.md             # (This file)
 └── .gitignore
 ```

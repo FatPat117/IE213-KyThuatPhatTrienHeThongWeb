@@ -1,0 +1,20 @@
+{
+    "name": "ie213-fundraising",
+    "private": true,
+    "workspaces": [
+        "backend",
+        "frontend",
+        "smart_contracts"
+    ],
+    "scripts": {
+        "dev:backend": "npm run dev --workspace backend",
+        "start:backend": "npm run start --workspace backend",
+        "dev:frontend": "npm run dev --workspace frontend",
+        "build:frontend": "npm run build --workspace frontend",
+        "lint:frontend": "npm run lint --workspace frontend",
+        "contracts:compile": "npm run compile --workspace smart_contracts",
+        "contracts:test": "npm run test --workspace smart_contracts",
+        "contracts:deploy": "npm run deploy --workspace smart_contracts",
+        "contracts:deploy:sepolia": "npm run deploy:sepolia --workspace smart_contracts"
+    }
+}
