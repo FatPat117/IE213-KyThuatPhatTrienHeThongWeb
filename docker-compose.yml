@@ -1,0 +1,37 @@
+version: "3.9"
+
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+      - smart_contracts
+
+  backend:
+    build: ./backend
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=development
+      - PORT=4000
+      # Nếu backend cần DB_URL hoặc các biến .env khác thì thêm ở đây / dùng env_file
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
+  smart_contracts:
+    build: ./smart_contracts
+    # hardhat node mặc định port 8545
+    ports:
+      - "8545:8545"
+    volumes:
+      - ./smart_contracts:/app
+      - /app/node_modules
+

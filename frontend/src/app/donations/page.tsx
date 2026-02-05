@@ -94,7 +94,10 @@ export default function MyDonationsPage() {
     };
 
     fetchDonations();
-  }, [address, isConnected, config, campaigns]);
+    // Không đưa `campaigns` vào deps để tránh vòng lặp render:
+    // hook `useReadAllCampaigns` có thể trả về mảng mới mỗi lần render,
+    // làm useEffect chạy lại liên tục và luôn setDonations → Maximum update depth.
+  }, [address, isConnected, config]);
 
   // Calculate total donated
   const totalDonated = donations.reduce((sum, donation) => {
