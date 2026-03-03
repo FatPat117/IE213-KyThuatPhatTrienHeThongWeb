@@ -1,17 +1,33 @@
-# Cấu trúc thư mục Backend
+# Cấu trúc thư mục Backend (Microservices)
 
-Backend dùng Express: API REST, MongoDB (Mongoose), phục vụ frontend và đồng bộ dữ liệu off-chain. Kiến trúc **MVC + Services + Utils** phù hợp tích hợp blockchain (verify chữ ký, gọi contract từ server).
+Backend được tách thành các **microservices độc lập**, giao tiếp qua API Gateway. Mỗi service có database riêng và xử lý một domain nghiệp vụ cụ thể. Giao tiếp inter-service sử dụng **HTTP REST** (đồng bộ) và **RabbitMQ** (bất đồng bộ).
 
-| Thư mục | Mục đích |
-|---------|----------|
-| **config/** | Cấu hình: kết nối DB, biến môi trường. Ví dụ `db.js` kết nối MongoDB. |
-| **controllers/** | Chỉ nhận request và trả response: gọi service (hoặc model), format JSON, bắt lỗi. Không chứa logic nghiệp vụ phức tạp. Mỗi file gắn một nhóm API (health, campaign, certificate, auth). |
-| **middlewares/** | Middleware dùng chung: xử lý lỗi, xác thực, validate. Ví dụ `errorHandler.js` bắt lỗi toàn cục. |
-| **models/** | Schema Mongoose (collection MongoDB). Mỗi file một model: Campaign, Certificate, User... |
-| **routes/** | Định nghĩa API: path + method, gắn controller. Ví dụ `health.routes.js`, `campaign.routes.js`, `certificate.routes.js`. |
-| **services/** | Logic nghiệp vụ: tính toán gây quỹ, verify chữ ký ví (SIWE), gọi Smart Contract từ server để đồng bộ dữ liệu. Controller gọi service, service gọi model/contract. Ví dụ `AuthService.js`, `CampaignService.js`, `ContractService.js`. |
-| **utils/** | Hàm dùng chung: format tiền tệ, kiểm tra địa chỉ ví hợp lệ, parse error. Ví dụ `validator.js`, `format.js`. |
+## Thư mục chính
 
-**Luồng:** `routes` → `controllers` → `services` → `models` (và gọi contract/RPC khi cần). `utils` được dùng trong services/controllers/middlewares.
+| Thư mục | Port | Mục đích |
+|---------|------|----------|
+| **gateway/** | 4000 | API Gateway (http-proxy-middleware): Single entrypoint cho Frontend. |
+| **user-service/** | 4001 | Quản lý hồ sơ người dùng (Wallet, Display Name, Avatar). |
+| **campaign-service/** | 4002 | Metadata chiến dịch, hình ảnh và trạng thái quyên quỹ. |
+| **donation-service/** | 4003 | Lịch sử quyên góp, tin nhắn từ người ủng hộ. |
+| **certificate-service/** | 4004 | Metadata và thông tin sở hữu NFT chứng nhận quyên góp. |
+| **transaction-service/** | 4005 | Quản lý trạng thái giao dịch (Pending -> Success/Failed). |
+| **listener-service/** | - | Lắng nghe Blockchain events (Sepolia) và điều phối dữ liệu qua RabbitMQ/HTTP. |
 
-**Quy ước làm việc nhóm:** Một người phụ trách một nhóm nghiệp vụ (campaign, certificate, auth) thì làm trong cùng bộ file: `routes/xxx.routes.js` + `controllers/xxx.controller.js` + `services/xxx.service.js` + `models/xxx.model.js` (nếu cần).
+## Cấu trúc trong mỗi Microservice
+
+Mỗi service (trừ gateway và listener) tuân theo cấu trúc:
+
+- `models/`: Schema Mongoose (MongoDB).
+- `services/`: Logic nghiệp vụ chính.
+- `controllers/`: Xử lý Request/Response.
+- `routes/`: Định nghĩa Endpoint.
+- `consumers/`: Lắng nghe tin nhắn từ RabbitMQ (nếu có).
+- `config/`: Kết nối DB và RabbitMQ.
+- `middlewares/`: Error handling và validation.
+
+## Giao tiếp
+
+1. **Frontend -> Gateway (HTTP):** Mọi request từ client đều đi qua cổng 4000.
+2. **Listener -> Services (RabbitMQ):** Khi có event từ Blockchain, Listener sẽ publish message vào Exchange để các service tự cập nhật DB off-chain.
+3. **Internal Sync (HTTP):** Một số trường hợp cần kết quả ngay (như update status transaction), Listener sẽ gọi trực tiếp REST API của service.

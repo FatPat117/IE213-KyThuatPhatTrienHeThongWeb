@@ -1,37 +1,186 @@
 version: "3.9"
 
 services:
+  # ─────────────────────────────────────────────────────────
+  # Infrastructure
+  # ─────────────────────────────────────────────────────────
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"      # AMQP
+      - "15672:15672"    # Management UI: http://localhost:15672 (admin/password)
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: password
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────────────────────
+  # API Gateway – single entrypoint cho Frontend
+  # ─────────────────────────────────────────────────────────
+  gateway:
+    build: ./backend/gateway
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      NODE_ENV: development
+      USER_SERVICE_URL: http://user-service:4001
+      CAMPAIGN_SERVICE_URL: http://campaign-service:4002
+      DONATION_SERVICE_URL: http://donation-service:4003
+      CERTIFICATE_SERVICE_URL: http://certificate-service:4004
+      TRANSACTION_SERVICE_URL: http://transaction-service:4005
+    depends_on:
+      - user-service
+      - campaign-service
+      - donation-service
+      - certificate-service
+      - transaction-service
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────────
+  # Domain Microservices
+  # ─────────────────────────────────────────────────────────
+  user-service:
+    build: ./backend/user-service
+    ports:
+      - "4001:4001"
+    environment:
+      PORT: 4001
+      NODE_ENV: development
+      MONGO_URI: mongodb://mongodb:27017/ie213_users
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  campaign-service:
+    build: ./backend/campaign-service
+    ports:
+      - "4002:4002"
+    environment:
+      PORT: 4002
+      NODE_ENV: development
+      MONGO_URI: mongodb://mongodb:27017/ie213_campaigns
+      RABBITMQ_URL: amqp://admin:password@rabbitmq:5672
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  donation-service:
+    build: ./backend/donation-service
+    ports:
+      - "4003:4003"
+    environment:
+      PORT: 4003
+      NODE_ENV: development
+      MONGO_URI: mongodb://mongodb:27017/ie213_donations
+      RABBITMQ_URL: amqp://admin:password@rabbitmq:5672
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  certificate-service:
+    build: ./backend/certificate-service
+    ports:
+      - "4004:4004"
+    environment:
+      PORT: 4004
+      NODE_ENV: development
+      MONGO_URI: mongodb://mongodb:27017/ie213_certificates
+      RABBITMQ_URL: amqp://admin:password@rabbitmq:5672
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  transaction-service:
+    build: ./backend/transaction-service
+    ports:
+      - "4005:4005"
+    environment:
+      PORT: 4005
+      NODE_ENV: development
+      MONGO_URI: mongodb://mongodb:27017/ie213_transactions
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────────
+  # Blockchain Event Listener
+  # TODO: Điền CONTRACT_ADDRESS sau khi deploy smart contract
+  # ─────────────────────────────────────────────────────────
+  listener-service:
+    build: ./backend/listener-service
+    environment:
+      NODE_ENV: development
+      RABBITMQ_URL: amqp://admin:password@rabbitmq:5672
+      SEPOLIA_RPC_URL: ${SEPOLIA_RPC_URL:-https://rpc.sepolia.org}
+      CROWDFUNDING_CONTRACT_ADDRESS: ${CROWDFUNDING_CONTRACT_ADDRESS:-0x0000000000000000000000000000000000000000}
+      TRANSACTION_SERVICE_URL: http://transaction-service:4005
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      transaction-service:
+        condition: service_started
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────────
+  # Frontend
+  # ─────────────────────────────────────────────────────────
   frontend:
     build: ./frontend
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:4000
     volumes:
       - ./frontend:/app
       - /app/node_modules
     depends_on:
-      - backend
-      - smart_contracts
+      - gateway
+    restart: unless-stopped
 
-  backend:
-    build: ./backend
-    ports:
-      - "4000:4000"
-    environment:
-      - NODE_ENV=development
-      - PORT=4000
-      # Nếu backend cần DB_URL hoặc các biến .env khác thì thêm ở đây / dùng env_file
-    volumes:
-      - ./backend:/app
-      - /app/node_modules
-
+  # ─────────────────────────────────────────────────────────
+  # Smart Contracts (Hardhat local node - dev only)
+  # ─────────────────────────────────────────────────────────
   smart_contracts:
     build: ./smart_contracts
-    # hardhat node mặc định port 8545
     ports:
       - "8545:8545"
     volumes:
       - ./smart_contracts:/app
       - /app/node_modules
 
+volumes:
+  mongo_data:
+  rabbitmq_data:
