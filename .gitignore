@@ -46,3 +46,22 @@ coverage/
 # Misc
 *.local
 .cache
+
+/smart-contracts/lib/
+
+# Compiler files
+/smart-contracts/cache/
+/smart-contracts/out/
+
+# Ignores development broadcast logs
+!/smart-contracts/broadcast
+/smart-contracts/broadcast/*/31337/
+/smart-contracts/broadcast/**/dry-run/
+
+# Docs
+/smart-contracts/docs/
+
+# Dotenv file
+/smart-contracts/.env
+
+/smart-contracts/lib/
