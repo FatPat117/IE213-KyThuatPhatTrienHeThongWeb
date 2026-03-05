@@ -171,15 +171,14 @@ services:
     restart: unless-stopped
 
   # ─────────────────────────────────────────────────────────
-  # Smart Contracts (Hardhat local node - dev only)
+  # Smart Contracts (Foundry local node - dev only)
   # ─────────────────────────────────────────────────────────
-  smart_contracts:
-    build: ./smart_contracts
-    ports:
-      - "8545:8545"
-    volumes:
-      - ./smart_contracts:/app
-      - /app/node_modules
+  # smart-contracts:
+  #   build: ./smart-contracts
+  #   ports:
+  #     - "8545:8545"
+  #   volumes:
+  #     - ./smart-contracts:/app
 
 volumes:
   mongo_data:
