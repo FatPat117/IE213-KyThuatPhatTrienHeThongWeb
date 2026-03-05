@@ -13,10 +13,26 @@ app.use(helmet());
 app.use(cors());
 app.use(morgan("dev"));
 
+const swaggerUi = require('swagger-ui-express');
+
 // ── Health Check ─────────────────────────────────────────────
 app.get("/api/health", (req, res) =>
     res.json({ success: true, service: "api-gateway", status: "ok" })
 );
+
+// ── Swagger UI (Centralized) ──────────────────────────────────
+const swaggerUrls = [
+    { url: '/api/users/api-docs.json', name: 'User Service' },
+    { url: '/api/campaigns/api-docs.json', name: 'Campaign Service' },
+    { url: '/api/donations/api-docs.json', name: 'Donation Service' },
+    { url: '/api/certificates/api-docs.json', name: 'Certificate Service' },
+    { url: '/api/transactions/api-docs.json', name: 'Transaction Service' }
+];
+
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(null, {
+    explorer: true,
+    swaggerOptions: { urls: swaggerUrls }
+}));
 
 // ── Proxy Routes ─────────────────────────────────────────────
 // Mỗi prefix được proxy đến microservice tương ứng

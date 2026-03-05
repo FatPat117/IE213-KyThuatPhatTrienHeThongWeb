@@ -49,6 +49,9 @@ services:
       DONATION_SERVICE_URL: http://donation-service:4003
       CERTIFICATE_SERVICE_URL: http://certificate-service:4004
       TRANSACTION_SERVICE_URL: http://transaction-service:4005
+    volumes:
+      - ./backend/gateway:/app
+      - /app/node_modules
     depends_on:
       - user-service
       - campaign-service
@@ -68,6 +71,9 @@ services:
       PORT: 4001
       NODE_ENV: development
       MONGO_URI: mongodb://mongodb:27017/ie213_users
+    volumes:
+      - ./backend/user-service:/app
+      - /app/node_modules
     depends_on:
       mongodb:
         condition: service_healthy
@@ -82,6 +88,9 @@ services:
       NODE_ENV: development
       MONGO_URI: mongodb://mongodb:27017/ie213_campaigns
       RABBITMQ_URL: amqp://admin:password@rabbitmq:5672
+    volumes:
+      - ./backend/campaign-service:/app
+      - /app/node_modules
     depends_on:
       mongodb:
         condition: service_healthy
@@ -98,6 +107,9 @@ services:
       NODE_ENV: development
       MONGO_URI: mongodb://mongodb:27017/ie213_donations
       RABBITMQ_URL: amqp://admin:password@rabbitmq:5672
+    volumes:
+      - ./backend/donation-service:/app
+      - /app/node_modules
     depends_on:
       mongodb:
         condition: service_healthy
@@ -114,6 +126,9 @@ services:
       NODE_ENV: development
       MONGO_URI: mongodb://mongodb:27017/ie213_certificates
       RABBITMQ_URL: amqp://admin:password@rabbitmq:5672
+    volumes:
+      - ./backend/certificate-service:/app
+      - /app/node_modules
     depends_on:
       mongodb:
         condition: service_healthy
@@ -129,6 +144,9 @@ services:
       PORT: 4005
       NODE_ENV: development
       MONGO_URI: mongodb://mongodb:27017/ie213_transactions
+    volumes:
+      - ./backend/transaction-service:/app
+      - /app/node_modules
     depends_on:
       mongodb:
         condition: service_healthy
@@ -146,6 +164,9 @@ services:
       SEPOLIA_RPC_URL: ${SEPOLIA_RPC_URL:-https://rpc.sepolia.org}
       CROWDFUNDING_CONTRACT_ADDRESS: ${CROWDFUNDING_CONTRACT_ADDRESS:-0x0000000000000000000000000000000000000000}
       TRANSACTION_SERVICE_URL: http://transaction-service:4005
+    volumes:
+      - ./backend/listener-service:/app
+      - /app/node_modules
     depends_on:
       rabbitmq:
         condition: service_healthy
