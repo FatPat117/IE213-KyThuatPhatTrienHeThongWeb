@@ -1,7 +1,7 @@
 {
-    "name": "gateway",
+    "name": "auth-service",
     "version": "1.0.0",
-    "description": "API Gateway – single entrypoint, proxy tới các microservices",
+    "description": "Auth microservice – SIWE (Sign-In with Ethereum) + JWT",
     "main": "index.js",
     "scripts": {
         "start": "node index.js",
@@ -11,12 +11,13 @@
     "dependencies": {
         "cors": "^2.8.6",
         "dotenv": "^17.2.3",
+        "ethers": "^6.13.5",
         "express": "^5.2.1",
         "helmet": "^8.1.0",
-        "http-proxy-middleware": "^3.0.3",
-        "jsonwebtoken": "^9.0.3",
+        "jsonwebtoken": "^9.0.2",
+        "mongoose": "^9.1.5",
         "morgan": "^1.10.1",
-        "swagger-ui-express": "^5.0.1"
+        "uuid": "^11.1.0"
     },
     "devDependencies": {
         "nodemon": "^3.1.11"

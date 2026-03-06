@@ -2,33 +2,31 @@ const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const axios = require("axios");
 
 /**
- * Khi contract emit event Donated(campaignId, donor, amount):
- *  1. PUBLISH to RabbitMQ → donation-service consume → lưu MongoDB (async)
+ * Khi contract emit event FundsWithdrawn(campaignId, beneficiary, amount):
+ *  1. PUBLISH to RabbitMQ → campaign-service consume → cập nhật status = ended (async)
  *  2. PATCH transaction-service → update tx status = success (HTTP REST sync)
  */
-async function publishDonated(eventData) {
-    const { campaignId, donor, amount, txHash } = eventData;
+async function publishFundsWithdrawn(eventData) {
+    const { campaignId, beneficiary, amount, txHash } = eventData;
 
     const channel = getChannel();
     if (channel) {
         const amountBigInt = BigInt(amount);
-        const amountEth = Number(amountBigInt) / 1e18;
-
         const payload = {
-            txHash,
             campaignOnChainId: Number(campaignId),
-            donorWallet: donor.toLowerCase(),
+            beneficiary: beneficiary.toLowerCase(),
             amount: amountBigInt.toString(),
-            amountEth,
+            amountEth: Number(amountBigInt) / 1e18,
+            txHash,
         };
 
         channel.publish(
             EXCHANGE,
-            "donation.received",
+            "funds.withdrawn",
             Buffer.from(JSON.stringify(payload)),
             { persistent: true }
         );
-        console.log(`[listener-service] Published donation.received: txHash=${txHash}`);
+        console.log(`[listener-service] Published funds.withdrawn: campaignId=${campaignId}`);
     }
 
     if (txHash) {
@@ -43,4 +41,4 @@ async function publishDonated(eventData) {
     }
 }
 
-module.exports = { publishDonated };
+module.exports = { publishFundsWithdrawn };
