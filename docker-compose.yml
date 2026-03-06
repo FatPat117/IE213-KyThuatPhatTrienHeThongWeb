@@ -40,19 +40,22 @@ services:
   gateway:
     build: ./backend/gateway
     ports:
-      - "4000:4000"
+      - "${GATEWAY_PORT}:${GATEWAY_PORT}"
     environment:
-      PORT: 4000
-      NODE_ENV: development
-      USER_SERVICE_URL: http://user-service:4001
-      CAMPAIGN_SERVICE_URL: http://campaign-service:4002
-      DONATION_SERVICE_URL: http://donation-service:4003
-      CERTIFICATE_SERVICE_URL: http://certificate-service:4004
-      TRANSACTION_SERVICE_URL: http://transaction-service:4005
+      - PORT=${GATEWAY_PORT}
+      - NODE_ENV=${NODE_ENV}
+      - JWT_SECRET=${JWT_SECRET}
+      - AUTH_SERVICE_URL=${AUTH_SERVICE_URL}
+      - USER_SERVICE_URL=${USER_SERVICE_URL}
+      - CAMPAIGN_SERVICE_URL=${CAMPAIGN_SERVICE_URL}
+      - DONATION_SERVICE_URL=${DONATION_SERVICE_URL}
+      - CERTIFICATE_SERVICE_URL=${CERTIFICATE_SERVICE_URL}
+      - TRANSACTION_SERVICE_URL=${TRANSACTION_SERVICE_URL}
     volumes:
       - ./backend/gateway:/app
       - /app/node_modules
     depends_on:
+      - auth-service
       - user-service
       - campaign-service
       - donation-service
@@ -61,16 +64,37 @@ services:
     restart: unless-stopped
 
   # ─────────────────────────────────────────────────────────
+  # Auth Service – SIWE + JWT
+  # ─────────────────────────────────────────────────────────
+  auth-service:
+    build: ./backend/auth-service
+    ports:
+      - "${AUTH_SERVICE_PORT}:${AUTH_SERVICE_PORT}"
+    environment:
+      - PORT=${AUTH_SERVICE_PORT}
+      - NODE_ENV=${NODE_ENV}
+      - MONGO_URI=${MONGO_URI_USERS}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
+    volumes:
+      - ./backend/auth-service:/app
+      - /app/node_modules
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────────
   # Domain Microservices
   # ─────────────────────────────────────────────────────────
   user-service:
     build: ./backend/user-service
     ports:
-      - "4001:4001"
+      - "${USER_SERVICE_PORT}:${USER_SERVICE_PORT}"
     environment:
-      PORT: 4001
-      NODE_ENV: development
-      MONGO_URI: mongodb://mongodb:27017/ie213_users
+      - PORT=${USER_SERVICE_PORT}
+      - NODE_ENV=${NODE_ENV}
+      - MONGO_URI=${MONGO_URI_USERS}
     volumes:
       - ./backend/user-service:/app
       - /app/node_modules
@@ -82,12 +106,12 @@ services:
   campaign-service:
     build: ./backend/campaign-service
     ports:
-      - "4002:4002"
+      - "${CAMPAIGN_SERVICE_PORT}:${CAMPAIGN_SERVICE_PORT}"
     environment:
-      PORT: 4002
-      NODE_ENV: development
-      MONGO_URI: mongodb://mongodb:27017/ie213_campaigns
-      RABBITMQ_URL: amqp://admin:password@rabbitmq:5672
+      - PORT=${CAMPAIGN_SERVICE_PORT}
+      - NODE_ENV=${NODE_ENV}
+      - MONGO_URI=${MONGO_URI_CAMPAIGNS}
+      - RABBITMQ_URL=${RABBITMQ_URL}
     volumes:
       - ./backend/campaign-service:/app
       - /app/node_modules
@@ -101,12 +125,12 @@ services:
   donation-service:
     build: ./backend/donation-service
     ports:
-      - "4003:4003"
+      - "${DONATION_SERVICE_PORT}:${DONATION_SERVICE_PORT}"
     environment:
-      PORT: 4003
-      NODE_ENV: development
-      MONGO_URI: mongodb://mongodb:27017/ie213_donations
-      RABBITMQ_URL: amqp://admin:password@rabbitmq:5672
+      - PORT=${DONATION_SERVICE_PORT}
+      - NODE_ENV=${NODE_ENV}
+      - MONGO_URI=${MONGO_URI_DONATIONS}
+      - RABBITMQ_URL=${RABBITMQ_URL}
     volumes:
       - ./backend/donation-service:/app
       - /app/node_modules
@@ -120,12 +144,12 @@ services:
   certificate-service:
     build: ./backend/certificate-service
     ports:
-      - "4004:4004"
+      - "${CERTIFICATE_SERVICE_PORT}:${CERTIFICATE_SERVICE_PORT}"
     environment:
-      PORT: 4004
-      NODE_ENV: development
-      MONGO_URI: mongodb://mongodb:27017/ie213_certificates
-      RABBITMQ_URL: amqp://admin:password@rabbitmq:5672
+      - PORT=${CERTIFICATE_SERVICE_PORT}
+      - NODE_ENV=${NODE_ENV}
+      - MONGO_URI=${MONGO_URI_CERTIFICATES}
+      - RABBITMQ_URL=${RABBITMQ_URL}
     volumes:
       - ./backend/certificate-service:/app
       - /app/node_modules
@@ -139,11 +163,11 @@ services:
   transaction-service:
     build: ./backend/transaction-service
     ports:
-      - "4005:4005"
+      - "${TRANSACTION_SERVICE_PORT}:${TRANSACTION_SERVICE_PORT}"
     environment:
-      PORT: 4005
-      NODE_ENV: development
-      MONGO_URI: mongodb://mongodb:27017/ie213_transactions
+      - PORT=${TRANSACTION_SERVICE_PORT}
+      - NODE_ENV=${NODE_ENV}
+      - MONGO_URI=${MONGO_URI_TRANSACTIONS}
     volumes:
       - ./backend/transaction-service:/app
       - /app/node_modules
@@ -154,16 +178,17 @@ services:
 
   # ─────────────────────────────────────────────────────────
   # Blockchain Event Listener
-  # TODO: Điền CONTRACT_ADDRESS sau khi deploy smart contract
+  # Điền SEPOLIA_RPC_URL và CROWDFUNDING_CONTRACT_ADDRESS vào
+  # backend/listener-service/.env trước khi chạy
   # ─────────────────────────────────────────────────────────
   listener-service:
     build: ./backend/listener-service
     environment:
-      NODE_ENV: development
-      RABBITMQ_URL: amqp://admin:password@rabbitmq:5672
-      SEPOLIA_RPC_URL: ${SEPOLIA_RPC_URL:-https://rpc.sepolia.org}
-      CROWDFUNDING_CONTRACT_ADDRESS: ${CROWDFUNDING_CONTRACT_ADDRESS:-0x0000000000000000000000000000000000000000}
-      TRANSACTION_SERVICE_URL: http://transaction-service:4005
+      - NODE_ENV=${NODE_ENV}
+      - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}
+      - CROWDFUNDING_CONTRACT_ADDRESS=${CROWDFUNDING_CONTRACT_ADDRESS}
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - TRANSACTION_SERVICE_URL=${TRANSACTION_SERVICE_URL}
     volumes:
       - ./backend/listener-service:/app
       - /app/node_modules
@@ -180,26 +205,16 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT}:${FRONTEND_PORT}"
     environment:
-      - NODE_ENV=development
-      - NEXT_PUBLIC_API_URL=http://localhost:4000
+      - NODE_ENV=${NODE_ENV}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
     volumes:
       - ./frontend:/app
       - /app/node_modules
     depends_on:
       - gateway
     restart: unless-stopped
-
-  # ─────────────────────────────────────────────────────────
-  # Smart Contracts (Foundry local node - dev only)
-  # ─────────────────────────────────────────────────────────
-  # smart-contracts:
-  #   build: ./smart-contracts
-  #   ports:
-  #     - "8545:8545"
-  #   volumes:
-  #     - ./smart-contracts:/app
 
 volumes:
   mongo_data:

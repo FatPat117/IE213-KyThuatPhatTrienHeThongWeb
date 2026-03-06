@@ -60,10 +60,25 @@ async function updateRaised(onChainId, raisedWei) {
     );
 }
 
+/**
+ * Cập nhật metadata off-chain (description, images).
+ * @param {number} onChainId
+ * @param {object} updates - { description?, images? }
+ */
+async function updateMetadata(onChainId, updates = {}) {
+    return Campaign.findOneAndUpdate(
+        { onChainId: Number(onChainId) },
+        { $set: updates },
+        { new: true, runValidators: true }
+    );
+}
+
 module.exports = {
     getAllCampaigns,
     getCampaignById,
     upsertCampaign,
     updateCampaignStatus,
     updateRaised,
+    updateMetadata,
 };
+

@@ -2,23 +2,20 @@ const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const axios = require("axios");
 
 /**
- * TODO: Implement sau khi Blockchain dev thêm event CampaignCreated vào FundRaising.sol
- *
- * Khi contract emit event CampaignCreated(campaignId, creator, title, goal, deadline):
+ * Khi contract emit event CampaignCreated(id, creator, beneficiary, goal, deadline):
  *  1. PUBLISH to RabbitMQ → campaign-service consume → lưu MongoDB (async)
  *  2. PATCH transaction-service → update tx status = success (HTTP REST sync)
  */
 async function publishCampaignCreated(eventData) {
-    const { campaignId, creator, title, goal, deadline, txHash } = eventData;
+    const { campaignId, creator, beneficiary, goal, deadline, txHash } = eventData;
 
-    // 1. Publish to RabbitMQ (async – campaign-service sẽ consume và lưu DB)
     const channel = getChannel();
     if (channel) {
         const payload = {
             onChainId: Number(campaignId),
-            title,
             creator,
-            goal: goal.toString(), // wei dạng string
+            beneficiary,
+            goal: goal.toString(),
             deadline: Number(deadline),
             txHash,
         };
@@ -31,7 +28,6 @@ async function publishCampaignCreated(eventData) {
         console.log(`[listener-service] Published campaign.created: campaignId=${campaignId}`);
     }
 
-    // 2. Cập nhật transaction status = success (HTTP REST sync)
     if (txHash) {
         try {
             await axios.patch(

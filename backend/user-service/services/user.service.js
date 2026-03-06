@@ -13,4 +13,21 @@ async function getUserByWallet(walletAddress) {
     return User.findOne({ walletAddress: walletAddress.toLowerCase() });
 }
 
-module.exports = { upsertUser, getUserByWallet };
+async function listUsers(page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+    const [users, total] = await Promise.all([
+        User.find({}, "-nonce").sort({ createdAt: -1 }).skip(skip).limit(limit),
+        User.countDocuments(),
+    ]);
+    return { users, total, page, limit };
+}
+
+async function updateRole(walletAddress, role) {
+    return User.findOneAndUpdate(
+        { walletAddress: walletAddress.toLowerCase() },
+        { $set: { role } },
+        { new: true }
+    );
+}
+
+module.exports = { upsertUser, getUserByWallet, listUsers, updateRole };

@@ -46,7 +46,7 @@ const CampaignSchema = new mongoose.Schema(
         },
         status: {
             type: String,
-            enum: ["active", "ended", "failed"],
+            enum: ["active", "ended", "failed", "cancelled"],
             default: "active",
         },
         // TODO: Thêm category, tags nếu cần filter nâng cao
