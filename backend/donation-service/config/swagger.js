@@ -11,12 +11,23 @@ const options = {
         },
         servers: [
             {
-                url: 'http://localhost:4000/api/donations', // Pointing to API Gateway
+                url: 'http://localhost:4000/api/donations',
                 description: 'API Gateway (Local)',
             },
         ],
+        components: {
+            securitySchemes: {
+                bearerAuth: {
+                    type: 'http',
+                    scheme: 'bearer',
+                    bearerFormat: 'JWT',
+                    description: 'Nhập JWT token nhận được từ POST /api/auth/verify',
+                },
+            },
+        },
+        security: [{ bearerAuth: [] }],
     },
-    apis: ['./routes/*.js', './controllers/*.js'], // Path to the API docs
+    apis: ['./routes/*.js', './controllers/*.js'],
 };
 
 const specs = swaggerJsdoc(options);
