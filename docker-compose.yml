@@ -1,37 +1,221 @@
 version: "3.9"
 
 services:
+  # ─────────────────────────────────────────────────────────
+  # Infrastructure
+  # ─────────────────────────────────────────────────────────
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"      # AMQP
+      - "15672:15672"    # Management UI: http://localhost:15672 (admin/password)
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: password
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────────────────────
+  # API Gateway – single entrypoint cho Frontend
+  # ─────────────────────────────────────────────────────────
+  gateway:
+    build: ./backend/gateway
+    ports:
+      - "${GATEWAY_PORT}:${GATEWAY_PORT}"
+    environment:
+      - PORT=${GATEWAY_PORT}
+      - NODE_ENV=${NODE_ENV}
+      - JWT_SECRET=${JWT_SECRET}
+      - AUTH_SERVICE_URL=${AUTH_SERVICE_URL}
+      - USER_SERVICE_URL=${USER_SERVICE_URL}
+      - CAMPAIGN_SERVICE_URL=${CAMPAIGN_SERVICE_URL}
+      - DONATION_SERVICE_URL=${DONATION_SERVICE_URL}
+      - CERTIFICATE_SERVICE_URL=${CERTIFICATE_SERVICE_URL}
+      - TRANSACTION_SERVICE_URL=${TRANSACTION_SERVICE_URL}
+    volumes:
+      - ./backend/gateway:/app
+      - /app/node_modules
+    depends_on:
+      - auth-service
+      - user-service
+      - campaign-service
+      - donation-service
+      - certificate-service
+      - transaction-service
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────────
+  # Auth Service – SIWE + JWT
+  # ─────────────────────────────────────────────────────────
+  auth-service:
+    build: ./backend/auth-service
+    ports:
+      - "${AUTH_SERVICE_PORT}:${AUTH_SERVICE_PORT}"
+    environment:
+      - PORT=${AUTH_SERVICE_PORT}
+      - NODE_ENV=${NODE_ENV}
+      - MONGO_URI=${MONGO_URI_USERS}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
+    volumes:
+      - ./backend/auth-service:/app
+      - /app/node_modules
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────────
+  # Domain Microservices
+  # ─────────────────────────────────────────────────────────
+  user-service:
+    build: ./backend/user-service
+    ports:
+      - "${USER_SERVICE_PORT}:${USER_SERVICE_PORT}"
+    environment:
+      - PORT=${USER_SERVICE_PORT}
+      - NODE_ENV=${NODE_ENV}
+      - MONGO_URI=${MONGO_URI_USERS}
+    volumes:
+      - ./backend/user-service:/app
+      - /app/node_modules
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  campaign-service:
+    build: ./backend/campaign-service
+    ports:
+      - "${CAMPAIGN_SERVICE_PORT}:${CAMPAIGN_SERVICE_PORT}"
+    environment:
+      - PORT=${CAMPAIGN_SERVICE_PORT}
+      - NODE_ENV=${NODE_ENV}
+      - MONGO_URI=${MONGO_URI_CAMPAIGNS}
+      - RABBITMQ_URL=${RABBITMQ_URL}
+    volumes:
+      - ./backend/campaign-service:/app
+      - /app/node_modules
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  donation-service:
+    build: ./backend/donation-service
+    ports:
+      - "${DONATION_SERVICE_PORT}:${DONATION_SERVICE_PORT}"
+    environment:
+      - PORT=${DONATION_SERVICE_PORT}
+      - NODE_ENV=${NODE_ENV}
+      - MONGO_URI=${MONGO_URI_DONATIONS}
+      - RABBITMQ_URL=${RABBITMQ_URL}
+    volumes:
+      - ./backend/donation-service:/app
+      - /app/node_modules
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  certificate-service:
+    build: ./backend/certificate-service
+    ports:
+      - "${CERTIFICATE_SERVICE_PORT}:${CERTIFICATE_SERVICE_PORT}"
+    environment:
+      - PORT=${CERTIFICATE_SERVICE_PORT}
+      - NODE_ENV=${NODE_ENV}
+      - MONGO_URI=${MONGO_URI_CERTIFICATES}
+      - RABBITMQ_URL=${RABBITMQ_URL}
+    volumes:
+      - ./backend/certificate-service:/app
+      - /app/node_modules
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  transaction-service:
+    build: ./backend/transaction-service
+    ports:
+      - "${TRANSACTION_SERVICE_PORT}:${TRANSACTION_SERVICE_PORT}"
+    environment:
+      - PORT=${TRANSACTION_SERVICE_PORT}
+      - NODE_ENV=${NODE_ENV}
+      - MONGO_URI=${MONGO_URI_TRANSACTIONS}
+    volumes:
+      - ./backend/transaction-service:/app
+      - /app/node_modules
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────────
+  # Blockchain Event Listener
+  # Điền SEPOLIA_RPC_URL và CROWDFUNDING_CONTRACT_ADDRESS vào
+  # backend/listener-service/.env trước khi chạy
+  # ─────────────────────────────────────────────────────────
+  listener-service:
+    build: ./backend/listener-service
+    environment:
+      - NODE_ENV=${NODE_ENV}
+      - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}
+      - CROWDFUNDING_CONTRACT_ADDRESS=${CROWDFUNDING_CONTRACT_ADDRESS}
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - TRANSACTION_SERVICE_URL=${TRANSACTION_SERVICE_URL}
+    volumes:
+      - ./backend/listener-service:/app
+      - /app/node_modules
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      transaction-service:
+        condition: service_started
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────────
+  # Frontend
+  # ─────────────────────────────────────────────────────────
   frontend:
     build: ./frontend
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT}:${FRONTEND_PORT}"
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=${NODE_ENV}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
     volumes:
       - ./frontend:/app
       - /app/node_modules
     depends_on:
-      - backend
-      - smart_contracts
+      - gateway
+    restart: unless-stopped
 
-  backend:
-    build: ./backend
-    ports:
-      - "4000:4000"
-    environment:
-      - NODE_ENV=development
-      - PORT=4000
-      # Nếu backend cần DB_URL hoặc các biến .env khác thì thêm ở đây / dùng env_file
-    volumes:
-      - ./backend:/app
-      - /app/node_modules
-
-  smart_contracts:
-    build: ./smart_contracts
-    # hardhat node mặc định port 8545
-    ports:
-      - "8545:8545"
-    volumes:
-      - ./smart_contracts:/app
-      - /app/node_modules
-
+volumes:
+  mongo_data:
+  rabbitmq_data:
