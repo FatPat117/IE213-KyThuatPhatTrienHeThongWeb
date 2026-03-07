@@ -28,6 +28,11 @@ app.get("/api-docs.json", (req, res) => {
     res.setHeader("Content-Type", "application/json");
     res.send(specs);
 });
+// Alias cho gateway proxy (forward nguyên path)
+app.get("/api/transactions/api-docs.json", (req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    res.send(specs);
+});
 
 app.use("/api/transactions", transactionRoutes);
 app.use(errorHandler);

@@ -34,6 +34,11 @@ app.get("/api-docs.json", (req, res) => {
     res.setHeader("Content-Type", "application/json");
     res.send(specs);
 });
+// Alias cho gateway proxy
+app.get("/api/campaigns/api-docs.json", (req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    res.send(specs);
+});
 app.use("/api/campaigns", campaignRoutes);
 
 // ── Error Handler ────────────────────────────────────────────

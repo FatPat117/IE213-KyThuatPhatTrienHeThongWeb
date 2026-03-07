@@ -5,13 +5,13 @@ const options = {
     definition: {
         openapi: '3.0.0',
         info: {
-            title: 'Certificate Service API',
+            title: 'Auth Service API',
             version: '1.0.0',
-            description: 'API documentation for the Certificate Service in the Crowdfunding platform.',
+            description: 'Xác thực bằng Metamask (SIWE - Sign-In with Ethereum) + JWT.',
         },
         servers: [
             {
-                url: 'http://localhost:4000/api/certificates',
+                url: 'http://localhost:4000/api/auth',
                 description: 'API Gateway (Local)',
             },
         ],
@@ -21,18 +21,15 @@ const options = {
                     type: 'http',
                     scheme: 'bearer',
                     bearerFormat: 'JWT',
-                    description: 'Nhập JWT token nhận được từ POST /api/auth/verify',
+                    description: 'Nhập JWT token nhận được từ POST /verify',
                 },
             },
         },
         security: [{ bearerAuth: [] }],
     },
-    apis: ['./routes/*.js', './controllers/*.js'],
+    apis: ['./routes/*.js'],
 };
 
 const specs = swaggerJsdoc(options);
 
-module.exports = {
-    swaggerUi,
-    specs,
-};
+module.exports = { swaggerUi, specs };

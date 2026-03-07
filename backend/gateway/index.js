@@ -23,6 +23,7 @@ app.get("/api/health", (req, res) =>
 
 // ── Swagger UI (Centralized) ──────────────────────────────────
 const swaggerUrls = [
+    { url: "/api/auth/api-docs.json", name: "Auth Service" },
     { url: "/api/users/api-docs.json", name: "User Service" },
     { url: "/api/campaigns/api-docs.json", name: "Campaign Service" },
     { url: "/api/donations/api-docs.json", name: "Donation Service" },
@@ -56,6 +57,15 @@ const proxy = (target) =>
             },
         },
     });
+
+// ── Swagger JSON specs – public, no auth ─────────────────────
+// Đặt TRƯỚC các route auth; mỗi service tự expose alias path
+app.get("/api/auth/api-docs.json",         proxy(AUTH_SERVICE_URL));
+app.get("/api/users/api-docs.json",        proxy(USER_SERVICE_URL));
+app.get("/api/campaigns/api-docs.json",    proxy(CAMPAIGN_SERVICE_URL));
+app.get("/api/donations/api-docs.json",    proxy(DONATION_SERVICE_URL));
+app.get("/api/certificates/api-docs.json", proxy(CERTIFICATE_SERVICE_URL));
+app.get("/api/transactions/api-docs.json", proxy(TRANSACTION_SERVICE_URL));
 
 // ── Routes ───────────────────────────────────────────────────
 //
