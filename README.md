@@ -1,70 +1,56 @@
-# IE213 – Đồ án Gây quỹ & Cấp chứng chỉ
+# Funding Platform (Foundry)
 
-Hệ thống web tích hợp Ethereum: gây quỹ minh bạch và cấp chứng chỉ, đáp ứng yêu cầu đồ án môn IE213.
+## Project Overview
 
-## Cấu trúc repository
+The Funding Platform is a community fundraising system that lets users create campaigns, accept donations, withdraw funds on success, issue NFT certificates to donors, and enable refunds when a campaign fails.
 
-```
-├── backend/          # Node.js + Express API, MongoDB
-├── frontend/         # Next.js (React) + Wagmi/Viem (ví & blockchain)
-├── smart_contracts/  # Solidity + Hardhat (deploy Sepolia)
-├── docs/             # Báo cáo, hướng dẫn demo, slide
-├── README.md
-└── .gitignore
-```
+## Prerequisites
 
-## Yêu cầu môi trường
-
-- Node.js 18+
-- npm hoặc yarn
-- Ví MetaMask (testnet Sepolia)
-- (Tùy chọn) MongoDB Atlas cho backend
-
-## Cài đặt & chạy
-
-### 1. Smart contracts (Hardhat)
+Install Foundry:
 
 ```bash
-cd smart_contracts
-npm install
-cp .env.example .env   # Tạo .env, điền SEPOLIA_RPC_URL, PRIVATE_KEY (ví deploy), ETHERSCAN_API_KEY (nếu verify)
-npm run compile
-npm run test
-npm run deploy:sepolia   # Deploy lên Sepolia
+curl -L https://foundry.paradigm.xyz | bash
+foundryup
 ```
 
-Sau khi deploy, ghi địa chỉ contract vào `.env` của frontend/backend: `NEXT_PUBLIC_FUNDRAISING_CONTRACT_ADDRESS=0x...`
+## Setup
 
-### 2. Backend
+From the `smart-contracts` folder, install dependencies:
 
 ```bash
-cd backend
-npm install
-cp .env.example .env   # MONGO_URI, PORT, ...
-npm run dev
+forge install OpenZeppelin/openzeppelin-contracts --no-commit
+forge install foundry-rs/forge-std --no-commit
 ```
 
-### 3. Frontend
+## Environment Variables
+
+Create a `.env` file in `smart-contracts/` using the template below:
 
 ```bash
-cd frontend
-npm install
-cp .env.local.example .env.local   # NEXT_PUBLIC_FUNDRAISING_CONTRACT_ADDRESS, NEXT_PUBLIC_CHAIN_ID=11155111 (Sepolia)
-npm run dev
+# .env.example
+PRIVATE_KEY=
+SEPOLIA_RPC_URL=
+ETHERSCAN_API_KEY=
 ```
 
-Truy cập http://localhost:3000. Kết nối ví MetaMask (mạng Sepolia), đọc dữ liệu từ contract và gửi giao dịch đóng góp.
+## Testing
 
-## Mạng testnet & contract
+Run the full test suite:
 
-- **Mạng:** Sepolia
-- **Địa chỉ contract:** (cập nhật sau khi deploy, ghi trong báo cáo và README)
+```bash
+forge test -vv
+```
 
-## Bảo mật
+## Deployment
 
-- Không lưu private key trên server hoặc trong code, không đưa lên GitHub.
-- Dùng biến môi trường (.env) cho RPC URL, API key, địa chỉ contract.
+Deploy to Sepolia:
 
-## Tài liệu
+```bash
+forge script script/DeployFundingPlatformSepolia.s.sol --rpc-url $SEPOLIA_RPC_URL --broadcast
+```
 
-Chi tiết báo cáo, hướng dẫn demo và slide đặt trong thư mục `docs/`.
+## Current Deployment (Sepolia)
+
+The contract is live on the Sepolia Testnet at:
+
+`0xCF6eBe1D6aD4d7d097B1cfB8d1eBB195b5710F78`
