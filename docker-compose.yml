@@ -95,6 +95,7 @@ services:
       - PORT=${USER_SERVICE_PORT}
       - NODE_ENV=${NODE_ENV}
       - MONGO_URI=${MONGO_URI_USERS}
+      - INITIAL_ADMIN_WALLET=${INITIAL_ADMIN_WALLET}
     volumes:
       - ./backend/user-service:/app
       - /app/node_modules

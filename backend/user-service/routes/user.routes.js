@@ -89,6 +89,20 @@ router.get("/admin/list", listAllUsers);
 
 /**
  * @swagger
+ * /admin/list-admins:
+ *   get:
+ *     summary: "[Admin] Danh sách tất cả quản trị viên"
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200: { description: Thành công }
+ *       403: { description: Không có quyền }
+ */
+router.get("/admin/list-admins", listAdmins);
+
+/**
+ * @swagger
  * /admin/{wallet}/role:
  *   patch:
  *     summary: "[Admin] Cập nhật role người dùng"

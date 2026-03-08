@@ -44,6 +44,17 @@ async function listAllUsers(req, res, next) {
     } catch (err) { next(err); }
 }
 
+// GET /api/users/admin/list-admins – admin only
+async function listAdmins(req, res, next) {
+    try {
+        const callerRole = req.headers["x-user-role"];
+        if (callerRole !== "admin") return errorRes(res, "Không có quyền truy cập", 403);
+
+        const admins = await userService.listAdmins();
+        return successRes(res, admins);
+    } catch (err) { next(err); }
+}
+
 // PATCH /api/users/admin/:wallet/role – admin only
 async function updateUserRole(req, res, next) {
     try {
@@ -61,4 +72,4 @@ async function updateUserRole(req, res, next) {
     } catch (err) { next(err); }
 }
 
-module.exports = { getUserProfile, upsertUserProfile, listAllUsers, updateUserRole };
+module.exports = { getUserProfile, upsertUserProfile, listAllUsers, listAdmins, updateUserRole };
