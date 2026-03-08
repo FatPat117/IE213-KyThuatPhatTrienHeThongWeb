@@ -22,7 +22,7 @@ async function publishFundsWithdrawn(eventData) {
 
         channel.publish(
             EXCHANGE,
-            "funds.withdrawn",
+            process.env.RABBITMQ_RKEY_WITHDRAWN || "funds.withdrawn",
             Buffer.from(JSON.stringify(payload)),
             { persistent: true }
         );

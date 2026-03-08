@@ -1,8 +1,8 @@
 const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const campaignService = require("../services/campaign.service");
 
-const QUEUE = "campaign.created.queue";
-const ROUTING_KEY = "campaign.created";
+const QUEUE = process.env.RABBITMQ_QUEUE_CAMP_CREATED || "campaign.created.queue";
+const ROUTING_KEY = process.env.RABBITMQ_RKEY_CAMP_CREATED || "campaign.created";
 
 /**
  * Đăng ký consumer lắng nghe queue campaign.created.queue.
@@ -34,13 +34,12 @@ async function startCampaignCreatedConsumer() {
 
             /**
              * Payload từ listener-service:
-             * { onChainId, title, description, creator, goal, deadline, txHash }
+             * { onChainId, creator, beneficiary, goal, deadline, txHash }
              */
             await campaignService.upsertCampaign({
                 onChainId: payload.onChainId,
-                title: payload.title,
-                description: payload.description || "",
                 creator: payload.creator,
+                beneficiary: payload.beneficiary,
                 goal: payload.goal,           // wei dạng string
                 deadline: new Date(payload.deadline * 1000), // unix timestamp → Date
                 status: "active",

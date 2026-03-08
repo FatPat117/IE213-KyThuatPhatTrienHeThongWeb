@@ -1,8 +1,8 @@
 const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const campaignService = require("../services/campaign.service");
 
-const QUEUE = "campaign.cancelled.queue";
-const ROUTING_KEY = "campaign.cancelled";
+const QUEUE = process.env.RABBITMQ_QUEUE_CAMP_CANCELLED || "campaign.cancelled.queue";
+const ROUTING_KEY = process.env.RABBITMQ_RKEY_CAMP_CANCELLED || "campaign.cancelled";
 
 /**
  * Lắng nghe event CampaignCancelled từ listener-service.

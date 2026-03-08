@@ -21,7 +21,7 @@ async function publishCampaignCreated(eventData) {
         };
         channel.publish(
             EXCHANGE,
-            "campaign.created",
+            process.env.RABBITMQ_RKEY_CAMP_CREATED || "campaign.created",
             Buffer.from(JSON.stringify(payload)),
             { persistent: true }
         );

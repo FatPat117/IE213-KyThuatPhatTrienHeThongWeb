@@ -35,4 +35,4 @@ const UserSchema = new mongoose.Schema(
 
 UserSchema.index({ walletAddress: 1 });
 
-module.exports = mongoose.model("User", UserSchema);
+module.exports = mongoose.models.User || mongoose.model("User", UserSchema);

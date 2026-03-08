@@ -10,7 +10,7 @@ const CampaignSchema = new mongoose.Schema(
         },
         title: {
             type: String,
-            required: [true, "Tiêu đề là bắt buộc"],
+            default: "Untitled Campaign",
             trim: true,
             maxlength: [200, "Tiêu đề tối đa 200 ký tự"],
         },
@@ -58,4 +58,4 @@ CampaignSchema.index({ onChainId: 1 });
 CampaignSchema.index({ creator: 1 });
 CampaignSchema.index({ status: 1 });
 
-module.exports = mongoose.model("Campaign", CampaignSchema);
+module.exports = mongoose.models.Campaign || mongoose.model("Campaign", CampaignSchema);

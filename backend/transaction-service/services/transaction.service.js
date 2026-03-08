@@ -1,4 +1,4 @@
-const Transaction = require("../models/Transaction.model");
+const Transaction = require("../models/transaction.model");
 
 async function createTransaction(data) {
     const { txHash, walletAddress, action, campaignOnChainId } = data;
