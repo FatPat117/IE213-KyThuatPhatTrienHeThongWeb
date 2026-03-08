@@ -1,4 +1,4 @@
-const User = require("../models/User.model");
+const User = require("../models/user.model");
 
 async function upsertUser(walletAddress, updates = {}) {
     const wallet = walletAddress.toLowerCase();
