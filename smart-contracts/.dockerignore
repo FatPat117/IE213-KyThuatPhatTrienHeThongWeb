@@ -1,0 +1,15 @@
+# Foundry artifacts
+out/
+cache/
+broadcast/
+
+# Environment files
+.env
+.env.example
+
+# Version control
+.git/
+.gitignore
+
+# Node modules (if applicable)
+node_modules/

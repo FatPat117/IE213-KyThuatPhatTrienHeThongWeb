@@ -34,6 +34,29 @@ services:
       timeout: 5s
       retries: 5
 
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    ports:
+      - "8545:8545"
+    entrypoint: ["anvil", "--host", "0.0.0.0"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "cast", "chain-id", "--rpc-url", "http://localhost:8545"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  contracts-deploy:
+    build: ./smart-contracts
+    environment:
+      - SEPOLIA_RPC_URL=${ANVIL_RPC_URL}
+      - DEPLOYER_PRIVATE_KEY=${DEPLOYER_PRIVATE_KEY}
+    volumes:
+      - shared_data:/shared
+    depends_on:
+      anvil:
+        condition: service_healthy
+
   # ─────────────────────────────────────────────────────────
   # API Gateway – single entrypoint cho Frontend
   # ─────────────────────────────────────────────────────────
@@ -205,7 +228,7 @@ services:
     build: ./backend/listener-service
     environment:
       - NODE_ENV=${NODE_ENV}
-      - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}
+      - SEPOLIA_RPC_URL=${ANVIL_RPC_URL}
       - CROWDFUNDING_CONTRACT_ADDRESS=${CROWDFUNDING_CONTRACT_ADDRESS}
       - RABBITMQ_URL=${RABBITMQ_URL}
       - TRANSACTION_SERVICE_URL=${TRANSACTION_SERVICE_URL}
@@ -218,11 +241,14 @@ services:
     volumes:
       - ./backend/listener-service:/app
       - /app/node_modules
+      - shared_data:/app/shared
     depends_on:
       rabbitmq:
         condition: service_healthy
       transaction-service:
         condition: service_started
+      contracts-deploy:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   # ─────────────────────────────────────────────────────────
@@ -245,3 +271,4 @@ services:
 volumes:
   mongo_data:
   rabbitmq_data:
+  shared_data:
