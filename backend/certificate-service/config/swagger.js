@@ -11,7 +11,7 @@ const options = {
         },
         servers: [
             {
-                url: 'http://localhost:4000/api/certificates',
+                url: `http://localhost:${process.env.GATEWAY_PORT || 5000}/api/certificates`,
                 description: 'API Gateway (Local)',
             },
         ],
