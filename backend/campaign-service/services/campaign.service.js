@@ -1,4 +1,4 @@
-const Campaign = require("../models/Campaign.model");
+const Campaign = require("../models/campaign.model");
 
 /**
  * Lấy tất cả campaigns, có thể filter theo status.

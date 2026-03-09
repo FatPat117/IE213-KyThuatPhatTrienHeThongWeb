@@ -37,9 +37,11 @@ app.get("/api/transactions/api-docs.json", (req, res) => {
 app.use("/api/transactions", transactionRoutes);
 app.use(errorHandler);
 
+const { connectRabbitMQ } = require("./config/rabbitmq");
+
 async function start() {
     await connectDB();
-    // Không cần RabbitMQ – chỉ dùng HTTP REST
+    await connectRabbitMQ();
     app.listen(PORT, () => {
         console.log(`[transaction-service] Running at http://localhost:${PORT}`);
     });

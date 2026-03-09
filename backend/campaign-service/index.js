@@ -9,6 +9,7 @@ const { connectRabbitMQ } = require("./config/rabbitmq");
 const { startCampaignCreatedConsumer } = require("./consumers/campaignCreated.consumer");
 const { startFundsWithdrawnConsumer } = require("./consumers/fundsWithdrawn.consumer");
 const { startCampaignCancelledConsumer } = require("./consumers/campaignCancelled.consumer");
+const { startDonatedConsumer } = require("./consumers/donated.consumer");
 const campaignRoutes = require("./routes/campaign.routes");
 const errorHandler = require("./middlewares/errorHandler");
 
@@ -51,6 +52,7 @@ async function start() {
     await startCampaignCreatedConsumer();
     await startFundsWithdrawnConsumer();
     await startCampaignCancelledConsumer();
+    await startDonatedConsumer();
 
     app.listen(PORT, () => {
         console.log(`[campaign-service] Running at http://localhost:${PORT}`);

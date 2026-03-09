@@ -21,7 +21,7 @@ async function publishCampaignCancelled(eventData) {
 
     channel.publish(
         EXCHANGE,
-        "campaign.cancelled",
+        process.env.RABBITMQ_RKEY_CAMP_CANCELLED || "campaign.cancelled",
         Buffer.from(JSON.stringify(payload)),
         { persistent: true }
     );

@@ -37,4 +37,4 @@ const CertificateSchema = new mongoose.Schema(
 CertificateSchema.index({ ownerWallet: 1 });
 CertificateSchema.index({ campaignOnChainId: 1 });
 
-module.exports = mongoose.model("Certificate", CertificateSchema);
+module.exports = mongoose.models.Certificate || mongoose.model("Certificate", CertificateSchema);

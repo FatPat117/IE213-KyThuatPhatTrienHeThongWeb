@@ -34,6 +34,29 @@ services:
       timeout: 5s
       retries: 5
 
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    ports:
+      - "8545:8545"
+    entrypoint: ["anvil", "--host", "0.0.0.0"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "cast", "chain-id", "--rpc-url", "http://localhost:8545"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  contracts-deploy:
+    build: ./smart-contracts
+    environment:
+      - SEPOLIA_RPC_URL=${ANVIL_RPC_URL}
+      - DEPLOYER_PRIVATE_KEY=${DEPLOYER_PRIVATE_KEY}
+    volumes:
+      - shared_data:/shared
+    depends_on:
+      anvil:
+        condition: service_healthy
+
   # ─────────────────────────────────────────────────────────
   # API Gateway – single entrypoint cho Frontend
   # ─────────────────────────────────────────────────────────
@@ -95,6 +118,7 @@ services:
       - PORT=${USER_SERVICE_PORT}
       - NODE_ENV=${NODE_ENV}
       - MONGO_URI=${MONGO_URI_USERS}
+      - INITIAL_ADMIN_WALLET=${INITIAL_ADMIN_WALLET}
     volumes:
       - ./backend/user-service:/app
       - /app/node_modules
@@ -112,6 +136,15 @@ services:
       - NODE_ENV=${NODE_ENV}
       - MONGO_URI=${MONGO_URI_CAMPAIGNS}
       - RABBITMQ_URL=${RABBITMQ_URL}
+      - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE}
+      - RABBITMQ_QUEUE_CAMP_CREATED=${RABBITMQ_QUEUE_CAMP_CREATED}
+      - RABBITMQ_QUEUE_CAMP_CANCELLED=${RABBITMQ_QUEUE_CAMP_CANCELLED}
+      - RABBITMQ_QUEUE_CAMP_DONATED=${RABBITMQ_QUEUE_CAMP_DONATED}
+      - RABBITMQ_QUEUE_CAMP_WITHDRAWN=${RABBITMQ_QUEUE_CAMP_WITHDRAWN}
+      - RABBITMQ_RKEY_CAMP_CREATED=${RABBITMQ_RKEY_CAMP_CREATED}
+      - RABBITMQ_RKEY_CAMP_CANCELLED=${RABBITMQ_RKEY_CAMP_CANCELLED}
+      - RABBITMQ_RKEY_DONATED=${RABBITMQ_RKEY_DONATED}
+      - RABBITMQ_RKEY_WITHDRAWN=${RABBITMQ_RKEY_WITHDRAWN}
     volumes:
       - ./backend/campaign-service:/app
       - /app/node_modules
@@ -131,6 +164,9 @@ services:
       - NODE_ENV=${NODE_ENV}
       - MONGO_URI=${MONGO_URI_DONATIONS}
       - RABBITMQ_URL=${RABBITMQ_URL}
+      - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE}
+      - RABBITMQ_QUEUE_DONATED_SVC=${RABBITMQ_QUEUE_DONATED_SVC}
+      - RABBITMQ_RKEY_DONATED=${RABBITMQ_RKEY_DONATED}
     volumes:
       - ./backend/donation-service:/app
       - /app/node_modules
@@ -150,6 +186,9 @@ services:
       - NODE_ENV=${NODE_ENV}
       - MONGO_URI=${MONGO_URI_CERTIFICATES}
       - RABBITMQ_URL=${RABBITMQ_URL}
+      - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE}
+      - RABBITMQ_QUEUE_CERT_MINTED=${RABBITMQ_QUEUE_CERT_MINTED}
+      - RABBITMQ_RKEY_CERT_MINTED=${RABBITMQ_RKEY_CERT_MINTED}
     volumes:
       - ./backend/certificate-service:/app
       - /app/node_modules
@@ -168,6 +207,10 @@ services:
       - PORT=${TRANSACTION_SERVICE_PORT}
       - NODE_ENV=${NODE_ENV}
       - MONGO_URI=${MONGO_URI_TRANSACTIONS}
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE}
+      - RABBITMQ_QUEUE_TX_DONATED=${RABBITMQ_QUEUE_TX_DONATED}
+      - RABBITMQ_RKEY_DONATED=${RABBITMQ_RKEY_DONATED}
     volumes:
       - ./backend/transaction-service:/app
       - /app/node_modules
@@ -185,18 +228,27 @@ services:
     build: ./backend/listener-service
     environment:
       - NODE_ENV=${NODE_ENV}
-      - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}
+      - SEPOLIA_RPC_URL=${ANVIL_RPC_URL}
       - CROWDFUNDING_CONTRACT_ADDRESS=${CROWDFUNDING_CONTRACT_ADDRESS}
       - RABBITMQ_URL=${RABBITMQ_URL}
       - TRANSACTION_SERVICE_URL=${TRANSACTION_SERVICE_URL}
+      - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE}
+      - RABBITMQ_RKEY_CAMP_CREATED=${RABBITMQ_RKEY_CAMP_CREATED}
+      - RABBITMQ_RKEY_CAMP_CANCELLED=${RABBITMQ_RKEY_CAMP_CANCELLED}
+      - RABBITMQ_RKEY_DONATED=${RABBITMQ_RKEY_DONATED}
+      - RABBITMQ_RKEY_WITHDRAWN=${RABBITMQ_RKEY_WITHDRAWN}
+      - RABBITMQ_RKEY_CERT_MINTED=${RABBITMQ_RKEY_CERT_MINTED}
     volumes:
       - ./backend/listener-service:/app
       - /app/node_modules
+      - shared_data:/app/shared
     depends_on:
       rabbitmq:
         condition: service_healthy
       transaction-service:
         condition: service_started
+      contracts-deploy:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   # ─────────────────────────────────────────────────────────
@@ -219,3 +271,4 @@ services:
 volumes:
   mongo_data:
   rabbitmq_data:
+  shared_data:

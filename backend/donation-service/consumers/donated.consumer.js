@@ -1,8 +1,8 @@
 const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const donationService = require("../services/donation.service");
 
-const QUEUE = "donation.received.queue";
-const ROUTING_KEY = "donation.received";
+const QUEUE = process.env.RABBITMQ_QUEUE_DONATED_SVC || "donation.received.queue";
+const ROUTING_KEY = process.env.RABBITMQ_RKEY_DONATED || "donation.received";
 
 async function startDonatedConsumer() {
     const channel = getChannel();

@@ -4,6 +4,7 @@ const {
     upsertUserProfile,
     listAllUsers,
     updateUserRole,
+    listAdmins
 } = require("../controllers/user.controller");
 const validateAddress = require("../middlewares/validateAddress");
 
@@ -86,6 +87,20 @@ router.put("/:wallet", validateAddress, upsertUserProfile);
  *       403: { description: Không có quyền }
  */
 router.get("/admin/list", listAllUsers);
+
+/**
+ * @swagger
+ * /admin/list-admins:
+ *   get:
+ *     summary: "[Admin] Danh sách tất cả quản trị viên"
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200: { description: Thành công }
+ *       403: { description: Không có quyền }
+ */
+router.get("/admin/list-admins", listAdmins);
 
 /**
  * @swagger

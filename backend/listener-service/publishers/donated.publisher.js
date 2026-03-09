@@ -24,7 +24,7 @@ async function publishDonated(eventData) {
 
         channel.publish(
             EXCHANGE,
-            "donation.received",
+            process.env.RABBITMQ_RKEY_DONATED || "donation.received",
             Buffer.from(JSON.stringify(payload)),
             { persistent: true }
         );

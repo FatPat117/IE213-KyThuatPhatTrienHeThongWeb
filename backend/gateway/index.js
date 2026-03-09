@@ -50,6 +50,7 @@ const proxy = (target) =>
     createProxyMiddleware({
         target,
         changeOrigin: true,
+        pathRewrite: (path, req) => req.originalUrl.split("?")[0],
         on: {
             error: (err, req, res) => {
                 console.error(`[gateway] Proxy error → ${target}:`, err.message);

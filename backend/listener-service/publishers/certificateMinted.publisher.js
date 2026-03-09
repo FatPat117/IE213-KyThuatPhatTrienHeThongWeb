@@ -22,7 +22,7 @@ async function publishCertificateMinted(eventData) {
 
     channel.publish(
         EXCHANGE,
-        "certificate.minted",
+        process.env.RABBITMQ_RKEY_CERT_MINTED || "certificate.minted",
         Buffer.from(JSON.stringify(payload)),
         { persistent: true }
     );

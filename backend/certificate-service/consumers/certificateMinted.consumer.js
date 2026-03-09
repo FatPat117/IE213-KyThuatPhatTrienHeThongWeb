@@ -1,8 +1,8 @@
 const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const certificateService = require("../services/certificate.service");
 
-const QUEUE = "cert.minted.queue";
-const ROUTING_KEY = "certificate.minted";
+const QUEUE = process.env.RABBITMQ_QUEUE_CERT_MINTED || "cert.minted.queue";
+const ROUTING_KEY = process.env.RABBITMQ_RKEY_CERT_MINTED || "certificate.minted";
 
 // TODO: Implement sau khi NFT contract (ERC-721) được viết và deploy
 async function startCertificateMintedConsumer() {
@@ -25,14 +25,14 @@ async function startCertificateMintedConsumer() {
             console.log("[certificate-service] Nhận event certificate.minted:", payload);
 
             /**
-             * TODO: Payload từ listener-service sau khi NFT contract sẵn sàng:
-             * { tokenId, campaignOnChainId, ownerWallet, metadataUri }
+             * Payload từ listener-service:
+             * { tokenId, campaignOnChainId, ownerWallet, txHash }
              */
             await certificateService.createCertificate({
                 tokenId: payload.tokenId,
                 campaignOnChainId: payload.campaignOnChainId,
                 ownerWallet: payload.ownerWallet,
-                metadataUri: payload.metadataUri,
+                metadataUri: payload.metadataUri || `ipfs://default-nft-metadata/${payload.tokenId}`,
                 mintedAt: new Date(),
             });
 

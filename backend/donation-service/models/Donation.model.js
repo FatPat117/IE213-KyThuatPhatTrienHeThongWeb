@@ -49,4 +49,4 @@ const DonationSchema = new mongoose.Schema(
 DonationSchema.index({ campaignOnChainId: 1 });
 DonationSchema.index({ donorWallet: 1 });
 
-module.exports = mongoose.model("Donation", DonationSchema);
+module.exports = mongoose.models.Donation || mongoose.model("Donation", DonationSchema);

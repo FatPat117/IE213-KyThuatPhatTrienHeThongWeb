@@ -1,6 +1,6 @@
 const amqplib = require("amqplib");
 
-const EXCHANGE = "ie213.events";
+const EXCHANGE = process.env.RABBITMQ_EXCHANGE || "funding.events";
 let channel = null;
 
 async function connectRabbitMQ() {

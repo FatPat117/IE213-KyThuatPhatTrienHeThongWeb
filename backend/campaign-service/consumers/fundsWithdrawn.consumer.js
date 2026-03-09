@@ -1,8 +1,8 @@
 const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const campaignService = require("../services/campaign.service");
 
-const QUEUE = "funds.withdrawn.queue";
-const ROUTING_KEY = "funds.withdrawn";
+const QUEUE = process.env.RABBITMQ_QUEUE_CAMP_WITHDRAWN || "funds.withdrawn.queue";
+const ROUTING_KEY = process.env.RABBITMQ_RKEY_WITHDRAWN || "funds.withdrawn";
 
 /**
  * Lắng nghe event FundsWithdrawn từ listener-service.

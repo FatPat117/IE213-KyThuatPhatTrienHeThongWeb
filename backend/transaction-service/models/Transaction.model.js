@@ -43,4 +43,4 @@ const TransactionSchema = new mongoose.Schema(
 TransactionSchema.index({ walletAddress: 1 });
 TransactionSchema.index({ status: 1 });
 
-module.exports = mongoose.model("Transaction", TransactionSchema);
+module.exports = mongoose.models.Transaction || mongoose.model("Transaction", TransactionSchema);
