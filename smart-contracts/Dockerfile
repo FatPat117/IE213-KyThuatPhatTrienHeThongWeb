@@ -1,5 +1,6 @@
 FROM ghcr.io/foundry-rs/foundry:latest
 
+USER root
 WORKDIR /app
 
 # Copy the entire smart-contracts directory
