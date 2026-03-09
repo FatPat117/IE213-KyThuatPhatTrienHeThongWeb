@@ -94,6 +94,7 @@ services:
     ports:
       - "${AUTH_SERVICE_PORT}:${AUTH_SERVICE_PORT}"
     environment:
+      - GATEWAY_PORT=${GATEWAY_PORT}
       - PORT=${AUTH_SERVICE_PORT}
       - NODE_ENV=${NODE_ENV}
       - MONGO_URI=${MONGO_URI_USERS}
@@ -115,6 +116,7 @@ services:
     ports:
       - "${USER_SERVICE_PORT}:${USER_SERVICE_PORT}"
     environment:
+      - GATEWAY_PORT=${GATEWAY_PORT}
       - PORT=${USER_SERVICE_PORT}
       - NODE_ENV=${NODE_ENV}
       - MONGO_URI=${MONGO_URI_USERS}
@@ -132,6 +134,7 @@ services:
     ports:
       - "${CAMPAIGN_SERVICE_PORT}:${CAMPAIGN_SERVICE_PORT}"
     environment:
+      - GATEWAY_PORT=${GATEWAY_PORT}
       - PORT=${CAMPAIGN_SERVICE_PORT}
       - NODE_ENV=${NODE_ENV}
       - MONGO_URI=${MONGO_URI_CAMPAIGNS}
@@ -160,6 +163,7 @@ services:
     ports:
       - "${DONATION_SERVICE_PORT}:${DONATION_SERVICE_PORT}"
     environment:
+      - GATEWAY_PORT=${GATEWAY_PORT}
       - PORT=${DONATION_SERVICE_PORT}
       - NODE_ENV=${NODE_ENV}
       - MONGO_URI=${MONGO_URI_DONATIONS}
@@ -182,6 +186,7 @@ services:
     ports:
       - "${CERTIFICATE_SERVICE_PORT}:${CERTIFICATE_SERVICE_PORT}"
     environment:
+      - GATEWAY_PORT=${GATEWAY_PORT}
       - PORT=${CERTIFICATE_SERVICE_PORT}
       - NODE_ENV=${NODE_ENV}
       - MONGO_URI=${MONGO_URI_CERTIFICATES}
@@ -204,6 +209,7 @@ services:
     ports:
       - "${TRANSACTION_SERVICE_PORT}:${TRANSACTION_SERVICE_PORT}"
     environment:
+      - GATEWAY_PORT=${GATEWAY_PORT}
       - PORT=${TRANSACTION_SERVICE_PORT}
       - NODE_ENV=${NODE_ENV}
       - MONGO_URI=${MONGO_URI_TRANSACTIONS}
