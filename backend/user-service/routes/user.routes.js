@@ -4,6 +4,7 @@ const {
     upsertUserProfile,
     listAllUsers,
     updateUserRole,
+    listAdmins
 } = require("../controllers/user.controller");
 const validateAddress = require("../middlewares/validateAddress");
 
