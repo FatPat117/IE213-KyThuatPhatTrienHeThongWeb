@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { WagmiProviderWrapper, StatusProvider, NetworkStatusMonitor } from "@/lib";
+import { AuthProvider, NetworkStatusMonitor, StatusProvider, WagmiProviderWrapper } from "@/lib";
 import { SystemStatusDisplay } from "@/components/system/SystemStatusDisplay";
 
 const geistSans = Geist({
@@ -30,11 +30,13 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <WagmiProviderWrapper>
-          <StatusProvider>
-            <SystemStatusDisplay />
-            <NetworkStatusMonitor />
-            {children}
-          </StatusProvider>
+          <AuthProvider>
+            <StatusProvider>
+              <SystemStatusDisplay />
+              <NetworkStatusMonitor />
+              {children}
+            </StatusProvider>
+          </AuthProvider>
         </WagmiProviderWrapper>
       </body>
     </html>

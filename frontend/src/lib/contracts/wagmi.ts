@@ -1,10 +1,12 @@
 import { createConfig, http } from 'wagmi';
-import { mainnet, sepolia } from 'wagmi/chains';
+import { sepolia } from 'wagmi/chains';
+
+const sepoliaRpcUrl =
+  process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL || 'https://eth-sepolia.g.alchemy.com/v2/demo';
 
 export const config = createConfig({
-  chains: [mainnet, sepolia],
+  chains: [sepolia],
   transports: {
-    [mainnet.id]: http(),
-    [sepolia.id]: http('https://eth-sepolia.g.alchemy.com/v2/demo'),
+    [sepolia.id]: http(sepoliaRpcUrl),
   },
 });

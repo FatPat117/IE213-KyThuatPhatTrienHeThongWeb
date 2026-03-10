@@ -1,23 +1,19 @@
 'use client';
 
 import { useAccount, useChainId, useBalance } from 'wagmi';
-import { useEffect, useState } from 'react';
 import { formatUnits } from 'viem';
 
 export default function WalletStatus() {
+  const SEPOLIA_CHAIN_ID = 11155111;
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
-  const { data: balance } = useBalance({ address: address as `0x${string}` | undefined });
-  const [hasProvider, setHasProvider] = useState(true);
-
-  const SEPOLIA_CHAIN_ID = 11155111;
+  const { data: balance } = useBalance({
+    address: address as `0x${string}` | undefined,
+    chainId: SEPOLIA_CHAIN_ID,
+  });
   const isSepoliaNetwork = chainId === SEPOLIA_CHAIN_ID;
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setHasProvider(Boolean((window as any).ethereum));
-    }
-  }, []);
+  const hasProvider =
+    typeof window !== 'undefined' && Boolean((window as Window & { ethereum?: unknown }).ethereum);
 
   if (!isConnected) {
     return (

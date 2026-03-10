@@ -1,18 +1,18 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
-import WalletConnectButton from '@/components/wallet/WalletConnectButton';
+import dynamic from 'next/dynamic';
+import { useState } from 'react';
+
+const WalletConnectButton = dynamic(() => import('@/components/wallet/WalletConnectButton'), {
+  ssr: false,
+});
 
 export default function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [hasProvider, setHasProvider] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setHasProvider(Boolean((window as any).ethereum));
-    }
-  }, []);
+  const hasProvider =
+    typeof window === 'undefined' ||
+    Boolean((window as Window & { ethereum?: unknown }).ethereum);
 
   const navigationLinks = [
     { href: '/campaigns', label: 'Chiến dịch' },
@@ -26,7 +26,7 @@ export default function Header() {
     <>
       <header className="sticky top-0 z-50 bg-gradient-to-r from-white via-slate-50 to-white border-b border-slate-200/50 shadow-sm backdrop-blur-md bg-opacity-95">
         {/* Alert Banner - Only show if no MetaMask */}
-        {!hasProvider && hasProvider !== null && (
+        {!hasProvider && (
           <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border-b border-amber-200 px-4 sm:px-6 lg:px-8">
             <div className="mx-auto max-w-7xl flex items-center justify-between gap-3 py-2.5">
               <div className="flex items-center gap-2 flex-1 min-w-0">

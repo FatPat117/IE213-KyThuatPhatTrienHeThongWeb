@@ -55,8 +55,9 @@ async function updateCampaignMetadata(req, res, next) {
             return errorRes(res, "Chỉ người tạo chiến dịch mới có thể sửa thông tin", 403);
         }
 
-        const { description, images } = req.body;
+        const { title, description, images } = req.body;
         const updates = {};
+        if (title !== undefined) updates.title = title;
         if (description !== undefined) updates.description = description;
         if (images !== undefined) updates.images = images;
 

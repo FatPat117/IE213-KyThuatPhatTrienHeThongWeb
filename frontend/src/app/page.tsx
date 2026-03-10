@@ -1,17 +1,27 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { useSyncExternalStore } from 'react';
 import { useAccount, useChainId } from 'wagmi';
 import Header from '@/components/layout/Header';
 import WalletStatus from '@/components/wallet/WalletStatus';
 import { ContractStatsDisplay, CampaignListDisplay } from '@/components/contract/ContractReadComponent';
 
 const SEPOLIA_CHAIN_ID = 11155111;
+const EMPTY_SUBSCRIBE = () => () => {};
 
-export default function Home() {
+function useIsHydrated() {
+  return useSyncExternalStore(EMPTY_SUBSCRIBE, () => true, () => false);
+}
+
+function HomeContent() {
+  const isHydrated = useIsHydrated();
   const { isConnected } = useAccount();
   const chainId = useChainId();
   const isSepoliaNetwork = chainId === SEPOLIA_CHAIN_ID;
+  const safeIsConnected = isHydrated && isConnected;
+  const safeIsSepoliaNetwork = isHydrated && isSepoliaNetwork;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
@@ -26,17 +36,17 @@ export default function Home() {
               <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">
                 🔗 Được hỗ trợ bởi Blockchain
               </span>
-              {!isConnected && (
+              {!safeIsConnected && (
                 <span className="text-xs font-semibold text-amber-600 bg-amber-100 px-3 py-1 rounded-full">
                   👁️ Chế độ xem (read-only)
                 </span>
               )}
-              {isConnected && !isSepoliaNetwork && (
+              {safeIsConnected && !safeIsSepoliaNetwork && (
                 <span className="text-xs font-semibold text-red-600 bg-red-100 px-3 py-1 rounded-full">
                   ⚠️ Sai mạng
                 </span>
               )}
-              {isConnected && isSepoliaNetwork && (
+              {safeIsConnected && safeIsSepoliaNetwork && (
                 <span className="text-xs font-semibold text-green-600 bg-green-100 px-3 py-1 rounded-full">
                   ✓ Kết nối Sepolia
                 </span>
@@ -275,7 +285,7 @@ export default function Home() {
             Bắt đầu một chiến dịch, hỗ trợ một mục đích, hoặc theo dõi đóng góp của bạn trên blockchain. Tham gia cộng đồng của chúng tôi hôm nay.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            {isConnected && isSepoliaNetwork ? (
+            {safeIsConnected && safeIsSepoliaNetwork ? (
               <Link
                 href="/campaigns/create"
                 className="inline-flex items-center justify-center px-8 py-3 rounded-lg bg-white text-blue-600 font-bold hover:bg-blue-50 transition duration-200 shadow-lg"
@@ -363,3 +373,9 @@ export default function Home() {
     </div>
   );
 }
+
+const Home = dynamic(async () => HomeContent, {
+  ssr: false,
+});
+
+export default Home;
