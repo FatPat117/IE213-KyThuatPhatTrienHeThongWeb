@@ -6,6 +6,7 @@ node_modules/
 # Environment & secrets (QUAN TRỌNG: không commit private key, API key)
 .env
 .env.local
+.env.development
 .env.development.local
 .env.test.local
 .env.production.local
