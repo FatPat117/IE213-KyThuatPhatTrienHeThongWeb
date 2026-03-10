@@ -5,7 +5,13 @@ import Link from 'next/link';
 import { useAccount, useBalance, useBlockNumber, useConfig } from 'wagmi';
 import { getPublicClient } from '@wagmi/core';
 import { formatEther } from 'viem';
-import { useReadCampaignCount, useReadTotalRaised, CROWDFUNDING_CONTRACT_ADDRESS } from '@/lib';
+import BackButton from '@/components/navigation/BackButton';
+import {
+  useReadCampaignCount,
+  useReadTotalRaised,
+  CROWDFUNDING_CONTRACT_ADDRESS,
+  SEPOLIA_CHAIN_ID,
+} from '@/lib';
 
 interface SystemCheck {
   name: string;
@@ -17,8 +23,8 @@ interface SystemCheck {
 export default function SystemStatusPage() {
   const { address, isConnected, chain } = useAccount();
   const config = useConfig();
-  const { data: balance } = useBalance({ address });
-  const { data: blockNumber } = useBlockNumber({ watch: true });
+  const { data: balance } = useBalance({ address, chainId: SEPOLIA_CHAIN_ID });
+  const { data: blockNumber } = useBlockNumber({ chainId: SEPOLIA_CHAIN_ID, watch: true });
 
   const { count: campaignCount, isLoading: countLoading, isError: countError } = useReadCampaignCount();
   const { totalRaised, isLoading: raisedLoading, isError: raisedError } = useReadTotalRaised();
@@ -57,12 +63,12 @@ export default function SystemStatusPage() {
           message: 'Không phát hiện mạng',
           details: 'Không thể xác định mạng hiện tại',
         });
-      } else if (chain.id !== 11155111) {
+      } else if (chain.id !== SEPOLIA_CHAIN_ID) {
         newChecks.push({
           name: 'Kiểm tra mạng',
           status: 'error',
           message: 'Sai mạng',
-          details: `Đang ở ${chain.name} (Chain ID: ${chain.id}). Vui lòng chuyển sang Sepolia (11155111)`,
+          details: `Đang ở ${chain.name} (Chain ID: ${chain.id}). Vui lòng chuyển sang Sepolia (${SEPOLIA_CHAIN_ID})`,
         });
       } else {
         newChecks.push({
@@ -225,12 +231,7 @@ export default function SystemStatusPage() {
         {/* Page Header */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-4">
-            <Link
-              href="/"
-              className="inline-flex items-center justify-center w-10 h-10 rounded-lg border-2 border-slate-200 text-slate-600 hover:border-blue-600 hover:text-blue-600 transition"
-            >
-              ←
-            </Link>
+            <BackButton fallbackHref="/" />
             <div>
               <div className="inline-flex items-center gap-2 mb-1">
                 <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">

@@ -48,8 +48,9 @@ services:
 
   contracts-deploy:
     build: ./smart-contracts
+    profiles: ["deploy"]
     environment:
-      - SEPOLIA_RPC_URL=${ANVIL_RPC_URL}
+      - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}
       - DEPLOYER_PRIVATE_KEY=${DEPLOYER_PRIVATE_KEY}
     volumes:
       - shared_data:/shared
@@ -234,8 +235,9 @@ services:
     build: ./backend/listener-service
     environment:
       - NODE_ENV=${NODE_ENV}
-      - SEPOLIA_RPC_URL=${ANVIL_RPC_URL}
+      - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}
       - CROWDFUNDING_CONTRACT_ADDRESS=${CROWDFUNDING_CONTRACT_ADDRESS}
+      - USE_DYNAMIC_CONTRACT_ADDRESS=${USE_DYNAMIC_CONTRACT_ADDRESS}
       - RABBITMQ_URL=${RABBITMQ_URL}
       - TRANSACTION_SERVICE_URL=${TRANSACTION_SERVICE_URL}
       - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE}
@@ -253,8 +255,6 @@ services:
         condition: service_healthy
       transaction-service:
         condition: service_started
-      contracts-deploy:
-        condition: service_completed_successfully
     restart: unless-stopped
 
   # ─────────────────────────────────────────────────────────
@@ -267,6 +267,8 @@ services:
     environment:
       - NODE_ENV=${NODE_ENV}
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+      - NEXT_PUBLIC_SEPOLIA_RPC_URL=${NEXT_PUBLIC_SEPOLIA_RPC_URL}
+      - NEXT_PUBLIC_CROWDFUNDING_CONTRACT_ADDRESS=${NEXT_PUBLIC_CROWDFUNDING_CONTRACT_ADDRESS}
     volumes:
       - ./frontend:/app
       - /app/node_modules
