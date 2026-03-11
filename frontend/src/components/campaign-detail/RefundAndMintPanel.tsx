@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+
 interface RefundAndMintPanelProps {
   showRefund: boolean;
   showMint: boolean;
@@ -72,9 +74,17 @@ export default function RefundAndMintPanel({
             {mintPending ? '⏳ Đợi xác nhận từ ví...' : mintConfirming ? '🔄 Đang xác nhận...' : '🎖️ Mint Certificate'}
           </button>
           {mintConfirmed && mintHash && (
-            <div className="rounded-lg bg-green-500 px-4 py-3 text-sm font-medium text-white mt-4">
-              ✓ Mint certificate thành công!
-            </div>
+            <>
+              <div className="rounded-lg bg-green-500 px-4 py-3 text-sm font-medium text-white mt-4">
+                ✓ Mint certificate thành công!
+              </div>
+              <Link
+                href="/certificates"
+                className="mt-3 inline-flex w-full items-center justify-center rounded-lg bg-white/15 px-4 py-3 text-sm font-semibold text-white hover:bg-white/20 transition"
+              >
+                Xem chứng chỉ của tôi →
+              </Link>
+            </>
           )}
           {mintError && (
             <div className="rounded-lg bg-red-500 px-4 py-3 text-sm font-medium text-white mt-4">⚠️ {mintError}</div>

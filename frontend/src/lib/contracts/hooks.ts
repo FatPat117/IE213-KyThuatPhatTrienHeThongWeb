@@ -316,6 +316,28 @@ export function useRefundDonation() {
 }
 
 /**
+ * Hook để cập nhật campaign thành Failed sau deadline (nếu chưa đạt goal).
+ */
+export function useMarkAsFailed() {
+    const { writeContract, data, isPending, error } = useWriteContract();
+
+    const markAsFailed = (campaignId: number) => {
+        return writeContract({
+            ...contractConfig,
+            functionName: 'markAsFailed',
+            args: [BigInt(campaignId)],
+        });
+    };
+
+    return {
+        markAsFailed,
+        hash: data,
+        isPending,
+        error,
+    };
+}
+
+/**
  * Hook để mint NFT certificate sau khi đã donate.
  */
 export function useMintCertificate() {

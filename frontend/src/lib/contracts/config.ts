@@ -43,6 +43,16 @@ export const CROWDFUNDING_ABI = [
     },
     {
         inputs: [
+            { internalType: 'uint256', name: '_campaignId', type: 'uint256' },
+            { internalType: 'address', name: '_donor', type: 'address' },
+        ],
+        name: 'getDonation',
+        outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+        stateMutability: 'view',
+        type: 'function',
+    },
+    {
+        inputs: [
             { internalType: 'address', name: '_beneficiary', type: 'address' },
             { internalType: 'uint256', name: '_goal', type: 'uint256' },
             { internalType: 'uint256', name: '_durationDays', type: 'uint256' },
@@ -62,6 +72,13 @@ export const CROWDFUNDING_ABI = [
     {
         inputs: [{ internalType: 'uint256', name: '_campaignId', type: 'uint256' }],
         name: 'claimRefund',
+        outputs: [],
+        stateMutability: 'nonpayable',
+        type: 'function',
+    },
+    {
+        inputs: [{ internalType: 'uint256', name: '_campaignId', type: 'uint256' }],
+        name: 'markAsFailed',
         outputs: [],
         stateMutability: 'nonpayable',
         type: 'function',

@@ -6,7 +6,7 @@ export {
     contractConfig
 } from './contracts/config';
 export {
-    useContractStats, useCreateCampaign, useDonateToCampaign, useMintCertificate, useReadAllCampaigns, useReadCampaign, useReadCampaignCount, useReadFilteredCampaigns, useReadTotalRaised, useRefundDonation, useWithdrawFunds
+    useContractStats, useCreateCampaign, useDonateToCampaign, useMarkAsFailed, useMintCertificate, useReadAllCampaigns, useReadCampaign, useReadCampaignCount, useReadFilteredCampaigns, useReadTotalRaised, useRefundDonation, useWithdrawFunds
 } from './contracts/hooks';
 export { config } from './contracts/wagmi';
 

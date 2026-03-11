@@ -6,9 +6,11 @@ const { publishDonated } = require("./publishers/donated.publisher");
 const { publishCertificateMinted } = require("./publishers/certificateMinted.publisher");
 const { publishFundsWithdrawn } = require("./publishers/fundsWithdrawn.publisher");
 const { publishCampaignCancelled } = require("./publishers/campaignCancelled.publisher");
+const { startMarkFailedDailyJob } = require("./jobs/markFailed.job");
 
 async function startListener() {
     await connectRabbitMQ();
+    startMarkFailedDailyJob();
 
     const result = createContractInstance();
 

@@ -3,9 +3,11 @@
 import {
   contractConfig,
   createTransaction,
+  getDonationsByCampaign,
   useAuth,
   useBackendCampaign,
   useDonateToCampaign,
+  useMarkAsFailed,
   useMintCertificate,
   useReadCampaign,
   useRefundDonation,
@@ -13,8 +15,8 @@ import {
 } from "@/lib";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { formatEther } from "viem";
-import { useAccount, useReadContract, useWaitForTransactionReceipt, useWatchContractEvent } from "wagmi";
+import { formatEther, parseAbiItem } from "viem";
+import { useAccount, usePublicClient, useReadContract, useWaitForTransactionReceipt, useWatchContractEvent } from "wagmi";
 import CampaignInfoPanel from "@/components/campaign-detail/CampaignInfoPanel";
 import CreatorActionsPanel from "@/components/campaign-detail/CreatorActionsPanel";
 import DonatePanel from "@/components/campaign-detail/DonatePanel";
@@ -40,9 +42,11 @@ export default function CampaignDetailPage() {
     const { token } = useAuth();
     const [amount, setAmount] = useState("0.01");
     const [donations, setDonations] = useState<DonationEvent[]>([]);
+    const publicClient = usePublicClient();
     const { donate, hash, isPending, error: donateError } = useDonateToCampaign();
     const { withdrawFunds, hash: withdrawHash, isPending: withdrawPending, error: withdrawError } = useWithdrawFunds();
     const { refund, hash: refundHash, isPending: refundPending, error: refundError } = useRefundDonation();
+    const { markAsFailed, hash: markAsFailedHash, isPending: markAsFailedPending, error: markAsFailedError } = useMarkAsFailed();
     const { mintCertificate, hash: mintHash, isPending: mintPending, error: mintError } = useMintCertificate();
 
     const { isLoading: isConfirming, isSuccess: isConfirmed } =
@@ -63,6 +67,10 @@ export default function CampaignDetailPage() {
         useWaitForTransactionReceipt({
             hash: mintHash,
         });
+    const { isLoading: markAsFailedConfirming, isSuccess: markAsFailedConfirmed } =
+        useWaitForTransactionReceipt({
+            hash: markAsFailedHash,
+        });
 
     const { data: hasMintedCertificate } = useReadContract({
         ...contractConfig,
@@ -70,20 +78,122 @@ export default function CampaignDetailPage() {
         args: Number.isFinite(id) && address ? [BigInt(id), address] : undefined,
         query: { enabled: Number.isFinite(id) && !!address },
     });
+    const { data: donatedAmountOnChain } = useReadContract({
+        ...contractConfig,
+        functionName: 'getDonation',
+        args: Number.isFinite(id) && address ? [BigInt(id), address] : undefined,
+        query: { enabled: Number.isFinite(id) && !!address },
+    });
+
+    const mergeDonations = (current: DonationEvent[], incoming: DonationEvent[]) => {
+        const byTxHash = new Map<string, DonationEvent>();
+        [...current, ...incoming].forEach((item) => {
+            if (!item.transactionHash) return;
+            const key = item.transactionHash.toLowerCase();
+            const existed = byTxHash.get(key);
+
+            // Prefer newer timestamp data when same tx appears from multiple sources.
+            if (!existed || item.timestamp > existed.timestamp) {
+                byTxHash.set(key, item);
+            }
+        });
+
+        return Array.from(byTxHash.values()).sort((a, b) => b.timestamp - a.timestamp);
+    };
+
+    useEffect(() => {
+        const loadInitialDonations = async () => {
+            if (!Number.isFinite(id)) return;
+
+            const merged: DonationEvent[] = [];
+
+            try {
+                const backendDonations = await getDonationsByCampaign(id);
+                merged.push(
+                    ...backendDonations.map((item) => ({
+                        campaignId: item.campaignOnChainId,
+                        donor: item.donorWallet,
+                        amount: BigInt(item.amount),
+                        transactionHash: item.txHash,
+                        timestamp: new Date(item.donatedAt).getTime(),
+                    }))
+                );
+            } catch {
+                // Backend can lag behind indexer; keep loading from on-chain logs.
+            }
+
+            if (publicClient) {
+                try {
+                    const logs = await publicClient.getLogs({
+                        address: contractConfig.address,
+                        event: parseAbiItem('event Donated(uint256 indexed campaignId, address indexed donor, uint256 amount)'),
+                        args: { campaignId: BigInt(id) },
+                        fromBlock: 'earliest',
+                        toBlock: 'latest',
+                    });
+
+                    const onChainDonations = await Promise.all(
+                        logs.map(async (log) => {
+                            const args = (log as { args?: { campaignId?: bigint; donor?: string; amount?: bigint } }).args;
+                            const block = log.blockNumber
+                                ? await publicClient.getBlock({ blockNumber: log.blockNumber })
+                                : null;
+
+                            return {
+                                campaignId: Number(args?.campaignId ?? BigInt(id)),
+                                donor: args?.donor ?? '',
+                                amount: args?.amount ?? BigInt(0),
+                                transactionHash: log.transactionHash ?? '',
+                                timestamp: block ? Number(block.timestamp) * 1000 : Date.now(),
+                            } satisfies DonationEvent;
+                        })
+                    );
+
+                    merged.push(...onChainDonations);
+                } catch {
+                    // Keep backend snapshot if on-chain lookup fails.
+                }
+            }
+
+            setDonations((prev) => mergeDonations(prev, merged));
+        };
+
+        loadInitialDonations();
+    }, [id, publicClient]);
 
     // Check if user is creator
     const isCreator = address && campaign && address.toLowerCase() === campaign.creator.toLowerCase();
 
-    // Check if user has donated
-    const userDonation = donations.find(d => d.donor.toLowerCase() === address?.toLowerCase());
+    // Campaign outcome inferred from on-chain goal vs raised.
+    const isSucceededCampaign = Boolean(campaign && campaign.completed && campaign.raised >= campaign.goal);
+    const isFailedCampaign = Boolean(campaign && campaign.completed && campaign.raised < campaign.goal);
+    const shouldMarkAsFailed = Boolean(
+        campaign &&
+        !campaign.completed &&
+        campaign.raised < campaign.goal &&
+        campaign.deadline > 0 &&
+        Math.floor(Date.now() / 1000) >= campaign.deadline
+    );
+
+    // Compute total donated by current user in this campaign.
+    const userDonatedAmount = useMemo(() => {
+        if (!address) return BigInt(0);
+        return donations
+            .filter((d) => d.donor.toLowerCase() === address.toLowerCase())
+            .reduce((sum, d) => sum + d.amount, BigInt(0));
+    }, [address, donations]);
+    const effectiveUserDonatedAmount = useMemo(() => {
+        const onChain = (donatedAmountOnChain as bigint | undefined) ?? 0n;
+        return onChain > userDonatedAmount ? onChain : userDonatedAmount;
+    }, [donatedAmountOnChain, userDonatedAmount]);
 
     // Watch for donation events
     useWatchContractEvent({
         ...contractConfig,
         eventName: "Donated",
         onLogs: (logs) => {
-            // Add new donations to the list
-            const newDonations = logs.map((log) => {
+            const newDonations = logs
+                .map((log) => {
                 const args = (log as { args?: { campaignId?: bigint; donor?: string; amount?: bigint } }).args;
                 return {
                     campaignId: Number(args?.campaignId || 0),
@@ -92,8 +202,10 @@ export default function CampaignDetailPage() {
                     transactionHash: log.transactionHash || '',
                     timestamp: Date.now(),
                 };
-            });
-            setDonations((prev) => [...newDonations, ...prev]);
+                })
+                .filter((item) => item.campaignId === id);
+
+            setDonations((prev) => mergeDonations(prev, newDonations));
             refetch();
         },
     });
@@ -112,6 +224,15 @@ export default function CampaignDetailPage() {
         }
         if (msg.includes("wrong network") || msg.includes("chain")) {
             return "Sai mạng. Vui lòng chuyển sang Sepolia.";
+        }
+        if (msg.includes("deadline not reached")) {
+            return "Campaign chưa tới deadline nên chưa thể đánh dấu Failed.";
+        }
+        if (msg.includes("has reached its goal")) {
+            return "Campaign đã đạt mục tiêu nên không thể đánh dấu Failed.";
+        }
+        if (msg.includes("not active")) {
+            return "Campaign không còn ở trạng thái Active.";
         }
         return err.message;
     };
@@ -143,6 +264,16 @@ export default function CampaignDetailPage() {
         if (!Number.isFinite(id)) return;
         mintCertificate(id);
     };
+    const handleMarkAsFailed = () => {
+        if (!Number.isFinite(id)) return;
+        markAsFailed(id);
+    };
+
+    useEffect(() => {
+        if (markAsFailedConfirmed) {
+            refetch();
+        }
+    }, [markAsFailedConfirmed, refetch]);
 
     useEffect(() => {
         const txHash = mintHash || hash;
@@ -287,8 +418,30 @@ export default function CampaignDetailPage() {
 
                         {/* Right Column - Actions */}
                         <div className="lg:sticky lg:top-6 h-fit space-y-4">
+                            {shouldMarkAsFailed && (
+                                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                                    <p className="text-sm font-semibold text-amber-900 mb-2">Campaign đã quá deadline nhưng chưa cập nhật Failed</p>
+                                    <p className="text-xs text-amber-800 mb-4">
+                                        Bấm để ghi nhận trạng thái Failed on-chain, sau đó donor có thể refund.
+                                    </p>
+                                    <button
+                                        onClick={handleMarkAsFailed}
+                                        disabled={markAsFailedPending || markAsFailedConfirming}
+                                        className="w-full rounded-lg bg-amber-600 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                        {markAsFailedPending
+                                            ? '⏳ Đợi xác nhận từ ví...'
+                                            : markAsFailedConfirming
+                                                ? '🔄 Đang xác nhận...'
+                                                : 'Cập nhật trạng thái Failed'}
+                                    </button>
+                                    {markAsFailedError && (
+                                        <p className="mt-3 text-xs text-red-700">{getFriendlyError(markAsFailedError)}</p>
+                                    )}
+                                </div>
+                            )}
                             <CreatorActionsPanel
-                                visible={Boolean(isCreator && campaign.completed)}
+                                visible={Boolean(isCreator && isSucceededCampaign)}
                                 isPending={withdrawPending}
                                 isConfirming={withdrawConfirming}
                                 isWithdrawn={campaign.withdrawn}
@@ -298,8 +451,8 @@ export default function CampaignDetailPage() {
                                 onWithdraw={handleWithdraw}
                             />
                             <RefundAndMintPanel
-                                showRefund={Boolean(!isCreator && campaign.completed && campaign.raised === 0n && userDonation)}
-                                showMint={Boolean(!isCreator && userDonation && !hasMintedCertificate)}
+                                showRefund={Boolean(isFailedCampaign && effectiveUserDonatedAmount > 0n)}
+                                showMint={Boolean(effectiveUserDonatedAmount > 0n && !hasMintedCertificate)}
                                 refundPending={refundPending}
                                 refundConfirming={refundConfirming}
                                 refundConfirmed={refundConfirmed}

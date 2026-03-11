@@ -17,6 +17,12 @@ interface CampaignInfoPanelProps {
   progress: number;
 }
 
+function formatEthAmount(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '0';
+  if (value < 0.01) return value.toFixed(4).replace(/\.?0+$/, '');
+  return value.toFixed(2);
+}
+
 /**
  * Main campaign overview block (title, creator, stats, progress).
  */
@@ -26,6 +32,9 @@ export default function CampaignInfoPanel({
   backendTitle,
   progress,
 }: CampaignInfoPanelProps) {
+  const goalEth = Number(formatEther(campaign.goal));
+  const raisedEth = Number(formatEther(campaign.raised));
+
   return (
     <div className="rounded-2xl bg-white border border-slate-200 p-8 shadow-sm">
       <div className="flex items-start justify-between mb-6">
@@ -44,7 +53,7 @@ export default function CampaignInfoPanel({
             campaign.completed ? 'bg-slate-100 text-slate-600' : 'bg-green-100 text-green-700'
           }`}
         >
-          {campaign.completed ? 'Ended' : '● Active'}
+          {campaign.completed ? 'Đã kết thúc' : '● Đang hoạt động'}
         </span>
       </div>
 
@@ -70,14 +79,14 @@ export default function CampaignInfoPanel({
         <div className="rounded-xl bg-blue-50 border border-blue-100 p-5">
           <p className="text-sm font-medium text-blue-600 mb-2">Funding Goal</p>
           <p className="text-2xl font-bold text-slate-900">
-            {Number(formatEther(campaign.goal)).toFixed(2)}{' '}
+            {formatEthAmount(goalEth)}{' '}
             <span className="text-base font-normal text-slate-600">ETH</span>
           </p>
         </div>
         <div className="rounded-xl bg-green-50 border border-green-100 p-5">
           <p className="text-sm font-medium text-green-600 mb-2">Total Raised</p>
           <p className="text-2xl font-bold text-slate-900">
-            {Number(formatEther(campaign.raised)).toFixed(2)}{' '}
+            {formatEthAmount(raisedEth)}{' '}
             <span className="text-base font-normal text-slate-600">ETH</span>
           </p>
         </div>
@@ -87,7 +96,7 @@ export default function CampaignInfoPanel({
         <div className="flex items-center justify-between text-sm mb-2">
           <span className="font-semibold text-slate-900">{progress.toFixed(1)}% Funded</span>
           <span className="text-slate-600">
-            {Number(formatEther(campaign.raised)).toFixed(2)} / {Number(formatEther(campaign.goal)).toFixed(2)} ETH
+            {formatEthAmount(raisedEth)} / {formatEthAmount(goalEth)} ETH
           </span>
         </div>
         <div className="h-3 w-full rounded-full bg-slate-200 overflow-hidden">
