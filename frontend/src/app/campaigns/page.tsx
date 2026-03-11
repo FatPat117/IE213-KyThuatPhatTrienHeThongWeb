@@ -9,6 +9,11 @@ import { formatEther } from "viem";
 import { useAccount, useChainId } from "wagmi";
 
 const SEPOLIA_CHAIN_ID = 11155111;
+function formatEthAmount(value: number) {
+    if (!Number.isFinite(value) || value <= 0) return '0';
+    if (value < 0.01) return value.toFixed(4).replace(/\.?0+$/, '');
+    return value.toFixed(2);
+}
 
 function CampaignCardSkeleton() {
     return (
@@ -381,8 +386,8 @@ function CampaignsPageContent() {
                                     className="group rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all duration-200 hover:shadow-lg hover:-translate-y-1 hover:border-blue-300"
                                 >
                                     {/* Campaign Header */}
-                                    <div className="flex items-start justify-between gap-3 mb-4">
-                                        <div className="flex items-center gap-3 flex-1">
+                                    <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                                        <div className="flex min-w-0 flex-1 items-center gap-3">
                                             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-sm font-bold text-white shadow-lg">
                                                 #{campaign.id}
                                             </div>
@@ -396,7 +401,7 @@ function CampaignsPageContent() {
                                             </div>
                                         </div>
                                         <span
-                                            className={`flex-shrink-0 rounded-full px-3 py-1 text-xs font-bold ${isActive
+                                            className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-xs font-bold ${isActive
                                                 ? "bg-green-100 text-green-700"
                                                 : "bg-slate-100 text-slate-600"
                                                 }`}
@@ -411,13 +416,13 @@ function CampaignsPageContent() {
                                             <div>
                                                 <p className="text-slate-600 mb-1">Mục tiêu</p>
                                                 <p className="text-xl font-bold text-slate-900">
-                                                    {goalEth.toFixed(2)} <span className="text-sm font-normal text-slate-600">ETH</span>
+                                                    {formatEthAmount(goalEth)} <span className="text-sm font-normal text-slate-600">ETH</span>
                                                 </p>
                                             </div>
                                             <div>
                                                 <p className="text-slate-600 mb-1">Đã gây quỹ</p>
                                                 <p className="text-xl font-bold text-blue-600">
-                                                    {raisedEth.toFixed(2)} <span className="text-sm font-normal text-slate-600">ETH</span>
+                                                    {formatEthAmount(raisedEth)} <span className="text-sm font-normal text-slate-600">ETH</span>
                                                 </p>
                                             </div>
                                         </div>
@@ -427,7 +432,7 @@ function CampaignsPageContent() {
                                     <div className="mb-4">
                                         <div className="flex items-center justify-between text-sm mb-2">
                                             <span className="font-medium text-slate-900">{progress.toFixed(1)}% đạt được</span>
-                                            <span className="text-slate-600">{raisedEth.toFixed(2)} / {goalEth.toFixed(2)} ETH</span>
+                                            <span className="text-slate-600">{formatEthAmount(raisedEth)} / {formatEthAmount(goalEth)} ETH</span>
                                         </div>
                                         <div className="h-2.5 w-full rounded-full bg-slate-200 overflow-hidden">
                                             <div

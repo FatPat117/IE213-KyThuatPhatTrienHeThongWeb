@@ -18,6 +18,7 @@ export default function Header() {
     { href: '/campaigns', label: 'Chiến dịch' },
     { href: '/campaigns/create', label: 'Tạo mới' },
     { href: '/donations', label: 'Quyên góp' },
+    { href: '/certificates', label: 'Chứng chỉ của tôi' },
     { href: '/my-campaigns', label: 'Chiến dịch của tôi' },
     { href: '/status', label: 'Trạng thái' },
   ];

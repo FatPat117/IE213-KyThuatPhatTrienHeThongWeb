@@ -69,7 +69,16 @@ export default function MyDonationsPage() {
   }, [address, publicClient]);
 
   const effectiveDonations = useMemo(() => {
-    return donationQuery.data.length > 0 ? donationQuery.data : onChainDonations;
+    const byTxHash = new Map<string, DonationRecord>();
+
+    [...donationQuery.data, ...onChainDonations].forEach((item) => {
+      if (!item.txHash) return;
+      byTxHash.set(item.txHash.toLowerCase(), item);
+    });
+
+    return Array.from(byTxHash.values()).sort(
+      (a, b) => new Date(b.donatedAt).getTime() - new Date(a.donatedAt).getTime()
+    );
   }, [donationQuery.data, onChainDonations]);
 
   const totalDonatedEth = useMemo(
@@ -156,7 +165,7 @@ export default function MyDonationsPage() {
         {address && (
           <DonationSummaryCards
             wallet={address}
-            donationCount={donationQuery.data.length}
+            donationCount={effectiveDonations.length}
             totalEth={totalDonatedEth.toFixed(4)}
           />
         )}
@@ -177,9 +186,9 @@ export default function MyDonationsPage() {
               Không thể tải transaction log đầy đủ. Trạng thái donation hiển thị theo dữ liệu đã index.
             </p>
           )}
-          {donationQuery.data.length === 0 && onChainDonations.length > 0 && (
+          {effectiveDonations.length > donationQuery.data.length && onChainDonations.length > 0 && (
             <p className="mb-4 text-xs text-blue-700">
-              Đang hiển thị donation trực tiếp từ on-chain vì backend index chưa đồng bộ kịp.
+              Đang bổ sung donation từ on-chain để bù phần backend index chưa đồng bộ kịp.
             </p>
           )}
 

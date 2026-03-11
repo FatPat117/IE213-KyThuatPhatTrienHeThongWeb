@@ -5,6 +5,8 @@ interface WalletConnectedCardProps {
   isSepoliaNetwork: boolean;
   authRole: string | null;
   onDisconnect: () => void;
+  onSwitchToSepolia?: () => void;
+  isSwitchingNetwork?: boolean;
 }
 
 function shortenAddress(address: string) {
@@ -19,36 +21,40 @@ export default function WalletConnectedCard({
   isSepoliaNetwork,
   authRole,
   onDisconnect,
+  onSwitchToSepolia,
+  isSwitchingNetwork,
 }: WalletConnectedCardProps) {
   return (
-    <div className="flex flex-col gap-2 max-w-xs">
+    <div className="flex items-center gap-2">
       <div
-        className={`px-4 py-3 rounded-lg border ${
-          isSepoliaNetwork ? 'bg-green-50 border-green-300' : 'bg-yellow-50 border-yellow-300'
+        className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 ${
+          isSepoliaNetwork ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'
         }`}
       >
-        <p className="text-xs text-gray-700 mb-1">Ví đã kết nối:</p>
-        <p className="text-sm font-mono font-bold text-gray-900 break-all">{shortenAddress(address)}</p>
-        {authRole && <p className="text-xs text-gray-600 mt-1">SIWE role: {authRole}</p>}
+        <span
+          className={`h-2 w-2 rounded-full ${isSepoliaNetwork ? 'bg-emerald-500' : 'bg-amber-500'}`}
+          aria-hidden
+        />
+        <span className="text-xs text-slate-600 hidden sm:inline">Ví:</span>
+        <span className="text-sm font-mono font-semibold text-slate-900">{shortenAddress(address)}</span>
+        {authRole && <span className="hidden md:inline text-xs text-slate-500">({authRole})</span>}
       </div>
 
-      {!isSepoliaNetwork && (
-        <div className="px-4 py-3 bg-red-50 border border-red-300 rounded-lg">
-          <p className="text-sm font-semibold text-red-900 mb-2">⚠️ Mạng lưới sai</p>
-          <button
-            onClick={() => window.open('https://chainlist.org/?search=sepolia', '_blank')}
-            className="inline-flex items-center justify-center px-3 py-2 rounded-md bg-red-600 text-white text-xs font-semibold hover:bg-red-700 transition"
-          >
-            Hướng dẫn chuyển mạng
-          </button>
-        </div>
+      {!isSepoliaNetwork && onSwitchToSepolia && (
+        <button
+          onClick={onSwitchToSepolia}
+          disabled={isSwitchingNetwork}
+          className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition"
+        >
+          {isSwitchingNetwork ? 'Đang chuyển...' : 'Đổi Sepolia'}
+        </button>
       )}
 
       <button
         onClick={onDisconnect}
-        className="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors text-sm"
+        className="rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700 transition"
       >
-        Ngắt kết nối
+        Ngắt
       </button>
     </div>
   );

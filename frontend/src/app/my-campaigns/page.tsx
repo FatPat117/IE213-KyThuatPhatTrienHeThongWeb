@@ -7,6 +7,12 @@ import { useAccount } from 'wagmi';
 import { useBackendCampaigns, useReadAllCampaigns } from '@/lib';
 import BackButton from '@/components/navigation/BackButton';
 
+function formatEthAmount(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '0';
+  if (value < 0.01) return value.toFixed(4).replace(/\.?0+$/, '');
+  return value.toFixed(2);
+}
+
 export default function MyCampaignsPage() {
   const { address, isConnected, chain } = useAccount();
   const campaignsQuery = useBackendCampaigns();
@@ -39,6 +45,12 @@ export default function MyCampaignsPage() {
     });
 
     onChainQuery.campaigns.forEach((campaign) => {
+      const inferredStatus: 'active' | 'ended' | 'failed' | 'cancelled' = !campaign.completed
+        ? 'active'
+        : campaign.raised < campaign.goal
+          ? 'failed'
+          : 'ended';
+
       const existing = map.get(campaign.id);
       if (existing) {
         map.set(campaign.id, {
@@ -46,7 +58,7 @@ export default function MyCampaignsPage() {
           creator: campaign.creator,
           goal: campaign.goal.toString(),
           raised: campaign.raised.toString(),
-          status: campaign.completed ? 'ended' : 'active',
+          status: inferredStatus,
         });
       } else {
         map.set(campaign.id, {
@@ -56,7 +68,7 @@ export default function MyCampaignsPage() {
           creator: campaign.creator,
           goal: campaign.goal.toString(),
           raised: campaign.raised.toString(),
-          status: campaign.completed ? 'ended' : 'active',
+          status: inferredStatus,
         });
       }
     });
@@ -113,6 +125,9 @@ export default function MyCampaignsPage() {
         <header className="mb-8">
           <h1 className="text-4xl font-bold text-slate-900">Chiến dịch bạn đã tạo</h1>
           <p className="text-slate-600 mt-2">Dữ liệu đồng bộ từ backend campaign-service.</p>
+          <p className="text-xs text-slate-500 mt-2">
+            Rút tiền thực hiện trong trang chi tiết từng campaign sau khi chiến dịch kết thúc và đạt mục tiêu.
+          </p>
         </header>
 
         {(campaignsQuery.isLoading || onChainQuery.isLoading) && (
@@ -152,7 +167,7 @@ export default function MyCampaignsPage() {
                   <p className="text-sm text-slate-600 mb-4 line-clamp-2">{campaign.description || 'No description'}</p>
                   <div className="mb-4">
                     <p className="text-sm text-slate-700">
-                      {raisedEth.toFixed(2)} / {goalEth.toFixed(2)} ETH
+                      {formatEthAmount(raisedEth)} / {formatEthAmount(goalEth)} ETH
                     </p>
                     <div className="h-2 w-full rounded-full bg-slate-200 overflow-hidden mt-2">
                       <div
@@ -162,6 +177,16 @@ export default function MyCampaignsPage() {
                     </div>
                   </div>
                   <p className="text-sm font-semibold text-blue-600">{campaign.status}</p>
+                  <p className="mt-2 text-xs text-slate-500">
+                    {campaign.status === 'active'
+                      ? 'Đang diễn ra - chưa thể rút tiền'
+                      : campaign.status === 'ended'
+                        ? 'Đủ điều kiện rút tiền trong trang chi tiết'
+                        : 'Chiến dịch failed - không thể rút, donor sẽ yêu cầu refund'}
+                  </p>
+                  <p className="mt-3 text-sm font-semibold text-blue-600 group-hover:text-blue-700">
+                    Quản lý campaign →
+                  </p>
                 </Link>
               );
             })}

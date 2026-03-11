@@ -1,7 +1,7 @@
 const { ethers } = require("ethers");
 const CONTRACT_ABI = require("./FundingPlatform.abi.json");
 
-function createContractInstance() {
+function resolveContractConfig() {
     const rpcUrl = process.env.SEPOLIA_RPC_URL;
     let contractAddress = process.env.CROWDFUNDING_CONTRACT_ADDRESS;
     const useDynamicAddress = process.env.USE_DYNAMIC_CONTRACT_ADDRESS === "true";
@@ -29,9 +29,16 @@ function createContractInstance() {
         return null;
     }
 
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const contract = new ethers.Contract(contractAddress, CONTRACT_ABI, provider);
+    return { rpcUrl, contractAddress };
+}
+
+function createContractInstance() {
+    const resolved = resolveContractConfig();
+    if (!resolved) return null;
+
+    const provider = new ethers.JsonRpcProvider(resolved.rpcUrl);
+    const contract = new ethers.Contract(resolved.contractAddress, CONTRACT_ABI, provider);
     return { provider, contract };
 }
 
-module.exports = { createContractInstance };
+module.exports = { createContractInstance, resolveContractConfig, CONTRACT_ABI };

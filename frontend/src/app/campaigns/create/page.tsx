@@ -75,11 +75,20 @@ export default function CreateCampaignPage() {
 
   const parsedCreateError = useMemo(() => {
     if (!createError?.message) return null;
-    if (createError.message.includes('User rejected')) return 'Bạn đã từ chối giao dịch.';
-    if (createError.message.includes('insufficient funds')) {
+    const msg = createError.message.toLowerCase();
+    if (msg.includes('user rejected') || msg.includes('user denied')) return 'Bạn đã từ chối giao dịch.';
+    if (
+      msg.includes('does not match the target chain') ||
+      msg.includes('expected chain id') ||
+      msg.includes('wrong network') ||
+      msg.includes('chain id')
+    ) {
+      return 'Sai mạng. Vui lòng chuyển ví sang Sepolia trước khi tạo chiến dịch.';
+    }
+    if (msg.includes('insufficient funds')) {
       return 'Không đủ ETH để trả phí gas. Vui lòng kiểm tra số dư.';
     }
-    if (createError.message.includes('network')) return 'Lỗi mạng. Vui lòng kiểm tra kết nối.';
+    if (msg.includes('network') || msg.includes('rpc')) return 'Lỗi mạng/RPC. Vui lòng kiểm tra kết nối.';
     return createError.message;
   }, [createError]);
 
@@ -177,7 +186,18 @@ export default function CreateCampaignPage() {
       const durationDays = Math.ceil((deadlineTs - nowTs) / (24 * 60 * 60));
       await createCampaign(address as `0x${string}`, formData.goalEth, Math.max(durationDays, 1));
     } catch (err) {
-      setManualError(err instanceof Error ? err.message : 'Có lỗi xảy ra');
+      const message = err instanceof Error ? err.message : 'Có lỗi xảy ra';
+      const normalized = message.toLowerCase();
+      if (
+        normalized.includes('does not match the target chain') ||
+        normalized.includes('expected chain id') ||
+        normalized.includes('wrong network') ||
+        normalized.includes('chain id')
+      ) {
+        setManualError('Sai mạng. Vui lòng chuyển ví sang Sepolia trước khi tạo chiến dịch.');
+        return;
+      }
+      setManualError(message);
     }
   };
 
