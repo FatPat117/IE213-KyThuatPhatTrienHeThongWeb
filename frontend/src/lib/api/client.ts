@@ -36,10 +36,13 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const headers = new Headers(init?.headers || {});
   headers.set('Content-Type', 'application/json');
+  headers.set('Cache-Control', 'no-cache');
+  headers.set('Pragma', 'no-cache');
   if (init?.token) headers.set('Authorization', `Bearer ${init.token}`);
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
+    cache: 'no-store',
     headers,
   });
 

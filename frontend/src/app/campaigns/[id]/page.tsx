@@ -4,6 +4,11 @@ import {
   contractConfig,
   createTransaction,
   getDonationsByCampaign,
+  getCampaignMetadataFromCache,
+  isPlaceholderCampaignDescription,
+  isPlaceholderCampaignTitle,
+  toAuthUserProfile,
+  updateUserProfile,
   useAuth,
   useBackendCampaign,
   useDonateToCampaign,
@@ -39,10 +44,14 @@ export default function CampaignDetailPage() {
         Number.isFinite(id) ? id : null
     );
     const backendCampaign = useBackendCampaign(Number.isFinite(id) ? id : null);
-    const { token } = useAuth();
+    const { token, user, setAuth } = useAuth();
     const [amount, setAmount] = useState("0.01");
     const [donations, setDonations] = useState<DonationEvent[]>([]);
-    const publicClient = usePublicClient();
+    const [donationReloadNonce, setDonationReloadNonce] = useState(0);
+    const [mintProfileSaving, setMintProfileSaving] = useState(false);
+    const [mintFlowError, setMintFlowError] = useState<string | null>(null);
+    const publicClient = usePublicClient({ chainId: contractConfig.chainId });
+    const [donationHistoryWarning, setDonationHistoryWarning] = useState<string | null>(null);
     const { donate, hash, isPending, error: donateError } = useDonateToCampaign();
     const { withdrawFunds, hash: withdrawHash, isPending: withdrawPending, error: withdrawError } = useWithdrawFunds();
     const { refund, hash: refundHash, isPending: refundPending, error: refundError } = useRefundDonation();
@@ -106,6 +115,7 @@ export default function CampaignDetailPage() {
             if (!Number.isFinite(id)) return;
 
             const merged: DonationEvent[] = [];
+            let hasAtLeastOneSource = false;
 
             try {
                 const backendDonations = await getDonationsByCampaign(id);
@@ -118,6 +128,7 @@ export default function CampaignDetailPage() {
                         timestamp: new Date(item.donatedAt).getTime(),
                     }))
                 );
+                hasAtLeastOneSource = true;
             } catch {
                 // Backend can lag behind indexer; keep loading from on-chain logs.
             }
@@ -135,31 +146,32 @@ export default function CampaignDetailPage() {
                     const onChainDonations = await Promise.all(
                         logs.map(async (log) => {
                             const args = (log as { args?: { campaignId?: bigint; donor?: string; amount?: bigint } }).args;
-                            const block = log.blockNumber
-                                ? await publicClient.getBlock({ blockNumber: log.blockNumber })
-                                : null;
-
                             return {
                                 campaignId: Number(args?.campaignId ?? BigInt(id)),
                                 donor: args?.donor ?? '',
                                 amount: args?.amount ?? BigInt(0),
                                 transactionHash: log.transactionHash ?? '',
-                                timestamp: block ? Number(block.timestamp) * 1000 : Date.now(),
+                                // Avoid extra per-log RPC calls (getBlock) to prevent list being empty on flaky RPC.
+                                timestamp: Date.now(),
                             } satisfies DonationEvent;
                         })
                     );
 
                     merged.push(...onChainDonations);
+                    hasAtLeastOneSource = true;
                 } catch {
                     // Keep backend snapshot if on-chain lookup fails.
                 }
             }
 
             setDonations((prev) => mergeDonations(prev, merged));
+            setDonationHistoryWarning(
+                hasAtLeastOneSource ? null : "Không thể tải lịch sử quyên góp từ backend/on-chain. Vui lòng thử lại sau."
+            );
         };
 
         loadInitialDonations();
-    }, [id, publicClient]);
+    }, [donationReloadNonce, id, publicClient]);
 
     // Check if user is creator
     const isCreator = address && campaign && address.toLowerCase() === campaign.creator.toLowerCase();
@@ -260,9 +272,40 @@ export default function CampaignDetailPage() {
         refund(id);
     };
 
-    const handleMintCertificate = () => {
+    const handleMintCertificate = async (displayName: string) => {
         if (!Number.isFinite(id)) return;
-        mintCertificate(id);
+        if (!address) {
+            setMintFlowError("Vui lòng kết nối ví trước khi mint certificate.");
+            return;
+        }
+        if (!token) {
+            setMintFlowError("Bạn cần đăng nhập lại để cập nhật tên hiển thị trước khi mint.");
+            return;
+        }
+
+        const normalizedName = displayName.trim();
+        if (!normalizedName) {
+            setMintFlowError("Tên hiển thị không được để trống.");
+            return;
+        }
+
+        setMintFlowError(null);
+        setMintProfileSaving(true);
+        try {
+            const updated = await updateUserProfile(token, address, {
+                displayName: normalizedName,
+                avatarUrl: user?.avatarUrl || "",
+            });
+            setAuth(token, toAuthUserProfile(updated));
+            mintCertificate(id);
+        } catch (err) {
+            setMintFlowError(err instanceof Error ? err.message : "Không thể cập nhật tên hiển thị trước khi mint.");
+        } finally {
+            setMintProfileSaving(false);
+        }
+    };
+    const handleReloadDonations = () => {
+        setDonationReloadNonce((prev) => prev + 1);
     };
     const handleMarkAsFailed = () => {
         if (!Number.isFinite(id)) return;
@@ -297,6 +340,10 @@ export default function CampaignDetailPage() {
         const raisedEth = Number(formatEther(campaign.raised));
         return goalEth > 0 ? Math.min((raisedEth / goalEth) * 100, 100) : 0;
     }, [campaign]);
+    const cachedCampaignMetadata = useMemo(
+        () => (Number.isFinite(id) ? getCampaignMetadataFromCache(id) : null),
+        [id]
+    );
 
     const isSepolia = chain?.id === 11155111;
     const canDonate = Boolean(isConnected && isSepolia && campaign && !campaign.completed);
@@ -308,7 +355,7 @@ export default function CampaignDetailPage() {
                 <header className="flex flex-col gap-4 mb-8">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <BackButton fallbackHref="/campaigns" />
+                            <BackButton fallbackHref="/campaigns" preferFallback />
                             <div>
                                 <div className="inline-flex items-center gap-2 mb-1">
                                     <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">
@@ -356,8 +403,16 @@ export default function CampaignDetailPage() {
                         <div className="space-y-6">
                             <CampaignInfoPanel
                                 campaign={campaign}
-                                backendTitle={backendCampaign.data?.title}
-                                backendDescription={backendCampaign.data?.description}
+                                backendTitle={
+                                    !isPlaceholderCampaignTitle(backendCampaign.data?.title, id)
+                                        ? backendCampaign.data?.title
+                                        : (cachedCampaignMetadata?.title || undefined)
+                                }
+                                backendDescription={
+                                    !isPlaceholderCampaignDescription(backendCampaign.data?.description)
+                                        ? backendCampaign.data?.description
+                                        : (cachedCampaignMetadata?.description || undefined)
+                                }
                                 progress={progress}
                             />
 
@@ -365,10 +420,22 @@ export default function CampaignDetailPage() {
                             <div className="rounded-2xl bg-white border border-slate-200 p-8 shadow-sm">
                                 <div className="flex items-center justify-between mb-6">
                                     <h3 className="text-xl font-bold text-slate-900">Lịch sử quyên góp</h3>
-                                    <span className="text-sm font-medium text-slate-600">
-                                        {donations.length} recent donation{donations.length !== 1 ? 's' : ''}
-                                    </span>
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-sm font-medium text-slate-600">
+                                            {donations.length} recent donation{donations.length !== 1 ? 's' : ''}
+                                        </span>
+                                        <button
+                                            onClick={handleReloadDonations}
+                                            type="button"
+                                            className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                        >
+                                            Tải lại lịch sử
+                                        </button>
+                                    </div>
                                 </div>
+                                {donationHistoryWarning && (
+                                    <p className="mb-4 text-xs text-amber-700">{donationHistoryWarning}</p>
+                                )}
 
                                 {donations.length === 0 ? (
                                     <div className="text-center py-12">
@@ -462,7 +529,9 @@ export default function CampaignDetailPage() {
                                 mintConfirming={mintConfirming}
                                 mintConfirmed={mintConfirmed}
                                 mintHash={mintHash}
-                                mintError={getFriendlyError(mintError)}
+                                mintError={mintFlowError || getFriendlyError(mintError)}
+                                mintProfileSaving={mintProfileSaving}
+                                defaultDisplayName={user?.displayName || ''}
                                 onRefund={handleRefund}
                                 onMint={handleMintCertificate}
                             />

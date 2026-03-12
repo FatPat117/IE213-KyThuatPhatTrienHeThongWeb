@@ -37,24 +37,24 @@ export default function CampaignInfoPanel({
 
   return (
     <div className="rounded-2xl bg-white border border-slate-200 p-8 shadow-sm">
-      <div className="flex items-start justify-between mb-6">
-        <div className="flex-1">
-          <h2 className="text-3xl font-bold text-slate-900 mb-3">
-            {backendTitle || campaign.title || `Campaign ${campaign.id}`}
-          </h2>
-          <p className="text-slate-600 leading-relaxed">
-            {backendDescription ||
-              campaign.description ||
-              'This campaign is powered by smart contracts for transparent fundraising.'}
-          </p>
+      <div className="mb-6">
+        <h2 className="mb-3 break-words text-3xl font-bold text-slate-900">
+          {backendTitle || campaign.title || `Campaign ${campaign.id}`}
+        </h2>
+        <div className="mb-3 flex justify-start sm:justify-end">
+          <span
+            className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold ${
+              campaign.completed ? 'bg-slate-100 text-slate-600' : 'bg-green-100 text-green-700'
+            }`}
+          >
+            {campaign.completed ? 'Đã kết thúc' : '● Đang hoạt động'}
+          </span>
         </div>
-        <span
-          className={`flex-shrink-0 ml-4 rounded-full px-4 py-2 text-sm font-bold ${
-            campaign.completed ? 'bg-slate-100 text-slate-600' : 'bg-green-100 text-green-700'
-          }`}
-        >
-          {campaign.completed ? 'Đã kết thúc' : '● Đang hoạt động'}
-        </span>
+        <p className="text-slate-600 leading-relaxed">
+          {backendDescription ||
+            campaign.description ||
+            'This campaign is powered by smart contracts for transparent fundraising.'}
+        </p>
       </div>
 
       <div className="rounded-xl bg-slate-50 p-4 mb-6">

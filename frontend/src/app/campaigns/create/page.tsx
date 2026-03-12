@@ -7,6 +7,7 @@ import { useAccount, useChainId, useWaitForTransactionReceipt } from 'wagmi';
 import {
   contractConfig,
   createTransaction,
+  saveCampaignMetadataToCache,
   updateCampaignMetadata,
   useAuth,
   useCreateCampaign,
@@ -115,6 +116,14 @@ export default function CreateCampaignPage() {
       // Keep UI flow unaffected if transaction indexing fails.
     });
   }, [address, createdCampaignId, hash, token]);
+
+  useEffect(() => {
+    if (!isConfirmed || !createdCampaignId) return;
+    saveCampaignMetadataToCache(createdCampaignId, {
+      title: formData.title,
+      description: formData.description,
+    });
+  }, [createdCampaignId, formData.description, formData.title, isConfirmed]);
 
   useEffect(() => {
     if (!isConfirmed || !createdCampaignId || metadataSynced || !token) return;

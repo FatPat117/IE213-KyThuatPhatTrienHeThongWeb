@@ -4,7 +4,11 @@ import Link from 'next/link';
 import type { DonationRecord } from '@/lib/api/types';
 
 interface DonationHistoryListProps {
-  donations: Array<DonationRecord & { status?: 'pending' | 'success' | 'failed' }>;
+  donations: Array<DonationRecord & {
+    status?: 'pending' | 'success' | 'failed';
+    campaignTitle?: string;
+  }>;
+  showDonor?: boolean;
 }
 
 function statusStyles(status?: 'pending' | 'success' | 'failed') {
@@ -22,7 +26,7 @@ function statusLabel(status?: 'pending' | 'success' | 'failed') {
 /**
  * Render-only list of donations from backend indexer.
  */
-export default function DonationHistoryList({ donations }: DonationHistoryListProps) {
+export default function DonationHistoryList({ donations, showDonor = false }: DonationHistoryListProps) {
   return (
     <div className="space-y-4">
       {donations.map((donation) => (
@@ -37,7 +41,7 @@ export default function DonationHistoryList({ donations }: DonationHistoryListPr
                   href={`/campaigns/${donation.campaignOnChainId}`}
                   className="text-lg font-bold text-slate-900 hover:text-blue-600 transition"
                 >
-                  Campaign #{donation.campaignOnChainId}
+                  {donation.campaignTitle || `Campaign #${donation.campaignOnChainId}`}
                 </Link>
                 <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles(donation.status)}`}>
                   {statusLabel(donation.status)}
@@ -46,6 +50,16 @@ export default function DonationHistoryList({ donations }: DonationHistoryListPr
               <p className="text-sm text-slate-600 mb-3">
                 {new Date(donation.donatedAt).toLocaleString('vi-VN')}
               </p>
+              {showDonor && (
+                <p className="mb-2 text-xs text-slate-600">
+                  Donor: <span className="font-mono">{donation.donorWallet.slice(0, 6)}...{donation.donorWallet.slice(-4)}</span>
+                </p>
+              )}
+              {donation.message?.trim() && (
+                <p className="mb-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                  💬 {donation.message}
+                </p>
+              )}
               <a
                 href={`https://sepolia.etherscan.io/tx/${donation.txHash}`}
                 target="_blank"
