@@ -12,68 +12,77 @@ async function connectRabbitMQ() {
     try {
         const connection = await amqp.connect(RABBITMQ_URL);
         channel = await connection.createChannel();
-        console.log("[transaction-service] Đã kết nối RabbitMQ");
+        console.log("[transaction-service] Connected to RabbitMQ");
 
         await channel.assertExchange(EXCHANGE, "topic", { durable: true });
 
-        // Tạo 1 queue riêng cho service này
-        const q = await channel.assertQueue(QUEUE, { durable: true });
+        const queue = await channel.assertQueue(QUEUE, { durable: true });
+        await channel.bindQueue(queue.queue, EXCHANGE, ROUTING_KEY);
 
-        // Theo dõi routing key tương ứng
-        await channel.bindQueue(q.queue, EXCHANGE, ROUTING_KEY);
+        console.log(`[transaction-service] Listening on queue: ${queue.queue}`);
 
-        console.log(`[transaction-service] Đang lắng nghe queue = ${q.queue}`);
-
-        // Bắt đầu nhận tin
         channel.consume(
-            q.queue,
+            queue.queue,
             async (msg) => {
-                if (msg !== null) {
-                    try {
-                        const content = JSON.parse(msg.content.toString());
-                        console.log(`[transaction-service] Nhận message từ ${msg.fields.routingKey}:`, content);
-                        await handleDonationEvent(msg.fields.routingKey, content);
+                if (!msg) return;
 
-                        channel.ack(msg);
-                    } catch (error) {
-                        console.error("[transaction-service] Lỗi xử lý message:", error);
-                        // Tạm nack để thử lại
-                        channel.nack(msg, false, false);
-                    }
+                try {
+                    const content = JSON.parse(msg.content.toString());
+                    console.log(
+                        `[transaction-service] Received message from ${msg.fields.routingKey}:`,
+                        content
+                    );
+
+                    await handleDonationEvent(msg.fields.routingKey, content);
+                    channel.ack(msg);
+                } catch (error) {
+                    console.error("[transaction-service] Failed to process message:", error);
+                    channel.nack(msg, false, false);
                 }
             },
             { noAck: false }
         );
     } catch (error) {
-        console.error("[transaction-service] KHÔNG THỂ KẾT NỐI RabbitMQ:", error.message);
-        setTimeout(connectRabbitMQ, 5000); // Reconnect sau 5s
+        console.error("[transaction-service] Failed to connect to RabbitMQ:", error.message);
+        setTimeout(connectRabbitMQ, 5000);
     }
 }
 
-// Xử lý logic
 async function handleDonationEvent(routingKey, content) {
-    if (routingKey === ROUTING_KEY) {
-        // payload: { campaignId, donor, amount, txHash }
-
-        // Tiêu chuẩn Schema Transaction:
-        // { txHash, walletAddress, action, status, campaignOnChainId }
-        const exist = await Transaction.findOne({ txHash: content.txHash });
-        if (exist) {
-            console.log(`[transaction-service] TX ${content.txHash} đã tồn tại, skip.`);
-            return;
-        }
-
-        const newTx = new Transaction({
-            txHash: content.txHash,
-            walletAddress: content.donor,
-            action: "donate",
-            status: "success",
-            campaignOnChainId: Number(content.campaignId),
-        });
-
-        await newTx.save();
-        console.log(`[transaction-service] Đã lưu giao dịch ${content.txHash} vào DB.`);
+    if (routingKey !== ROUTING_KEY) {
+        return;
     }
+
+    const { txHash, donorWallet, campaignOnChainId } = content;
+
+    if (!txHash) {
+        throw new Error("Missing txHash in donation payload");
+    }
+
+    if (!donorWallet) {
+        throw new Error("Missing donorWallet in donation payload");
+    }
+
+    if (campaignOnChainId === undefined || campaignOnChainId === null) {
+        throw new Error("Missing campaignOnChainId in donation payload");
+    }
+
+    const existingTransaction = await Transaction.findOne({ txHash });
+    if (existingTransaction) {
+        console.log(`[transaction-service] Transaction ${txHash} already exists. Skipping duplicate event.`);
+        return;
+    }
+
+    const newTransaction = new Transaction({
+        txHash,
+        walletAddress: donorWallet.toLowerCase(),
+        action: "donate",
+        status: "success",
+        campaignOnChainId: Number(campaignOnChainId),
+    });
+
+    await newTransaction.save();
+    console.log(`[transaction-service] Stored transaction ${txHash} successfully.`);
 }
 
 module.exports = { connectRabbitMQ };
