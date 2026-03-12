@@ -9,27 +9,28 @@ import DonationSummaryCards from '@/components/donations/DonationSummaryCards';
 import BackButton from '@/components/navigation/BackButton';
 import TransactionHistoryModal from '@/components/transactions/TransactionHistoryModal';
 import type { DonationRecord } from '@/lib/api/types';
-import { contractConfig, useBackendDonations, useBackendTransactions } from '@/lib';
+import { contractConfig, useBackendCampaigns, useBackendDonations, useBackendTransactions } from '@/lib';
 
 export default function MyDonationsPage() {
   const { address, isConnected, chain } = useAccount();
-  const publicClient = usePublicClient();
+  const publicClient = usePublicClient({ chainId: contractConfig.chainId });
   const [showTxModal, setShowTxModal] = useState(false);
   const [onChainDonations, setOnChainDonations] = useState<DonationRecord[]>([]);
+  const [allOnChainDonations, setAllOnChainDonations] = useState<DonationRecord[]>([]);
   const [isOnChainLoading, setIsOnChainLoading] = useState(false);
   const donationQuery = useBackendDonations(address ?? null);
   const transactionQuery = useBackendTransactions(address ?? null);
+  const campaignsQuery = useBackendCampaigns();
 
   useEffect(() => {
     const fetchOnChainDonations = async () => {
-      if (!address || !publicClient) return;
+      if (!publicClient) return;
 
       try {
         setIsOnChainLoading(true);
         const logs = await publicClient.getLogs({
           address: contractConfig.address,
           event: parseAbiItem('event Donated(uint256 indexed campaignId, address indexed donor, uint256 amount)'),
-          args: { donor: address as `0x${string}` },
           fromBlock: 'earliest',
           toBlock: 'latest',
         });
@@ -38,11 +39,12 @@ export default function MyDonationsPage() {
           logs.map(async (log) => {
             const campaignOnChainId = Number(log.args.campaignId ?? 0n);
             const amountWei = log.args.amount ?? 0n;
+            const donorWallet = (log.args.donor ?? '').toString();
             const block = await publicClient.getBlock({ blockNumber: log.blockNumber });
             return {
               txHash: log.transactionHash ?? '',
               campaignOnChainId,
-              donorWallet: address,
+              donorWallet,
               amount: amountWei.toString(),
               amountEth: Number(formatEther(amountWei)),
               donatedAt: new Date(Number(block.timestamp) * 1000).toISOString(),
@@ -50,16 +52,23 @@ export default function MyDonationsPage() {
           })
         );
 
-        setOnChainDonations(
-          mapped
-            .filter((item) => item.txHash)
-            .sort(
-              (a, b) =>
-                new Date(b.donatedAt).getTime() - new Date(a.donatedAt).getTime()
-            )
-        );
+        const sorted = mapped
+          .filter((item) => item.txHash)
+          .sort(
+            (a, b) =>
+              new Date(b.donatedAt).getTime() - new Date(a.donatedAt).getTime()
+          );
+
+        setAllOnChainDonations(sorted);
+        if (address) {
+          const lowerAddress = address.toLowerCase();
+          setOnChainDonations(sorted.filter((item) => item.donorWallet.toLowerCase() === lowerAddress));
+        } else {
+          setOnChainDonations([]);
+        }
       } catch {
         setOnChainDonations([]);
+        setAllOnChainDonations([]);
       } finally {
         setIsOnChainLoading(false);
       }
@@ -67,6 +76,14 @@ export default function MyDonationsPage() {
 
     fetchOnChainDonations();
   }, [address, publicClient]);
+
+  const campaignTitleById = useMemo(() => {
+    const map = new Map<number, string>();
+    campaignsQuery.data.forEach((campaign) => {
+      map.set(campaign.onChainId, campaign.title || `Campaign #${campaign.onChainId}`);
+    });
+    return map;
+  }, [campaignsQuery.data]);
 
   const effectiveDonations = useMemo(() => {
     const byTxHash = new Map<string, DonationRecord>();
@@ -107,47 +124,19 @@ export default function MyDonationsPage() {
     return effectiveDonations.map((donation) => ({
       ...donation,
       status: txStatusByHash.get(donation.txHash.toLowerCase()) ?? 'success',
+      campaignTitle: campaignTitleById.get(donation.campaignOnChainId),
     }));
-  }, [effectiveDonations, transactionQuery.data]);
+  }, [campaignTitleById, effectiveDonations, transactionQuery.data]);
 
-  if (!isConnected) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-md mx-auto bg-white rounded-2xl border border-slate-200 shadow-lg p-8">
-          <div className="text-center mb-6">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-yellow-100 mb-4">
-              <span className="text-3xl">🔐</span>
-            </div>
-            <h1 className="text-2xl font-bold text-slate-900 mb-2">Cần kết nối ví</h1>
-            <p className="text-slate-600">Vui lòng kết nối ví để xem lịch sử quyên góp của bạn.</p>
-          </div>
-          <Link
-            href="/campaigns"
-            className="block text-center px-6 py-3 rounded-lg bg-slate-100 text-slate-900 font-semibold hover:bg-slate-200 transition"
-          >
-            ← Về danh sách chiến dịch
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  if (chain?.id !== 11155111) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-md mx-auto bg-white rounded-2xl border border-red-200 shadow-lg p-8 text-center">
-          <h1 className="text-2xl font-bold text-slate-900 mb-2">Sai mạng lưới</h1>
-          <p className="text-slate-600 mb-4">Vui lòng chuyển sang mạng Sepolia để xem lịch sử quyên góp.</p>
-          <button
-            onClick={() => window.open('https://chainlist.org/?search=sepolia', '_blank')}
-            className="block w-full text-center px-6 py-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition"
-          >
-            Hướng dẫn chuyển mạng
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const publicDonationItems = useMemo(
+    () =>
+      allOnChainDonations.map((donation) => ({
+        ...donation,
+        status: 'success' as const,
+        campaignTitle: campaignTitleById.get(donation.campaignOnChainId),
+      })),
+    [allOnChainDonations, campaignTitleById]
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white py-12 px-4 sm:px-6 lg:px-8">
@@ -156,13 +145,24 @@ export default function MyDonationsPage() {
           <div className="flex items-center gap-3 mb-4">
             <BackButton fallbackHref="/" />
             <div>
-              <h1 className="text-3xl font-bold text-slate-900">Quyên góp của tôi</h1>
-              <p className="text-lg text-slate-600">Đồng bộ từ backend indexer + blockchain events Donated</p>
+              <h1 className="text-3xl font-bold text-slate-900">Lịch sử quyên góp</h1>
+              <p className="text-lg text-slate-600">Minh bạch từ backend indexer + blockchain events Donated</p>
             </div>
           </div>
         </div>
 
-        {address && (
+        {!isConnected && (
+          <div className="mb-6 rounded-2xl border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-900">
+            Bạn đang xem lịch sử quyên góp toàn hệ thống (on-chain). Kết nối ví để xem thêm mục “Quyên góp của tôi”.
+          </div>
+        )}
+        {isConnected && chain?.id !== 11155111 && (
+          <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+            Bạn đang ở sai mạng. Một số dữ liệu cá nhân có thể không đồng bộ đầy đủ. Vui lòng chuyển về Sepolia.
+          </div>
+        )}
+
+        {address && chain?.id === 11155111 && (
           <DonationSummaryCards
             wallet={address}
             donationCount={effectiveDonations.length}
@@ -170,9 +170,10 @@ export default function MyDonationsPage() {
           />
         )}
 
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-8">
+        {address && chain?.id === 11155111 && (
+        <div className="mb-6 bg-white rounded-2xl border border-slate-200 shadow-lg p-8">
           <div className="flex items-center justify-between gap-3 mb-6">
-            <h2 className="text-xl font-bold text-slate-900">Lịch sử quyên góp</h2>
+            <h2 className="text-xl font-bold text-slate-900">Quyên góp của tôi</h2>
             <button
               onClick={() => setShowTxModal(true)}
               className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
@@ -213,6 +214,25 @@ export default function MyDonationsPage() {
                 </Link>
               </div>
             ))}
+        </div>
+        )}
+
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-8">
+          <div className="mb-6">
+            <h2 className="text-xl font-bold text-slate-900">Lịch sử quyên góp toàn hệ thống</h2>
+            <p className="mt-1 text-xs text-slate-600">
+              Dữ liệu on-chain công khai cho mọi campaign. Bạn có thể xem donor, campaign, số tiền và lời nhắn (nếu có).
+            </p>
+          </div>
+          {isOnChainLoading && (
+            <p className="text-sm text-slate-600">Đang tải dữ liệu on-chain...</p>
+          )}
+          {!isOnChainLoading && publicDonationItems.length > 0 && (
+            <DonationHistoryList donations={publicDonationItems} showDonor />
+          )}
+          {!isOnChainLoading && publicDonationItems.length === 0 && (
+            <p className="text-sm text-slate-600">Chưa có dữ liệu donation on-chain.</p>
+          )}
         </div>
       </div>
 

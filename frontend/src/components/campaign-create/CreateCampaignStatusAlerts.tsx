@@ -31,7 +31,7 @@ export default function CreateCampaignStatusAlerts({
       )}
 
       {status === 'confirming' && (
-        <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-5">
+        <div className="rounded-xl border-2 border-blue-200 bg-blue-50 p-5">
           <div className="flex items-start gap-3">
             <div className="animate-spin h-6 w-6 border-3 border-blue-500 border-t-transparent rounded-full shrink-0 mt-0.5" />
             <div className="flex-1">
@@ -40,14 +40,16 @@ export default function CreateCampaignStatusAlerts({
                 Quá trình này có thể mất 10-30 giây. Vui lòng chờ Sepolia xác nhận.
               </p>
               {txHash && (
-                <div className="bg-white rounded-lg p-3 border border-blue-200">
+                <div className="rounded-lg border border-blue-200 bg-white p-3">
                   <p className="text-xs font-medium text-slate-600 mb-1">Mã giao dịch:</p>
-                  <code className="text-xs font-mono text-slate-900 break-all">{txHash}</code>
+                  <code className="block rounded-md bg-slate-50 px-2 py-1 text-xs font-mono text-slate-900 break-all">
+                    {txHash}
+                  </code>
                   <a
                     href={etherscanLink || '#'}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 text-xs font-medium mt-2"
+                    className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
                   >
                     Xem trên Etherscan →
                   </a>

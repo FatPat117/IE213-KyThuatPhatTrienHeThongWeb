@@ -2,6 +2,7 @@ export interface AuthUser {
   wallet: string;
   role: 'user' | 'admin';
   displayName?: string;
+  avatarUrl?: string;
 }
 
 export interface CampaignRecord {

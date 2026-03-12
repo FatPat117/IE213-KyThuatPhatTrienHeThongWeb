@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { useState } from 'react';
+import { useAuth } from '@/lib';
 
 const WalletConnectButton = dynamic(() => import('@/components/wallet/WalletConnectButton'), {
   ssr: false,
@@ -10,18 +11,24 @@ const WalletConnectButton = dynamic(() => import('@/components/wallet/WalletConn
 
 export default function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { token, user } = useAuth();
   const hasProvider =
     typeof window === 'undefined' ||
     Boolean((window as Window & { ethereum?: unknown }).ethereum);
+  const isSignedIn = Boolean(token && user?.wallet);
 
-  const navigationLinks = [
+  const publicLinks = [
     { href: '/campaigns', label: 'Chiến dịch' },
-    { href: '/campaigns/create', label: 'Tạo mới' },
     { href: '/donations', label: 'Quyên góp' },
-    { href: '/certificates', label: 'Chứng chỉ của tôi' },
-    { href: '/my-campaigns', label: 'Chiến dịch của tôi' },
     { href: '/status', label: 'Trạng thái' },
   ];
+  const privateLinks = [
+    { href: '/campaigns/create', label: 'Tạo mới' },
+    { href: '/certificates', label: 'Chứng chỉ của tôi' },
+    { href: '/my-campaigns', label: 'Chiến dịch của tôi' },
+    { href: '/settings', label: 'Cài đặt' },
+  ];
+  const navigationLinks = isSignedIn ? [...publicLinks.slice(0, 1), ...privateLinks, ...publicLinks.slice(1)] : publicLinks;
 
   return (
     <>

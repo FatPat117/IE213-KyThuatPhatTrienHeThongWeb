@@ -1,9 +1,15 @@
 'use client';
 
-import { useBackendCampaigns, useReadAllCampaigns } from "@/lib";
+import BackButton from "@/components/navigation/BackButton";
+import {
+    getCampaignMetadataFromCache,
+    isPlaceholderCampaignDescription,
+    isPlaceholderCampaignTitle,
+    useBackendCampaigns,
+    useReadAllCampaigns
+} from "@/lib";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import BackButton from "@/components/navigation/BackButton";
 import { useMemo, useState } from "react";
 import { formatEther } from "viem";
 import { useAccount, useChainId } from "wagmi";
@@ -53,15 +59,22 @@ function CampaignsPageContent() {
 
     const backendCampaigns = useMemo(
         () =>
-            campaigns.map((campaign) => ({
-                id: campaign.onChainId,
-                title: campaign.title || `Campaign #${campaign.onChainId}`,
-                description: campaign.description || "",
-                creator: campaign.creator,
-                goal: BigInt(campaign.goal || "0"),
-                raised: BigInt(campaign.raised || "0"),
-                completed: campaign.status !== "active",
-            })),
+            campaigns.map((campaign) => {
+                const cached = getCampaignMetadataFromCache(campaign.onChainId);
+                return {
+                    id: campaign.onChainId,
+                    title: !isPlaceholderCampaignTitle(campaign.title, campaign.onChainId)
+                        ? campaign.title
+                        : (cached?.title || `Campaign #${campaign.onChainId}`),
+                    description: !isPlaceholderCampaignDescription(campaign.description)
+                        ? campaign.description
+                        : (cached?.description || ""),
+                    creator: campaign.creator,
+                    goal: BigInt(campaign.goal || "0"),
+                    raised: BigInt(campaign.raised || "0"),
+                    completed: campaign.status !== "active",
+                };
+            }),
         [campaigns]
     );
 
@@ -95,10 +108,11 @@ function CampaignsPageContent() {
                     completed: campaign.completed,
                 });
             } else {
+                const cached = getCampaignMetadataFromCache(campaign.id);
                 campaignMap.set(campaign.id, {
                     id: campaign.id,
-                    title: `Campaign #${campaign.id}`,
-                    description: "Campaign data is stored on-chain without off-chain metadata.",
+                    title: cached?.title || `Campaign #${campaign.id}`,
+                    description: cached?.description || "Campaign data is stored on-chain without off-chain metadata.",
                     creator: campaign.creator,
                     goal: campaign.goal,
                     raised: campaign.raised,
@@ -386,28 +400,31 @@ function CampaignsPageContent() {
                                     className="group rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all duration-200 hover:shadow-lg hover:-translate-y-1 hover:border-blue-300"
                                 >
                                     {/* Campaign Header */}
-                                    <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                                        <div className="flex min-w-0 flex-1 items-center gap-3">
-                                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-sm font-bold text-white shadow-lg">
+                                    <div className="mb-4">
+                                        <div className="flex items-start gap-3">
+                                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-sm font-bold text-white shadow-lg">
                                                 #{campaign.id}
                                             </div>
-                                            <div className="flex-1 min-w-0">
-                                                <h3 className="text-lg font-bold text-slate-900 group-hover:text-blue-600 transition truncate">
-                                                    {campaign.title || `Campaign ${campaign.id}`}
+                                            <div className="min-w-0 flex-1 flex-col gap-1">
+                                                <h3 className="line-clamp-2 text-lg font-bold leading-snug text-slate-900 group-hover:text-blue-600 transition">
+                                                    {campaign.title || `Campimage.pngaign ${campaign.id}`}
                                                 </h3>
-                                                <p className="text-xs text-slate-500 truncate">
+                                                <p className="min-w-0 truncate text-xs text-slate-500">
                                                     by {campaign.creator.slice(0, 6)}...{campaign.creator.slice(-4)}
                                                 </p>
                                             </div>
                                         </div>
-                                        <span
-                                            className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-xs font-bold ${isActive
-                                                ? "bg-green-100 text-green-700"
-                                                : "bg-slate-100 text-slate-600"
-                                                }`}
-                                        >
-                                            {isActive ? "● Đang hoạt động" : "Đã kết thúc"}
-                                        </span>
+                                        <div className="mt-2 flex items-center  gap-2">
+
+                                            <span
+                                                className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-xs font-bold ${isActive
+                                                    ? "bg-green-100 text-green-700"
+                                                    : "bg-slate-100 text-slate-600"
+                                                    }`}
+                                            >
+                                                {isActive ? "● Đang hoạt động" : "Đã kết thúc"}
+                                            </span>
+                                        </div>
                                     </div>
 
                                     {/* Campaign Stats */}

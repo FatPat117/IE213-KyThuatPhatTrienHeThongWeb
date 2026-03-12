@@ -4,7 +4,6 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useSyncExternalStore } from 'react';
 import { useAccount, useChainId } from 'wagmi';
-import Header from '@/components/layout/Header';
 import WalletStatus from '@/components/wallet/WalletStatus';
 import { ContractStatsDisplay, CampaignListDisplay } from '@/components/contract/ContractReadComponent';
 
@@ -25,8 +24,6 @@ function HomeContent() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
-      {/* Navigation Header */}
-      <Header />
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-20 px-6 py-16 md:px-10">
         {/* Hero Section */}
         <section className="grid gap-12 md:grid-cols-[1fr_1.1fr] md:items-center">

@@ -4,7 +4,13 @@ import Link from 'next/link';
 import { useMemo } from 'react';
 import { formatEther } from 'viem';
 import { useAccount } from 'wagmi';
-import { useBackendCampaigns, useReadAllCampaigns } from '@/lib';
+import {
+  getCampaignMetadataFromCache,
+  isPlaceholderCampaignDescription,
+  isPlaceholderCampaignTitle,
+  useBackendCampaigns,
+  useReadAllCampaigns
+} from '@/lib';
 import BackButton from '@/components/navigation/BackButton';
 
 function formatEthAmount(value: number) {
@@ -33,10 +39,15 @@ export default function MyCampaignsPage() {
     >();
 
     campaignsQuery.data.forEach((campaign) => {
+      const cached = getCampaignMetadataFromCache(campaign.onChainId);
       map.set(campaign.onChainId, {
         onChainId: campaign.onChainId,
-        title: campaign.title || `Campaign #${campaign.onChainId}`,
-        description: campaign.description || '',
+        title: !isPlaceholderCampaignTitle(campaign.title, campaign.onChainId)
+          ? campaign.title
+          : (cached?.title || `Campaign #${campaign.onChainId}`),
+        description: !isPlaceholderCampaignDescription(campaign.description)
+          ? campaign.description
+          : (cached?.description || ''),
         creator: campaign.creator,
         goal: campaign.goal || '0',
         raised: campaign.raised || '0',
@@ -61,10 +72,11 @@ export default function MyCampaignsPage() {
           status: inferredStatus,
         });
       } else {
+        const cached = getCampaignMetadataFromCache(campaign.id);
         map.set(campaign.id, {
           onChainId: campaign.id,
-          title: `Campaign #${campaign.id}`,
-          description: 'Campaign data is stored on-chain without off-chain metadata.',
+          title: cached?.title || `Campaign #${campaign.id}`,
+          description: cached?.description || 'Campaign data is stored on-chain without off-chain metadata.',
           creator: campaign.creator,
           goal: campaign.goal.toString(),
           raised: campaign.raised.toString(),

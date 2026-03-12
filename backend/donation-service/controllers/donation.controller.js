@@ -4,7 +4,7 @@ const { successRes, errorRes } = require("../utils/response");
 // GET /api/donations/campaign/:id
 async function getDonationsByCampaign(req, res, next) {
     try {
-        const donations = await donationService.getDonationsByCampaign(req.params.id);
+        const donations = await donationService.getMergedDonationsByCampaign(req.params.id);
         return successRes(res, donations);
     } catch (err) { next(err); }
 }
