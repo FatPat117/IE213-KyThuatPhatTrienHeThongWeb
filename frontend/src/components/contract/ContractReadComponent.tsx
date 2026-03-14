@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useContractStats, useReadAllCampaigns } from '@/lib';
 import { useWalletStatus } from '@/lib';
 
@@ -14,10 +15,10 @@ export function ContractStatsDisplay() {
 
   if (isLoading) {
     return (
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6">
+      <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-6">
         <div className="flex items-center gap-3">
-          <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full" />
-          <p className="text-sm text-blue-700">Đang tải thống kê contract...</p>
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+          <p className="text-sm text-indigo-700">Đang tải thống kê contract...</p>
         </div>
       </div>
     );
@@ -50,10 +51,10 @@ export function ContractStatsDisplay() {
         </div>
       )}
       {/* Total Campaigns */}
-      <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg p-6">
-        <p className="text-sm text-blue-600 mb-2 font-medium">📊 Tổng chiến dịch</p>
-        <p className="text-3xl font-bold text-blue-900">{campaignCount}</p>
-        <p className="text-xs text-blue-600 mt-2">Chiến dịch đang được ghi nhận on-chain</p>
+      <div className="rounded-xl border border-indigo-200/80 bg-indigo-50/80 p-6">
+        <p className="text-sm font-medium text-indigo-600 mb-2">📊 Tổng chiến dịch</p>
+        <p className="text-3xl font-bold text-indigo-900">{campaignCount}</p>
+        <p className="text-xs text-indigo-600 mt-2">Chiến dịch đang được ghi nhận on-chain</p>
       </div>
 
       {/* Total ETH Raised */}
@@ -75,14 +76,19 @@ export function CampaignListDisplay() {
 
   if (isLoading) {
     return (
-      <div className="space-y-3">
-        {[1, 2, 3].map((idx) => (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {[1, 2, 3, 4, 5, 6].map((idx) => (
           <div
             key={idx}
-            className="bg-gradient-to-r from-gray-100 to-gray-50 rounded-lg p-4 animate-pulse"
+            className="bg-white border border-slate-200 rounded-xl p-5 animate-pulse shadow-sm"
           >
-            <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
-            <div className="h-3 bg-gray-200 rounded w-1/2" />
+            <div className="h-5 bg-slate-200 rounded w-3/4 mb-3" />
+            <div className="h-3 bg-slate-200 rounded w-1/2 mb-4" />
+            <div className="grid grid-cols-2 gap-2">
+              <div className="h-10 bg-slate-200 rounded" />
+              <div className="h-10 bg-slate-200 rounded" />
+            </div>
+            <div className="h-2 bg-slate-200 rounded-full mt-4" />
           </div>
         ))}
       </div>
@@ -117,86 +123,91 @@ export function CampaignListDisplay() {
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="font-semibold text-gray-900">
+    <div className="space-y-5">
+      <div className="flex justify-between items-center">
+        <h3 className="text-lg font-semibold text-slate-900">
           Chiến dịch ({campaigns.length})
         </h3>
         <button
           onClick={() => refetch()}
-          className="text-xs px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+          className="text-sm px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-medium transition-colors"
         >
           Tải lại
         </button>
       </div>
 
-      {campaigns.map((campaign) => (
-        <div
-          key={campaign.id}
-          className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-        >
-          <div className="flex justify-between items-start mb-3">
-            <div className="flex-1">
-              <h4 className="font-semibold text-gray-900">{campaign.title}</h4>
-              <p className="text-xs text-gray-500 mt-1">
-                ID: {campaign.id} • Tạo bởi: {campaign.creator.slice(0, 6)}...
-              </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        {campaigns.map((campaign) => (
+          <Link
+            key={campaign.id}
+            href={`/campaigns/${campaign.id}`}
+            className="group block rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200 hover:border-indigo-200 hover:shadow-lg"
+          >
+            <div className="flex justify-between items-start mb-3">
+              <div className="flex-1 min-w-0">
+                <h4 className="font-semibold text-slate-900 truncate transition-colors group-hover:text-indigo-600">
+                  {campaign.title}
+                </h4>
+                <p className="text-xs text-slate-500 mt-1">
+                  ID: {campaign.id} • Tạo bởi: {campaign.creator.slice(0, 6)}...
+                </p>
+              </div>
+              <span
+                className={`shrink-0 text-xs px-2.5 py-1 rounded-full font-medium ${
+                  campaign.completed
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-indigo-100 text-indigo-700'
+                }`}
+              >
+                {campaign.completed ? '✓ Hoàn thành' : 'Đang hoạt động'}
+              </span>
             </div>
-            <span
-              className={`text-xs px-2 py-1 rounded font-medium ${
-                campaign.completed
-                  ? 'bg-green-100 text-green-700'
-                  : 'bg-blue-100 text-blue-700'
-              }`}
-            >
-              {campaign.completed ? '✓ Hoàn thành' : 'Đang hoạt động'}
-            </span>
-          </div>
 
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <p className="text-gray-600 text-xs">Mục tiêu</p>
-              <p className="font-semibold text-gray-900">
-                {(Number(campaign.goal) / 1e18).toFixed(4)} ETH
-              </p>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <p className="text-slate-500 text-xs">Mục tiêu</p>
+                <p className="font-semibold text-slate-900">
+                  {(Number(campaign.goal) / 1e18).toFixed(4)} ETH
+                </p>
+              </div>
+              <div>
+                <p className="text-slate-500 text-xs">Đã gây quỹ</p>
+                <p className="font-semibold text-slate-900 text-indigo-600">
+                  {(Number(campaign.raised) / 1e18).toFixed(4)} ETH
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-gray-600 text-xs">Đã gây quỹ</p>
-              <p className="font-semibold text-gray-900">
-                {(Number(campaign.raised) / 1e18).toFixed(4)} ETH
-              </p>
-            </div>
-          </div>
 
-          {/* Progress Bar */}
-          <div className="mt-3">
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div
-                className="bg-gradient-to-r from-blue-500 to-indigo-600 h-2 rounded-full"
-                style={{
-                  width: `${
-                    Number(campaign.goal) > 0
-                      ? Math.min(
-                          (Number(campaign.raised) / Number(campaign.goal)) * 100,
-                          100
-                        )
-                      : 0
-                  }%`,
-                }}
-              />
+            {/* Progress Bar */}
+            <div className="mt-4">
+              <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                <div
+                  className="h-2 rounded-full bg-indigo-600 transition-all duration-500"
+                  style={{
+                    width: `${
+                      Number(campaign.goal) > 0
+                        ? Math.min(
+                            (Number(campaign.raised) / Number(campaign.goal)) * 100,
+                            100
+                          )
+                        : 0
+                    }%`,
+                  }}
+                />
+              </div>
+              <p className="text-xs text-slate-600 mt-1.5">
+                {Number(campaign.goal) > 0
+                  ? (
+                      (Number(campaign.raised) / Number(campaign.goal)) *
+                      100
+                    ).toFixed(1)
+                  : 0}
+                % đạt được
+              </p>
             </div>
-            <p className="text-xs text-gray-600 mt-1">
-              {Number(campaign.goal) > 0
-                ? (
-                    (Number(campaign.raised) / Number(campaign.goal)) *
-                    100
-                  ).toFixed(1)
-                : 0}
-              % đạt được
-            </p>
-          </div>
-        </div>
-      ))}
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }

@@ -226,194 +226,146 @@ export default function SystemStatusPage() {
   const overallStatus = statusCounts.error > 0 ? 'error' : statusCounts.warning > 0 ? 'warning' : 'success';
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto">
-        {/* Page Header */}
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white py-12 px-4 text-slate-900 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-4xl">
+        <div className="mb-6">
+          <BackButton fallbackHref="/" />
+        </div>
         <div className="mb-8">
-          <div className="flex items-center gap-3 mb-4">
-            <BackButton fallbackHref="/" />
-            <div>
-              <div className="inline-flex items-center gap-2 mb-1">
-                <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">
-                  🔧 Chẩn đoán hệ thống
-                </span>
-              </div>
-              <h1 className="text-3xl font-bold text-slate-900">Trạng thái hệ thống</h1>
-            </div>
-          </div>
-          <p className="text-lg text-slate-600 ml-13">
-            Kiểm tra ví, mạng, RPC và contract theo thời gian thực
+          <p className="mb-1 text-sm font-semibold uppercase tracking-wider text-indigo-600">Trạng thái hệ thống</p>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+            Health check
+          </h1>
+          <p className="mt-2 text-slate-600">
+            Kiểm tra ví, mạng, RPC và contract theo thời gian thực.
           </p>
         </div>
 
-        {/* Overall Status Card */}
-        <div className={`rounded-2xl border-2 p-8 mb-8 ${
-          overallStatus === 'success'
-            ? 'bg-green-50 border-green-200'
-            : overallStatus === 'warning'
-            ? 'bg-yellow-50 border-yellow-200'
-            : 'bg-red-50 border-red-200'
-        }`}>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+        {/* Overall Status Card - SaaS style */}
+        <div
+          className={`mb-8 flex flex-col gap-6 rounded-xl border-2 p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-8 ${
+            overallStatus === 'success'
+              ? 'border-emerald-200 bg-emerald-50/80'
+              : overallStatus === 'warning'
+              ? 'border-amber-200 bg-amber-50/80'
+              : 'border-red-200 bg-red-50/80'
+          }`}
+        >
+          <div className="flex items-center gap-4">
+            <div
+              className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full ${
                 overallStatus === 'success'
-                  ? 'bg-green-500'
+                  ? 'bg-emerald-500 text-white'
                   : overallStatus === 'warning'
-                  ? 'bg-yellow-500'
-                  : 'bg-red-500'
-              }`}>
-                <span className="text-2xl text-white">
-                  {overallStatus === 'success' ? '✓' : overallStatus === 'warning' ? '⚠' : '✗'}
-                </span>
-              </div>
-              <div>
-                <h2 className={`text-2xl font-bold ${
-                  overallStatus === 'success'
-                    ? 'text-green-900'
-                    : overallStatus === 'warning'
-                    ? 'text-yellow-900'
-                    : 'text-red-900'
-                }`}>
-                  {overallStatus === 'success'
-                    ? 'Hệ thống hoạt động bình thường'
-                    : overallStatus === 'warning'
-                    ? 'Có cảnh báo hệ thống'
-                    : 'Có lỗi hệ thống'}
-                </h2>
-                <p className={`text-sm ${
-                  overallStatus === 'success'
-                    ? 'text-green-700'
-                    : overallStatus === 'warning'
-                    ? 'text-yellow-700'
-                    : 'text-red-700'
-                }`}>
-                  Lần kiểm tra cuối: {lastRefresh.toLocaleTimeString()}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={handleRefresh}
-              className="px-6 py-3 rounded-lg bg-white border-2 border-slate-200 text-slate-900 font-semibold hover:border-blue-600 hover:text-blue-600 transition"
+                  ? 'bg-amber-500 text-white'
+                  : 'bg-red-500 text-white'
+              }`}
             >
-              🔄 Tải lại
-            </button>
+              <span className="text-2xl font-bold">
+                {overallStatus === 'success' ? '✓' : overallStatus === 'warning' ? '⚠' : '✗'}
+              </span>
+            </div>
+            <div>
+              <h2
+                className={`text-xl font-bold sm:text-2xl ${
+                  overallStatus === 'success'
+                    ? 'text-emerald-900'
+                    : overallStatus === 'warning'
+                    ? 'text-amber-900'
+                    : 'text-red-900'
+                }`}
+              >
+                {overallStatus === 'success'
+                  ? 'Hệ thống hoạt động bình thường'
+                  : overallStatus === 'warning'
+                  ? 'Có cảnh báo hệ thống'
+                  : 'Có lỗi hệ thống'}
+              </h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Cập nhật: {lastRefresh.toLocaleTimeString('vi-VN')}
+              </p>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            className="shrink-0 rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 transition hover:border-indigo-400 hover:text-indigo-600"
+          >
+            🔄 Tải lại
+          </button>
+        </div>
 
-          {/* Status Counts */}
-          <div className="grid grid-cols-4 gap-4">
-            <div className="bg-white rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-green-600">{statusCounts.success}</p>
-              <p className="text-xs text-slate-600">Đạt</p>
-            </div>
-            <div className="bg-white rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-yellow-600">{statusCounts.warning}</p>
-              <p className="text-xs text-slate-600">Cảnh báo</p>
-            </div>
-            <div className="bg-white rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-red-600">{statusCounts.error}</p>
-              <p className="text-xs text-slate-600">Lỗi</p>
-            </div>
-            <div className="bg-white rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-slate-600">{statusCounts.loading}</p>
-              <p className="text-xs text-slate-600">Đang tải</p>
-            </div>
+        {/* Status counts - compact pills */}
+        <div className="mb-8 flex flex-wrap gap-3">
+          <div className="rounded-xl border border-emerald-200 bg-white px-4 py-3 shadow-sm">
+            <span className="text-2xl font-bold text-emerald-600">{statusCounts.success}</span>
+            <span className="ml-2 text-sm font-medium text-slate-600">OK</span>
+          </div>
+          <div className="rounded-xl border border-amber-200 bg-white px-4 py-3 shadow-sm">
+            <span className="text-2xl font-bold text-amber-600">{statusCounts.warning}</span>
+            <span className="ml-2 text-sm font-medium text-slate-600">Cảnh báo</span>
+          </div>
+          <div className="rounded-xl border border-red-200 bg-white px-4 py-3 shadow-sm">
+            <span className="text-2xl font-bold text-red-600">{statusCounts.error}</span>
+            <span className="ml-2 text-sm font-medium text-slate-600">Lỗi</span>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <span className="text-2xl font-bold text-slate-500">{statusCounts.loading}</span>
+            <span className="ml-2 text-sm font-medium text-slate-600">Đang tải</span>
           </div>
         </div>
 
-        {/* System Checks List */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-8">
-          <h3 className="text-xl font-bold text-slate-900 mb-6">Kiểm tra hệ thống</h3>
+        {/* System Checks - status cards */}
+        <div className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm ring-1 ring-slate-900/5 sm:p-8">
+          <h3 className="mb-6 text-lg font-bold text-slate-900">Các kiểm tra</h3>
           <div className="space-y-4">
             {checks.map((check, index) => (
               <div
                 key={index}
-                className={`rounded-xl border-2 p-5 ${
+                className={`flex items-start gap-4 rounded-xl border-2 p-4 transition ${
                   check.status === 'success'
-                    ? 'bg-green-50 border-green-200'
+                    ? 'border-emerald-200 bg-emerald-50/50'
                     : check.status === 'warning'
-                    ? 'bg-yellow-50 border-yellow-200'
+                    ? 'border-amber-200 bg-amber-50/50'
                     : check.status === 'error'
-                    ? 'bg-red-50 border-red-200'
-                    : 'bg-slate-50 border-slate-200'
+                    ? 'border-red-200 bg-red-50/50'
+                    : 'border-slate-200 bg-slate-50/50'
                 }`}
               >
-                <div className="flex items-start gap-4">
-                  <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
+                <div
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
                     check.status === 'success'
-                      ? 'bg-green-500'
+                      ? 'bg-emerald-500 text-white'
                       : check.status === 'warning'
-                      ? 'bg-yellow-500'
+                      ? 'bg-amber-500 text-white'
                       : check.status === 'error'
-                      ? 'bg-red-500'
-                      : 'bg-slate-400'
-                  }`}>
-                    <span className="text-white text-lg font-bold">
-                      {check.status === 'success'
-                        ? '✓'
-                        : check.status === 'warning'
-                        ? '⚠'
-                        : check.status === 'error'
-                        ? '✗'
-                        : '⋯'}
+                      ? 'bg-red-500 text-white'
+                      : 'bg-slate-400 text-white'
+                  }`}
+                >
+                  <span className="text-lg font-bold">
+                    {check.status === 'success' ? '✓' : check.status === 'warning' ? '⚠' : check.status === 'error' ? '✗' : '⋯'}
+                  </span>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                    <h4 className="font-bold text-slate-900">{check.name}</h4>
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        check.status === 'success'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : check.status === 'warning'
+                          ? 'bg-amber-100 text-amber-800'
+                          : check.status === 'error'
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-slate-200 text-slate-700'
+                      }`}
+                    >
+                      {check.status === 'success' ? 'OK' : check.status === 'warning' ? 'Cảnh báo' : check.status === 'error' ? 'Lỗi' : 'Đang tải'}
                     </span>
                   </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-1">
-                      <h4 className={`font-bold ${
-                        check.status === 'success'
-                          ? 'text-green-900'
-                          : check.status === 'warning'
-                          ? 'text-yellow-900'
-                          : check.status === 'error'
-                          ? 'text-red-900'
-                          : 'text-slate-900'
-                      }`}>
-                        {check.name}
-                      </h4>
-                      <span className={`text-xs font-semibold px-2 py-1 rounded ${
-                        check.status === 'success'
-                          ? 'bg-green-200 text-green-800'
-                          : check.status === 'warning'
-                          ? 'bg-yellow-200 text-yellow-800'
-                          : check.status === 'error'
-                          ? 'bg-red-200 text-red-800'
-                          : 'bg-slate-200 text-slate-800'
-                      }`}>
-                        {check.status === 'success'
-                          ? 'THÀNH CÔNG'
-                          : check.status === 'warning'
-                          ? 'CẢNH BÁO'
-                          : check.status === 'error'
-                          ? 'LỖI'
-                          : 'ĐANG TẢI'}
-                      </span>
-                    </div>
-                    <p className={`text-sm font-medium mb-1 ${
-                      check.status === 'success'
-                        ? 'text-green-800'
-                        : check.status === 'warning'
-                        ? 'text-yellow-800'
-                        : check.status === 'error'
-                        ? 'text-red-800'
-                        : 'text-slate-800'
-                    }`}>
-                      {check.message}
-                    </p>
-                    {check.details && (
-                      <p className={`text-xs ${
-                        check.status === 'success'
-                          ? 'text-green-700'
-                          : check.status === 'warning'
-                          ? 'text-yellow-700'
-                          : check.status === 'error'
-                          ? 'text-red-700'
-                          : 'text-slate-700'
-                      }`}>
-                        {check.details}
-                      </p>
-                    )}
-                  </div>
+                  <p className="text-sm font-medium text-slate-800">{check.message}</p>
+                  {check.details && <p className="mt-1 text-xs text-slate-600">{check.details}</p>}
                 </div>
               </div>
             ))}
@@ -421,10 +373,10 @@ export default function SystemStatusPage() {
         </div>
 
         {/* Quick Actions */}
-        <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Link
             href="/campaigns"
-            className="block text-center px-6 py-4 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition shadow-lg"
+            className="rounded-xl bg-indigo-600 px-6 py-4 text-center font-semibold text-white shadow-sm transition hover:bg-indigo-700 hover:shadow-md"
           >
             📋 Xem chiến dịch
           </Link>
@@ -432,22 +384,22 @@ export default function SystemStatusPage() {
             href="https://sepolia.etherscan.io"
             target="_blank"
             rel="noopener noreferrer"
-            className="block text-center px-6 py-4 rounded-xl bg-slate-100 text-slate-900 font-semibold hover:bg-slate-200 transition"
+            className="rounded-xl border border-slate-200 bg-white px-6 py-4 text-center font-semibold text-slate-900 transition hover:border-indigo-300 hover:bg-slate-50"
           >
-            🔍 Trình khám phá Sepolia
+            🔍 Etherscan Sepolia
           </a>
           <a
             href="https://faucet.sepolia.dev"
             target="_blank"
             rel="noopener noreferrer"
-            className="block text-center px-6 py-4 rounded-xl bg-slate-100 text-slate-900 font-semibold hover:bg-slate-200 transition"
+            className="rounded-xl border border-slate-200 bg-white px-6 py-4 text-center font-semibold text-slate-900 transition hover:border-indigo-300 hover:bg-slate-50"
           >
             💧 Nhận ETH testnet
           </a>
         </div>
 
         {/* Technical Info */}
-        <div className="mt-6 rounded-xl bg-slate-100 border border-slate-200 p-6">
+        <div className="mt-8 rounded-xl border border-slate-200/80 bg-slate-50/80 p-6 ring-1 ring-slate-900/5">
           <h4 className="text-sm font-bold text-slate-900 mb-3">Thông tin kỹ thuật</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
             <div>
