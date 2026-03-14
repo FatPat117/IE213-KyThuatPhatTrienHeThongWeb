@@ -85,7 +85,16 @@ export default function MyCertificatesPage() {
     const [error, setError] = useState<string | null>(null);
     const [exportError, setExportError] = useState<string | null>(null);
     const [printingTokenId, setPrintingTokenId] = useState<number | null>(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'amount'>('newest');
+    const [filterCampaignId, setFilterCampaignId] = useState<number | 'all'>('all');
     const certificatePreviewRefs = useRef<Record<number, HTMLDivElement | null>>({});
+    const SHOW_CERTIFICATE_DETAILS = false;
+
+    const uniqueCampaignIds = useMemo(() => {
+        const ids = new Set(certificates.map((c) => c.campaignOnChainId));
+        return Array.from(ids).sort((a, b) => a - b);
+    }, [certificates]);
 
     useEffect(() => {
         const loadCertificates = async () => {
@@ -98,13 +107,18 @@ export default function MyCertificatesPage() {
                 setIsLoading(true);
                 setError(null);
 
-                const response = await fetch(`${API_BASE_URL}/certificates/owner/${address}`);
+                const response = await fetch(`${API_BASE_URL}/certificates/owner/${address}`, {
+                    // Tránh cache để khi vừa mint xong bấm "Xem chứng chỉ" sẽ luôn lấy dữ liệu mới nhất
+                    cache: 'no-store',
+                });
                 if (!response.ok) {
                     throw new Error('Không thể tải danh sách chứng nhận');
                 }
 
                 const payload = await response.json();
                 const rows = Array.isArray(payload?.data) ? payload.data : [];
+                // Đảm bảo chứng chỉ được sắp xếp theo thời gian mint gần nhất ở đầu
+                rows.sort((a: CertificateRecord, b: CertificateRecord) => new Date(b.mintedAt).getTime() - new Date(a.mintedAt).getTime());
                 setCertificates(rows);
             } catch (err) {
                 setError(err instanceof Error ? err.message : 'Lỗi không xác định');
@@ -117,10 +131,10 @@ export default function MyCertificatesPage() {
     }, [address, isConnected]);
 
     const certificateCount = certificates.length;
-    const campaignTitleById = useMemo(() => {
-        const map = new Map<number, string>();
+    const campaignById = useMemo(() => {
+        const map = new Map<number, (typeof campaignsQuery.data)[number]>();
         campaignsQuery.data.forEach((campaign) => {
-            map.set(campaign.onChainId, campaign.title || `Campaign #${campaign.onChainId}`);
+            map.set(campaign.onChainId, campaign);
         });
         return map;
     }, [campaignsQuery.data]);
@@ -128,6 +142,59 @@ export default function MyCertificatesPage() {
         if (certificateCount === 0) return null;
         return new Date(certificates[0].mintedAt).toLocaleDateString('vi-VN');
     }, [certificateCount, certificates]);
+
+    const filteredCertificates = useMemo(() => {
+        let result = [...certificates];
+        if (filterCampaignId !== 'all') {
+            result = result.filter((item) => item.campaignOnChainId === filterCampaignId);
+        }
+        const query = searchQuery.trim().toLowerCase();
+        if (query) {
+            result = result.filter((item) => {
+                const campaign = campaignById.get(item.campaignOnChainId);
+                const title =
+                    item.campaignTitle ||
+                    campaign?.title ||
+                    `Campaign #${item.campaignOnChainId}`;
+                const owner = item.ownerWallet.toLowerCase();
+                const displayName = (item.displayName || '').toLowerCase();
+                return (
+                    title.toLowerCase().includes(query) ||
+                    owner.includes(query) ||
+                    displayName.includes(query)
+                );
+            });
+        }
+
+        result.sort((a: CertificateRecord, b: CertificateRecord) => {
+            if (sortBy === 'amount') {
+                const metaA = parseInlineMetadata(a.metadataUri);
+                const metaB = parseInlineMetadata(b.metadataUri);
+                const donatedA =
+                    typeof a.donatedAmountEth === 'number'
+                        ? a.donatedAmountEth
+                        : Number(
+                              (metaA?.attributes || []).find(
+                                  (attr) => attr.trait_type === 'Donated Amount (ETH)',
+                              )?.value || 0,
+                          );
+                const donatedB =
+                    typeof b.donatedAmountEth === 'number'
+                        ? b.donatedAmountEth
+                        : Number(
+                              (metaB?.attributes || []).find(
+                                  (attr) => attr.trait_type === 'Donated Amount (ETH)',
+                              )?.value || 0,
+                          );
+                return donatedB - donatedA;
+            }
+            const timeA = new Date(a.mintedAt).getTime();
+            const timeB = new Date(b.mintedAt).getTime();
+            return sortBy === 'newest' ? timeB - timeA : timeA - timeB;
+        });
+
+        return result;
+    }, [certificates, campaignById, searchQuery, sortBy, filterCampaignId]);
 
     const setCertificatePreviewRef = (tokenId: number, node: HTMLDivElement | null) => {
         certificatePreviewRefs.current[tokenId] = node;
@@ -222,6 +289,24 @@ export default function MyCertificatesPage() {
         }
     };
 
+    const handleShare = async (tokenId: number) => {
+        try {
+            const url = `${window.location.origin}/certificates#token-${tokenId}`;
+            if (navigator.share) {
+                await navigator.share({
+                    title: `Certificate #${tokenId}`,
+                    text: 'Chứng chỉ đóng góp của tôi trên hệ thống gây quỹ.',
+                    url,
+                });
+                return;
+            }
+            await navigator.clipboard?.writeText(url);
+            alert('Đã copy link chứng chỉ vào clipboard.');
+        } catch {
+            alert('Không thể chia sẻ hoặc copy link. Vui lòng thử lại.');
+        }
+    };
+
     return (
         <div className="min-h-screen bg-linear-to-b from-slate-50 to-white">
             <main className="mx-auto w-full max-w-6xl px-6 py-12 md:px-10">
@@ -275,8 +360,58 @@ export default function MyCertificatesPage() {
                         </div>
 
                         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                            <div className="mb-4 flex items-center justify-between">
-                                <h2 className="text-xl font-bold text-slate-900">Danh sách chứng nhận</h2>
+                            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                                <div>
+                                    <h2 className="text-xl font-bold text-slate-900">Danh sách chứng nhận</h2>
+                                    <p className="mt-1 text-xs text-slate-500">
+                                        Bạn có thể tìm theo tên campaign, địa chỉ ví hoặc tên hiển thị.
+                                    </p>
+                                </div>
+                                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                                    <select
+                                        aria-label="Lọc theo chiến dịch"
+                                        value={filterCampaignId === 'all' ? 'all' : filterCampaignId}
+                                        onChange={(e) =>
+                                            setFilterCampaignId(
+                                                e.target.value === 'all' ? 'all' : Number(e.target.value)
+                                            )
+                                        }
+                                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none sm:w-44"
+                                    >
+                                        <option value="all">Tất cả chiến dịch</option>
+                                        {uniqueCampaignIds.map((id) => {
+                                            const c = campaignById.get(id);
+                                            const title = c?.title || `Campaign #${id}`;
+                                            return (
+                                                <option key={id} value={id}>
+                                                    {title}
+                                                </option>
+                                            );
+                                        })}
+                                    </select>
+                                    <input
+                                        type="text"
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        placeholder="Tìm theo campaign, ví, tên..."
+                                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:outline-none sm:w-52"
+                                    />
+                                    <label className="sr-only" htmlFor="certificate-sort">
+                                        Sắp xếp chứng nhận
+                                    </label>
+                                    <select
+                                        id="certificate-sort"
+                                        value={sortBy}
+                                        onChange={(e) =>
+                                            setSortBy(e.target.value as 'newest' | 'oldest' | 'amount')
+                                        }
+                                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none sm:w-40"
+                                    >
+                                        <option value="newest">Mới nhất</option>
+                                        <option value="oldest">Cũ nhất</option>
+                                        <option value="amount">Số tiền donate</option>
+                                    </select>
+                                </div>
                             </div>
 
                             {isLoading && <p className="text-sm text-slate-600">Đang tải dữ liệu chứng nhận...</p>}
@@ -284,14 +419,20 @@ export default function MyCertificatesPage() {
                             {!isLoading && !error && exportError && <p className="text-sm text-red-700">{exportError}</p>}
 
                             {!isLoading && !error && certificateCount === 0 && (
-                                <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-sm text-slate-600">
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-8 text-sm text-slate-600 text-center">
                                     Chưa có chứng nhận. Sau khi donate thành công và mint certificate, chứng nhận sẽ xuất hiện tại đây.
                                 </div>
                             )}
 
-                            {!isLoading && !error && certificateCount > 0 && (
-                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                    {certificates.map((item) => {
+                            {!isLoading && !error && certificateCount > 0 && filteredCertificates.length === 0 && (
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-8 text-sm text-slate-600 text-center">
+                                    Không tìm thấy chứng nhận nào theo bộ lọc hiện tại. Hãy thử xóa hoặc thay đổi từ khóa tìm kiếm.
+                                </div>
+                            )}
+
+                            {!isLoading && !error && filteredCertificates.length > 0 && (
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                    {filteredCertificates.map((item) => {
                                         const inlineMetadata = parseInlineMetadata(item.metadataUri);
                                         const donorDisplayName =
                                             item.displayName ||
@@ -307,76 +448,142 @@ export default function MyCertificatesPage() {
                                                           (attr) => attr.trait_type === 'Donated Amount (ETH)'
                                                       )?.value || 0
                                                   );
+                                        const campaign = campaignById.get(item.campaignOnChainId);
                                         const campaignTitle =
                                             item.campaignTitle ||
-                                            campaignTitleById.get(item.campaignOnChainId) ||
+                                            campaign?.title ||
                                             `Campaign #${item.campaignOnChainId}`;
-                                        const gratitudeMessage = item.certificateMessage || inlineMetadata?.description || null;
+                                        const campaignDescription = campaign?.description || null;
+                                        // Ưu tiên message do người dùng nhập, sau đó đến desc của campaign, cuối cùng mới đến description trong metadata
+                                        const gratitudeMessage =
+                                            item.certificateMessage || campaignDescription || inlineMetadata?.description || null;
+                                        const amountTagClass =
+                                            donatedAmount >= 0.1
+                                                ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                                : donatedAmount >= 0.01
+                                                ? 'bg-blue-100 text-blue-800 border-blue-200'
+                                                : 'bg-slate-100 text-slate-600 border-slate-200';
 
                                         return (
-                                        <div key={item.tokenId} className="rounded-2xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-5 shadow-sm transition-shadow hover:shadow-md">
-                                            <div
-                                                ref={(node) => setCertificatePreviewRef(item.tokenId, node)}
-                                                className="relative mb-4 overflow-hidden rounded-2xl border-2 border-amber-300 bg-linear-to-br from-amber-50 via-yellow-50 to-amber-100 p-5 text-slate-800 shadow-sm"
-                                            >
-                                                <div className="pointer-events-none absolute -right-2 -top-6 text-6xl font-black tracking-widest text-amber-200/60">
-                                                    NFT
-                                                </div>
-                                                <div className="pointer-events-none absolute -bottom-2 -left-2 text-4xl font-black tracking-wider text-amber-200/50">
-                                                    CERT
-                                                </div>
-                                                <p className="relative text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-700">
-                                                    Donation Certificate
-                                                </p>
-                                                <p className="relative mt-1 text-lg font-extrabold leading-tight text-amber-900">
-                                                    Chứng Nhận Đóng Góp Cộng Đồng
-                                                </p>
-                                                <p className="relative mt-3 text-xs text-slate-700">Trân trọng cảm ơn</p>
-                                                <p className="relative mt-1 text-base font-bold text-slate-900">
-                                                    {donorDisplayName || item.ownerWallet.slice(0, 6) + '...' + item.ownerWallet.slice(-4)}
-                                                </p>
-                                                <p className="relative mt-2 text-xs text-slate-700">
-                                                    đã quyên góp <span className="font-bold text-emerald-700">{formatEthAmount(donatedAmount)} ETH</span> cho chiến dịch
-                                                </p>
-                                                <p className="relative mt-1 text-sm font-semibold text-slate-900">{campaignTitle}</p>
-                                                <div className="relative mt-4 flex items-end justify-between border-t border-amber-300/80 pt-3">
-                                                    <div>
-                                                        <p className="text-[10px] uppercase tracking-widest text-slate-500">Issued by</p>
-                                                        <p className="text-xs font-semibold text-slate-700">Fundraising dApp System</p>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <p className="font-serif text-sm italic text-amber-900">Digital Signature</p>
-                                                        <p className="text-[10px] text-slate-500">Token #{item.tokenId}</p>
-                                                    </div>
-                                                </div>
-                                            </div>
+                                        <div key={item.tokenId} className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm transition-all hover:shadow-md">
                                             <div className="mb-3 flex items-center justify-between gap-2">
-                                                <p className="text-lg font-bold text-slate-900">Certificate #{item.tokenId}</p>
-                                                <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700">
-                                                    Campaign #{item.campaignOnChainId}
+                                                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${amountTagClass}`}>
+                                                    {formatEthAmount(donatedAmount)} ETH
+                                                </span>
+                                                <span className="text-[10px] text-slate-500">
+                                                    #{item.tokenId} · Campaign #{item.campaignOnChainId}
                                                 </span>
                                             </div>
-                                            <p className="text-base font-semibold text-slate-800">{campaignTitle}</p>
+                                            <div
+                                                ref={(node) => setCertificatePreviewRef(item.tokenId, node)}
+                                                className="relative mb-4 overflow-hidden rounded-2xl border-2 border-amber-500/80 bg-amber-50/80 p-4 text-slate-800 shadow-sm"
+                                            >
+                                                <div className="pointer-events-none absolute inset-2 rounded-xl border border-amber-200/80" />
+                                                <div className="relative flex items-start justify-between gap-3">
+                                                    <div>
+                                                        <p className="text-[9px] font-semibold uppercase tracking-widest text-amber-700">
+                                                            Certificate of Appreciation
+                                                        </p>
+                                                        <p className="mt-1.5 text-base font-bold leading-tight text-amber-900">
+                                                            Chứng Nhận Đóng Góp Cộng Đồng
+                                                        </p>
+                                                    </div>
+                                                    <div className="rounded-lg border border-amber-300 bg-amber-100/60 px-2.5 py-1.5 text-right">
+                                                        <p className="text-[9px] font-medium text-slate-600">Token</p>
+                                                        <p className="text-xs font-semibold text-slate-900">#{item.tokenId}</p>
+                                                        <p className="mt-0.5 text-[9px] text-slate-600">
+                                                            {new Date(item.mintedAt).toLocaleDateString('vi-VN')}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <p className="relative mt-3 text-[11px] text-slate-700">
+                                                    Ban tổ chức xin trân trọng chứng nhận rằng
+                                                </p>
+                                                <p className="relative mt-1.5 text-sm font-bold text-slate-900">
+                                                    {donorDisplayName || item.ownerWallet.slice(0, 6) + '...' + item.ownerWallet.slice(-4)}
+                                                </p>
+                                                <p className="relative mt-1.5 text-[11px] text-slate-700">
+                                                    đã đóng góp{' '}
+                                                    <span className="font-bold text-emerald-700">
+                                                        {formatEthAmount(donatedAmount)} ETH
+                                                    </span>{' '}
+                                                    cho chiến dịch
+                                                </p>
+                                                <p className="relative mt-1 text-xs font-semibold text-slate-900 line-clamp-2">
+                                                    {campaignTitle}
+                                                </p>
+                                                <div className="relative mt-3 flex items-end justify-between border-t border-amber-300/80 pt-2">
+                                                    <div>
+                                                        <p className="text-[9px] uppercase tracking-widest text-slate-500">
+                                                            Issued by
+                                                        </p>
+                                                        <p className="text-[11px] font-semibold text-slate-700">
+                                                            Fundraising dApp
+                                                        </p>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="font-serif text-xs italic text-amber-900">
+                                                            Digital Signature
+                                                        </p>
+                                                        <p className="text-[9px] text-slate-500">
+                                                            Campaign #{item.campaignOnChainId}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {SHOW_CERTIFICATE_DETAILS && (
+                                                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                                    <div>
+                                                        <p className="text-xs font-medium text-slate-500">
+                                                            Certificate
+                                                        </p>
+                                                        <p className="text-base font-bold text-slate-900">
+                                                            #{item.tokenId}
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <span className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
+                                                            Campaign #{item.campaignOnChainId}
+                                                        </span>
+                                                        {Number.isFinite(donatedAmount) && donatedAmount > 0 && (
+                                                            <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                                                                {formatEthAmount(donatedAmount)} ETH
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
                                             {gratitudeMessage && (
-                                                <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-900">
+                                                <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50/80 px-3 py-2.5 text-sm text-emerald-900">
                                                     {gratitudeMessage}
                                                 </p>
                                             )}
-                                            <div className="mt-3 space-y-1.5 rounded-lg bg-white/70 p-3 text-sm text-slate-700">
-                                                {donorDisplayName && (
+                                            {SHOW_CERTIFICATE_DETAILS && (
+                                                <div className="mt-3 space-y-1.5 rounded-2xl border border-slate-100 bg-white/80 p-3 text-sm text-slate-700">
+                                                    {donorDisplayName && (
+                                                        <p>
+                                                            Tên hiển thị:{' '}
+                                                            <span className="font-semibold text-slate-900">
+                                                                {String(donorDisplayName)}
+                                                            </span>
+                                                        </p>
+                                                    )}
+                                                    {Number.isFinite(donatedAmount) && donatedAmount > 0 && (
+                                                        <p>
+                                                            Đã donate:{' '}
+                                                            <span className="font-semibold text-slate-900">
+                                                                {formatEthAmount(donatedAmount)} ETH
+                                                            </span>
+                                                        </p>
+                                                    )}
                                                     <p>
-                                                        Tên hiển thị: <span className="font-semibold text-slate-900">{String(donorDisplayName)}</span>
+                                                        Minted:{' '}
+                                                        <span className="font-medium text-slate-900">
+                                                            {new Date(item.mintedAt).toLocaleString('vi-VN')}
+                                                        </span>
                                                     </p>
-                                                )}
-                                                {Number.isFinite(donatedAmount) && donatedAmount > 0 && (
-                                                    <p>
-                                                        Đã donate: <span className="font-semibold text-slate-900">{formatEthAmount(donatedAmount)} ETH</span>
-                                                    </p>
-                                                )}
-                                                <p>
-                                                    Minted: <span className="font-medium text-slate-900">{new Date(item.mintedAt).toLocaleString('vi-VN')}</span>
-                                                </p>
-                                            </div>
+                                                </div>
+                                            )}
                                             {!hasUsableMetadata(item.metadataUri) && (
                                                 <p className="mt-2 text-xs text-amber-700">
                                                     Metadata chưa sẵn sàng hoặc đang là fallback placeholder.
@@ -390,6 +597,13 @@ export default function MyCertificatesPage() {
                                                     className="rounded-lg border border-amber-300 bg-amber-100 px-3.5 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-60"
                                                 >
                                                     {printingTokenId === item.tokenId ? 'Đang mở hộp thoại in...' : 'In / Lưu PDF'}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleShare(item.tokenId)}
+                                                    className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:border-blue-500 hover:text-blue-600"
+                                                >
+                                                    Chia sẻ
                                                 </button>
                                                 <Link
                                                     href={`/campaigns/${item.campaignOnChainId}`}

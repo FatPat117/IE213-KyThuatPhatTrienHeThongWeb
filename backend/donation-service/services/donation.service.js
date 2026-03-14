@@ -127,10 +127,28 @@ async function getTotalDonatedByCampaign(campaignOnChainId) {
     return result[0]?.total || 0;
 }
 
+/**
+ * Top donors theo tổng ETH đã quyên góp (từ dữ liệu đã index từ event Donated).
+ * Dùng cho leaderboard "Nhà hảo tâm đóng góp nhiều nhất".
+ */
+async function getTopDonors(limit = 10) {
+    const result = await Donation.aggregate([
+        { $group: { _id: "$donorWallet", totalEth: { $sum: "$amountEth" } } },
+        { $sort: { totalEth: -1 } },
+        { $limit: Math.min(Number(limit) || 10, 100) },
+        { $project: { donorWallet: "$_id", totalEth: 1, _id: 0 } },
+    ]);
+    return result.map((r) => ({
+        donor: r.donorWallet || "",
+        totalAmountEth: r.totalEth,
+    }));
+}
+
 module.exports = {
     createDonation,
     getDonationsByCampaign,
     getMergedDonationsByCampaign,
     getDonationsByDonor,
     getTotalDonatedByCampaign,
+    getTopDonors,
 };

@@ -194,6 +194,19 @@ export default function CampaignDetailPage() {
             .filter((d) => d.donor.toLowerCase() === address.toLowerCase())
             .reduce((sum, d) => sum + d.amount, BigInt(0));
     }, [address, donations]);
+    const topDonors = useMemo(() => {
+        const byDonor = new Map<string, bigint>();
+        donations.forEach((d) => {
+            if (!d.donor) return;
+            const key = d.donor.toLowerCase();
+            const current = byDonor.get(key) ?? 0n;
+            byDonor.set(key, current + d.amount);
+        });
+        return Array.from(byDonor.entries())
+            .map(([donor, totalAmount]) => ({ donor, totalAmount }))
+            .sort((a, b) => (b.totalAmount > a.totalAmount ? 1 : -1))
+            .slice(0, 5);
+    }, [donations]);
     const effectiveUserDonatedAmount = useMemo(() => {
         const onChain = (donatedAmountOnChain as bigint | undefined) ?? 0n;
         return onChain > userDonatedAmount ? onChain : userDonatedAmount;
@@ -446,39 +459,73 @@ export default function CampaignDetailPage() {
                                         <p className="text-sm text-slate-500">Hãy là người đầu tiên ủng hộ!</p>
                                     </div>
                                 ) : (
-                                    <div className="space-y-3">
-                                        {donations.map((donation, index) => (
-                                            <div
-                                                key={`${donation.transactionHash}-${index}`}
-                                                className="rounded-xl bg-slate-50 border border-slate-200 p-4 hover:bg-slate-100 transition"
-                                            >
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-green-600" />
-                                                        <div>
-                                                            <code className="text-sm font-mono text-slate-900">
-                                                                {donation.donor.slice(0, 6)}...{donation.donor.slice(-4)}
-                                                            </code>
-                                                            <p className="text-xs text-slate-500">
-                                                                {new Date(donation.timestamp).toLocaleString()}
-                                                            </p>
+                                    <>
+                                        <div className="space-y-3">
+                                            {donations.map((donation, index) => (
+                                                <div
+                                                    key={`${donation.transactionHash}-${index}`}
+                                                    className="rounded-xl bg-slate-50 border border-slate-200 p-4 hover:bg-slate-100 transition"
+                                                >
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-green-600" />
+                                                            <div>
+                                                                <code className="text-sm font-mono text-slate-900">
+                                                                    {donation.donor.slice(0, 6)}...{donation.donor.slice(-4)}
+                                                                </code>
+                                                                <p className="text-xs text-slate-500">
+                                                                    {new Date(donation.timestamp).toLocaleString()}
+                                                                </p>
+                                                            </div>
                                                         </div>
+                                                        <p className="text-lg font-bold text-green-600">
+                                                            +{Number(formatEther(donation.amount)).toFixed(4)} ETH
+                                                        </p>
                                                     </div>
-                                                    <p className="text-lg font-bold text-green-600">
-                                                        +{Number(formatEther(donation.amount)).toFixed(4)} ETH
+                                                    <a
+                                                        href={`https://sepolia.etherscan.io/tx/${donation.transactionHash}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+                                                    >
+                                                        View Transaction →
+                                                    </a>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        {topDonors.length > 0 && (
+                                            <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                                <div className="mb-3 flex items-center justify-between">
+                                                    <p className="text-sm font-semibold text-slate-900">
+                                                        Bảng xếp hạng nhà hảo tâm
+                                                    </p>
+                                                    <p className="text-xs text-slate-500">
+                                                        Top {topDonors.length} theo tổng ETH đã quyên góp
                                                     </p>
                                                 </div>
-                                                <a
-                                                    href={`https://sepolia.etherscan.io/tx/${donation.transactionHash}`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
-                                                >
-                                                    View Transaction →
-                                                </a>
+                                                <div className="space-y-2">
+                                                    {topDonors.map((item, index) => (
+                                                        <div
+                                                            key={item.donor}
+                                                            className="flex items-center justify-between rounded-lg bg-white px-3 py-2"
+                                                        >
+                                                            <div className="flex items-center gap-3">
+                                                                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-700">
+                                                                    {index + 1}
+                                                                </span>
+                                                                <code className="text-xs font-mono text-slate-900">
+                                                                    {item.donor.slice(0, 6)}...{item.donor.slice(-4)}
+                                                                </code>
+                                                            </div>
+                                                            <p className="text-sm font-semibold text-emerald-700">
+                                                                {Number(formatEther(item.totalAmount)).toFixed(4)} ETH
+                                                            </p>
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             </div>
-                                        ))}
-                                    </div>
+                                        )}
+                                    </>
                                 )}
                             </div>
                         </div>

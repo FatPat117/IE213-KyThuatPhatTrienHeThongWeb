@@ -23,284 +23,247 @@ function HomeContent() {
   const safeIsSepoliaNetwork = isHydrated && isSepoliaNetwork;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-20 px-6 py-16 md:px-10">
+    <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-50 text-slate-900">
+      <main className="mx-auto w-full max-w-6xl flex flex-col gap-24 px-6 py-20 md:px-10 lg:gap-28">
         {/* Hero Section */}
-        <section className="grid gap-12 md:grid-cols-[1fr_1.1fr] md:items-center">
-          {/* Hero Content */}
-          <div className="flex flex-col gap-6">
-            <div className="inline-flex items-center gap-2 w-fit flex-wrap">
-              <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">
-                🔗 Được hỗ trợ bởi Blockchain
+        <section className="grid gap-14 lg:grid-cols-[1fr_1.05fr] lg:items-center">
+          <div className="flex flex-col gap-8">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-indigo-500/10 px-3.5 py-1 text-xs font-semibold uppercase tracking-wider text-indigo-600">
+                Blockchain-powered
               </span>
               {!safeIsConnected && (
-                <span className="text-xs font-semibold text-amber-600 bg-amber-100 px-3 py-1 rounded-full">
-                  👁️ Chế độ xem (read-only)
+                <span className="rounded-full bg-amber-500/10 px-3.5 py-1 text-xs font-semibold text-amber-700">
+                  Chế độ xem
                 </span>
               )}
               {safeIsConnected && !safeIsSepoliaNetwork && (
-                <span className="text-xs font-semibold text-red-600 bg-red-100 px-3 py-1 rounded-full">
-                  ⚠️ Sai mạng
+                <span className="rounded-full bg-red-500/10 px-3.5 py-1 text-xs font-semibold text-red-700">
+                  Sai mạng
                 </span>
               )}
               {safeIsConnected && safeIsSepoliaNetwork && (
-                <span className="text-xs font-semibold text-green-600 bg-green-100 px-3 py-1 rounded-full">
-                  ✓ Kết nối Sepolia
+                <span className="rounded-full bg-emerald-500/10 px-3.5 py-1 text-xs font-semibold text-emerald-700">
+                  Đã kết nối Sepolia
                 </span>
               )}
             </div>
 
-            <div className="flex flex-col gap-4">
-              <h1 className="text-4xl md:text-5xl font-bold leading-tight text-slate-900">
+            <div className="space-y-5">
+              <h1 className="text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl lg:text-[2.75rem] lg:leading-[1.15]">
                 Quyên góp minh bạch trên Ethereum
               </h1>
-              <p className="text-lg text-slate-600">
-                Mỗi khoản quyên góp được ghi lại trên blockchain. Không có trung gian. Đầy đủ minh bạch. Bạn có thể xem dữ liệu ngay cả khi chưa kết nối ví.
+              <p className="max-w-xl text-lg leading-relaxed text-slate-600">
+                Mỗi khoản quyên góp được ghi trên blockchain. Không trung gian, đầy đủ minh bạch. Xem dữ liệu mọi lúc — kể cả khi chưa kết nối ví.
               </p>
             </div>
 
-            {/* CTA Buttons */}
-            <div className="flex flex-col sm:flex-row gap-3 pt-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
               <Link
                 href="/campaigns/create"
-                className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition duration-200 shadow-lg hover:shadow-xl"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-3.5 text-base font-semibold text-white shadow-lg shadow-indigo-600/25 transition hover:bg-indigo-700 hover:shadow-indigo-600/30"
               >
                 Bắt đầu chiến dịch
               </Link>
               <Link
                 href="/campaigns"
-                className="inline-flex items-center justify-center px-6 py-3 rounded-lg border-2 border-slate-200 text-slate-900 font-semibold hover:border-blue-600 hover:text-blue-600 transition duration-200"
+                className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-6 py-3.5 text-base font-semibold text-slate-700 transition hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50/50"
               >
                 Duyệt chiến dịch
               </Link>
             </div>
 
-            {/* Stats Teaser */}
-            <div className="flex gap-6 pt-4">
-              <div className="flex flex-col">
-                <p className="text-sm font-medium text-slate-600">Chiến dịch</p>
-                <p className="text-2xl font-bold text-slate-900">Đang hoạt động</p>
+            <div className="flex gap-10 border-t border-slate-200/80 pt-8">
+              <div>
+                <p className="text-sm font-medium text-slate-500">Chiến dịch</p>
+                <p className="mt-0.5 text-2xl font-bold text-slate-900">On-chain</p>
               </div>
-              <div className="flex flex-col">
-                <p className="text-sm font-medium text-slate-600">Cộng đồng</p>
-                <p className="text-2xl font-bold text-slate-900">Đang phát triển</p>
+              <div>
+                <p className="text-sm font-medium text-slate-500">Cộng đồng</p>
+                <p className="mt-0.5 text-2xl font-bold text-slate-900">Mở</p>
               </div>
             </div>
           </div>
 
-          {/* Hero Visual */}
-          <div className="flex flex-col gap-4">
-            {/* Stats Card */}
-            <div className="rounded-2xl bg-white border border-slate-200 p-6 shadow-lg hover:shadow-xl transition">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse" />
-                <p className="text-sm font-semibold text-slate-600">Dữ liệu trên chuỗi khối trực tiếp</p>
+          <div className="flex flex-col gap-5">
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xl shadow-slate-200/50 ring-1 ring-slate-900/5">
+              <div className="mb-4 flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-emerald-500/30" />
+                <span className="text-sm font-medium text-slate-600">Dữ liệu on-chain trực tiếp</span>
               </div>
-              <div className="space-y-4">
-                <ContractStatsDisplay />
-              </div>
+              <ContractStatsDisplay />
             </div>
-
-            {/* Wallet Status Card */}
-            <div className="rounded-2xl bg-gradient-to-br from-blue-50 to-slate-50 border border-slate-200 p-6 shadow-lg">
-              <p className="text-sm font-semibold text-slate-700 mb-3">Kết nối ví</p>
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-lg shadow-slate-200/40 ring-1 ring-slate-900/5">
+              <p className="mb-3 text-sm font-semibold text-slate-700">Kết nối ví</p>
               <WalletStatus />
             </div>
           </div>
         </section>
 
         {/* Key Features Section */}
-        <section className="flex flex-col gap-8">
-          <div className="text-center max-w-2xl mx-auto">
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4">
+        <section className="flex flex-col gap-12">
+          <div className="text-center">
+            <p className="mb-2 text-sm font-semibold uppercase tracking-wider text-indigo-600">
+              Lợi ích
+            </p>
+            <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
               Tại sao chọn quyên góp phi tập trung?
             </h2>
-            <p className="text-lg text-slate-600">
+            <p className="mx-auto mt-3 max-w-xl text-lg text-slate-600">
               Minh bạch, an toàn và dễ tiếp cận trong mỗi giao dịch.
             </p>
           </div>
 
-          <div className="grid gap-6 md:grid-cols-3">
-            {/* Feature 1 */}
-            <div className="rounded-2xl bg-white border border-slate-200 p-8 shadow-sm hover:shadow-lg transition">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-blue-100 mb-4">
-                <span className="text-xl">🔒</span>
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="group rounded-2xl border border-slate-200/80 bg-white p-8 shadow-sm ring-1 ring-slate-900/5 transition hover:shadow-md hover:ring-indigo-500/10">
+              <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-600 transition group-hover:bg-indigo-500/15">
+                <span className="text-2xl" aria-hidden>🔒</span>
               </div>
-              <h3 className="text-lg font-bold text-slate-900 mb-2">Hoàn toàn minh bạch</h3>
-              <p className="text-slate-600">
-                Tất cả giao dịch được ghi lại trên blockchain. Có thể nhìn rõ ràng nơi mỗi khoản quyên góp đi đến.
+              <h3 className="text-lg font-bold text-slate-900">Hoàn toàn minh bạch</h3>
+              <p className="mt-2 text-slate-600 leading-relaxed">
+                Mọi giao dịch được ghi trên blockchain. Bạn luôn biết từng khoản quyên góp đi đâu.
               </p>
             </div>
-
-            {/* Feature 2 */}
-            <div className="rounded-2xl bg-white border border-slate-200 p-8 shadow-sm hover:shadow-lg transition">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-blue-100 mb-4">
-                <span className="text-xl">⚡</span>
+            <div className="group rounded-2xl border border-slate-200/80 bg-white p-8 shadow-sm ring-1 ring-slate-900/5 transition hover:shadow-md hover:ring-indigo-500/10">
+              <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-600 transition group-hover:bg-indigo-500/15">
+                <span className="text-2xl" aria-hidden>⚡</span>
               </div>
-              <h3 className="text-lg font-bold text-slate-900 mb-2">Cập nhật theo thời gian thực</h3>
-              <p className="text-slate-600">
-                Xem tiến trình chiến dịch ngay lập tức. Không trễ, không trung gian. Trực tiếp từ blockchain lên màn hình của bạn.
+              <h3 className="text-lg font-bold text-slate-900">Cập nhật thời gian thực</h3>
+              <p className="mt-2 text-slate-600 leading-relaxed">
+                Tiến trình chiến dịch cập nhật ngay từ blockchain, không trễ, không trung gian.
               </p>
             </div>
-
-            {/* Feature 3 */}
-            <div className="rounded-2xl bg-white border border-slate-200 p-8 shadow-sm hover:shadow-lg transition">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-blue-100 mb-4">
-                <span className="text-xl">🌍</span>
+            <div className="group rounded-2xl border border-slate-200/80 bg-white p-8 shadow-sm ring-1 ring-slate-900/5 transition hover:shadow-md hover:ring-indigo-500/10 sm:col-span-2 lg:col-span-1">
+              <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-600 transition group-hover:bg-indigo-500/15">
+                <span className="text-2xl" aria-hidden>🌍</span>
               </div>
-              <h3 className="text-lg font-bold text-slate-900 mb-2">Toàn cầu & dễ tiếp cận</h3>
-              <p className="text-slate-600">
-                Không có giới hạn địa lý. Bất kỳ ai có ví điện tử đều có thể tham gia tài trợ chiến dịch trên toàn thế giới.
+              <h3 className="text-lg font-bold text-slate-900">Toàn cầu & dễ tiếp cận</h3>
+              <p className="mt-2 text-slate-600 leading-relaxed">
+                Không giới hạn địa lý. Ai có ví đều có thể tham gia tài trợ từ bất kỳ đâu.
               </p>
             </div>
           </div>
         </section>
 
         {/* Featured Campaigns Section */}
-        <section className="flex flex-col gap-8">
-          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <section className="flex flex-col gap-8 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-lg shadow-slate-200/30 ring-1 ring-slate-900/5 md:p-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="text-3xl md:text-4xl font-bold text-slate-900">Chiến dịch nổi bật</h2>
-              <p className="text-lg text-slate-600 mt-2">
-                Khám phá các chiến dịch đang hoạt động tạo ra tác động thực sự trên blockchain
+              <p className="mb-1 text-sm font-semibold uppercase tracking-wider text-indigo-600">
+                Khám phá
+              </p>
+              <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+                Chiến dịch nổi bật
+              </h2>
+              <p className="mt-2 text-slate-600">
+                Các chiến dịch đang hoạt động, tạo tác động thực trên blockchain
               </p>
             </div>
             <Link
               href="/campaigns"
-              className="inline-flex items-center justify-center px-6 py-3 rounded-lg border-2 border-slate-200 text-slate-900 font-semibold hover:border-blue-600 hover:text-blue-600 transition duration-200 w-fit"
+              className="inline-flex w-fit items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50/50"
             >
-              Xem tất cả →
+              Xem tất cả
+              <span className="text-slate-400" aria-hidden>→</span>
             </Link>
           </div>
-          <div className="mt-4">
+          <div>
             <CampaignListDisplay />
           </div>
         </section>
 
         {/* How It Works Section */}
-        <section id="about" className="flex flex-col gap-8">
-          <div className="text-center max-w-2xl mx-auto">
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4">
-              Nó hoạt động như thế nào
+        <section id="about" className="flex flex-col gap-12">
+          <div className="text-center">
+            <p className="mb-2 text-sm font-semibold uppercase tracking-wider text-indigo-600">
+              Quy trình
+            </p>
+            <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+              Hoạt động như thế nào
             </h2>
-            <p className="text-lg text-slate-600">
-              Quy trình 4 bước đơn giản để khởi chạy hoặc hỗ trợ một chiến dịch
+            <p className="mx-auto mt-3 max-w-xl text-lg text-slate-600">
+              4 bước đơn giản để khởi chạy hoặc hỗ trợ chiến dịch
             </p>
           </div>
 
-          <div className="grid gap-6 md:grid-cols-4">
-            {/* Step 1 */}
-            <div className="flex flex-col gap-4">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-600 text-white font-bold text-lg">
-                1
+          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { step: 1, title: 'Kết nối ví', desc: 'Liên kết MetaMask hoặc ví ưa thích trên mạng Sepolia.' },
+              { step: 2, title: 'Tạo chiến dịch', desc: 'Đặt mục tiêu, thời hạn và mô tả chiến dịch trên chuỗi khối.' },
+              { step: 3, title: 'Chia sẻ & quyên góp', desc: 'Quảng bá và theo dõi quyên góp theo thời gian thực.' },
+              { step: 4, title: 'Rút tiền', desc: 'Rút tiền an toàn khi chiến dịch đạt mục tiêu.' },
+            ].map(({ step, title, desc }) => (
+              <div key={step} className="flex flex-col">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-600 text-base font-bold text-white shadow-lg shadow-indigo-600/20">
+                  {step}
+                </div>
+                <h3 className="mt-4 text-lg font-bold text-slate-900">{title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-600">{desc}</p>
               </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-900">Kết nối ví</h3>
-                <p className="text-slate-600 text-sm mt-2">
-                  Liên kết ví MetaMask hoặc ví ưa thích của bạn để bắt đầu trên mạng thử nghiệm Sepolia
-                </p>
-              </div>
-            </div>
-
-            {/* Step 2 */}
-            <div className="flex flex-col gap-4">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-600 text-white font-bold text-lg">
-                2
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-900">Tạo chiến dịch</h3>
-                <p className="text-slate-600 text-sm mt-2">
-                  Đặt mục tiêu quyên góp, thời hạn và chi tiết chiến dịch trên chuỗi khối
-                </p>
-              </div>
-            </div>
-
-            {/* Step 3 */}
-            <div className="flex flex-col gap-4">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-600 text-white font-bold text-lg">
-                3
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-900">Chia sẻ & quyên góp</h3>
-                <p className="text-slate-600 text-sm mt-2">
-                  Quảng bá chiến dịch của bạn và theo dõi quyên góp theo thời gian thực trên blockchain
-                </p>
-              </div>
-            </div>
-
-            {/* Step 4 */}
-            <div className="flex flex-col gap-4">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-600 text-white font-bold text-lg">
-                4
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-900">Rút tiền</h3>
-                <p className="text-slate-600 text-sm mt-2">
-                  An toàn rút tiền quyên góp khi đạt được mục tiêu của bạn
-                </p>
-              </div>
-            </div>
+            ))}
           </div>
         </section>
 
-        {/* Network Info & About Section */}
-        <section className="flex flex-col gap-8 rounded-2xl bg-white border border-slate-200 p-8 md:p-10">
-          <div className="text-center max-w-2xl mx-auto">
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4">
-              Được xây dựng trên Ethereum Sepolia
+        {/* Network Info Section */}
+        <section className="flex flex-col gap-10 rounded-2xl border border-slate-200/80 bg-white p-8 shadow-lg shadow-slate-200/30 ring-1 ring-slate-900/5 md:p-10">
+          <div className="text-center">
+            <p className="mb-2 text-sm font-semibold uppercase tracking-wider text-indigo-600">
+              Hạ tầng
+            </p>
+            <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+              Xây dựng trên Ethereum Sepolia
             </h2>
-            <p className="text-lg text-slate-600">
-              Nền tảng của chúng tôi chạy trên mạng thử nghiệm Ethereum Sepolia. Mỗi chiến dịch, quyên góp và cột mốc được ghi lại vĩnh viễn trên blockchain để đảm bảo minh bạch hoàn toàn.
+            <p className="mx-auto mt-3 max-w-2xl text-lg text-slate-600">
+              Mọi chiến dịch, quyên góp và cột mốc được ghi vĩnh viễn trên blockchain — minh bạch hoàn toàn.
             </p>
           </div>
-
-          <div className="grid gap-6 md:grid-cols-3">
-            <div className="flex flex-col gap-2">
-              <p className="text-sm font-semibold text-slate-600">Mạng</p>
-              <p className="text-xl font-bold text-slate-900">Ethereum Sepolia</p>
-              <p className="text-sm text-slate-600">Mạng thử nghiệm để phát triển và kiểm tra</p>
+          <div className="grid gap-8 sm:grid-cols-3">
+            <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-6">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Mạng</p>
+              <p className="mt-2 text-xl font-bold text-slate-900">Ethereum Sepolia</p>
+              <p className="mt-1 text-sm text-slate-600">Mạng thử nghiệm để phát triển và kiểm tra</p>
             </div>
-            <div className="flex flex-col gap-2">
-              <p className="text-sm font-semibold text-slate-600">ID chuỗi</p>
-              <p className="text-xl font-bold text-slate-900">11155111</p>
-              <p className="text-sm text-slate-600">Định danh mạng duy nhất</p>
+            <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-6">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Chain ID</p>
+              <p className="mt-2 text-xl font-bold text-slate-900 font-mono">11155111</p>
+              <p className="mt-1 text-sm text-slate-600">Định danh mạng duy nhất</p>
             </div>
-            <div className="flex flex-col gap-2">
-              <p className="text-sm font-semibold text-slate-600">Công nghệ</p>
-              <p className="text-xl font-bold text-slate-900">Hợp đồng thông minh</p>
-              <p className="text-sm text-slate-600">Tự động hóa dựa trên Solidity</p>
+            <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-6">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Công nghệ</p>
+              <p className="mt-2 text-xl font-bold text-slate-900">Smart contracts</p>
+              <p className="mt-1 text-sm text-slate-600">Tự động hóa trên Solidity</p>
             </div>
           </div>
         </section>
 
         {/* Final CTA Section */}
-        <section className="rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 px-8 py-12 text-white text-center md:px-12 shadow-lg">
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">
+        <section className="rounded-2xl bg-indigo-600 px-8 py-14 text-center shadow-xl shadow-indigo-600/20 md:px-12">
+          <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
             Sẵn sàng tạo ra sự thay đổi?
           </h2>
-          <p className="text-lg text-blue-100 mb-8 max-w-xl mx-auto">
-            Bắt đầu một chiến dịch, hỗ trợ một mục đích, hoặc theo dõi đóng góp của bạn trên blockchain. Tham gia cộng đồng của chúng tôi hôm nay.
+          <p className="mx-auto mt-4 max-w-xl text-lg text-indigo-100">
+            Bắt đầu chiến dịch, hỗ trợ mục đích, hoặc theo dõi đóng góp trên blockchain. Tham gia cộng đồng ngay.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:justify-center">
             {safeIsConnected && safeIsSepoliaNetwork ? (
               <Link
                 href="/campaigns/create"
-                className="inline-flex items-center justify-center px-8 py-3 rounded-lg bg-white text-blue-600 font-bold hover:bg-blue-50 transition duration-200 shadow-lg"
+                className="inline-flex items-center justify-center rounded-xl bg-white px-8 py-3.5 text-base font-bold text-indigo-600 shadow-lg transition hover:bg-indigo-50"
               >
-                Bắt đầu một chiến dịch
+                Bắt đầu chiến dịch
               </Link>
             ) : (
               <button
-                className="inline-flex items-center justify-center px-8 py-3 rounded-lg bg-white/30 text-white font-bold cursor-not-allowed"
+                className="inline-flex cursor-not-allowed items-center justify-center rounded-xl bg-white/20 px-8 py-3.5 text-base font-bold text-white"
                 disabled
-                title={!isConnected ? "Kết nối ví để tạo chiến dịch" : "Chuyển sang mạng Sepolia"}
+                title={!isConnected ? 'Kết nối ví để tạo chiến dịch' : 'Chuyển sang mạng Sepolia'}
               >
-                Bắt đầu một chiến dịch
+                Bắt đầu chiến dịch
               </button>
             )}
             <Link
               href="/campaigns"
-              className="inline-flex items-center justify-center px-8 py-3 rounded-lg border-2 border-white text-white font-bold hover:bg-white/10 transition duration-200"
+              className="inline-flex items-center justify-center rounded-xl border-2 border-white/80 px-8 py-3.5 text-base font-bold text-white transition hover:bg-white/10"
             >
               Duyệt chiến dịch
             </Link>
@@ -308,60 +271,58 @@ function HomeContent() {
         </section>
 
         {/* Footer */}
-        <footer className="border-t border-slate-200 pt-12 pb-8">
-          <div className="grid gap-8 md:grid-cols-4 mb-8">
-            {/* Brand Column */}
-            <div className="flex flex-col gap-2">
+        <footer className="border-t border-slate-200/80 pt-14 pb-10">
+          <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="flex flex-col gap-3">
               <p className="text-lg font-bold text-slate-900">FundRaising</p>
-              <p className="text-sm text-slate-600">
-                Quyên góp phi tập trung được hỗ trợ bởi công nghệ blockchain.
+              <p className="text-sm leading-relaxed text-slate-600">
+                Nền tảng quyên góp phi tập trung trên blockchain.
               </p>
             </div>
-
-            {/* Navigation Column */}
             <div className="flex flex-col gap-3">
               <p className="text-sm font-semibold text-slate-900">Nền tảng</p>
-              <Link href="/campaigns" className="text-sm text-slate-600 hover:text-blue-600 transition">
+              <Link href="/campaigns" className="text-sm text-slate-600 transition hover:text-indigo-600">
                 Duyệt chiến dịch
               </Link>
-              <Link href="/campaigns/create" className="text-sm text-slate-600 hover:text-blue-600 transition">
+              <Link href="/leaderboard" className="text-sm text-slate-600 transition hover:text-indigo-600">
+                Bảng xếp hạng
+              </Link>
+              <Link href="/campaigns/create" className="text-sm text-slate-600 transition hover:text-indigo-600">
                 Tạo chiến dịch
               </Link>
-              <Link href="/donations" className="text-sm text-slate-600 hover:text-blue-600 transition">
+              <Link href="/dashboard" className="text-sm text-slate-600 transition hover:text-indigo-600">
+                Tổng quan
+              </Link>
+              <Link href="/donations" className="text-sm text-slate-600 transition hover:text-indigo-600">
                 Quyên góp của tôi
               </Link>
-              <Link href="/status" className="text-sm text-slate-600 hover:text-blue-600 transition">
+              <Link href="/status" className="text-sm text-slate-600 transition hover:text-indigo-600">
                 Trạng thái hệ thống
               </Link>
             </div>
-
-            {/* Network Column */}
             <div className="flex flex-col gap-3">
               <p className="text-sm font-semibold text-slate-900">Mạng</p>
-              <a href="https://sepolia.etherscan.io" target="_blank" rel="noopener noreferrer" className="text-sm text-slate-600 hover:text-blue-600 transition">
-                Trình khám phá Sepolia
+              <a href="https://sepolia.etherscan.io" target="_blank" rel="noopener noreferrer" className="text-sm text-slate-600 transition hover:text-indigo-600">
+                Etherscan Sepolia
               </a>
-              <a href="https://faucet.sepolia.dev" target="_blank" rel="noopener noreferrer" className="text-sm text-slate-600 hover:text-blue-600 transition">
-                Lấy ETH thử nghiệm
+              <a href="https://faucet.sepolia.dev" target="_blank" rel="noopener noreferrer" className="text-sm text-slate-600 transition hover:text-indigo-600">
+                Faucet Sepolia
               </a>
             </div>
-
-            {/* Info Column */}
             <div className="flex flex-col gap-3">
               <p className="text-sm font-semibold text-slate-900">Về chúng tôi</p>
               <p className="text-sm text-slate-600">
-                Được xây dựng cho IE213 - Khóa học Công nghệ Phát triển Web tại UIT
+                Dự án IE213 — Công nghệ Phát triển Web, UIT
               </p>
             </div>
           </div>
-
-          <div className="border-t border-slate-200 pt-8">
-            <div className="flex flex-col md:flex-row gap-4 justify-between items-center text-sm text-slate-600">
-              <p>© 2024 FundRaising. Bảo lưu mọi quyền.</p>
-              <div className="flex gap-6">
-                <a href="#" className="hover:text-blue-600 transition">Riêng tư</a>
-                <a href="#" className="hover:text-blue-600 transition">Điều khoản</a>
-                <a href="#" className="hover:text-blue-600 transition">Liên hệ</a>
+          <div className="mt-12 border-t border-slate-200/80 pt-8">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-slate-500">© 2024 FundRaising. Bảo lưu mọi quyền.</p>
+              <div className="flex gap-6 text-sm text-slate-500">
+                <a href="#" className="transition hover:text-indigo-600">Riêng tư</a>
+                <a href="#" className="transition hover:text-indigo-600">Điều khoản</a>
+                <a href="#" className="transition hover:text-indigo-600">Liên hệ</a>
               </div>
             </div>
           </div>

@@ -17,4 +17,13 @@ async function getDonationsByDonor(req, res, next) {
     } catch (err) { next(err); }
 }
 
-module.exports = { getDonationsByCampaign, getDonationsByDonor };
+// GET /api/donations/leaderboard/top-donors?limit=10
+async function getTopDonors(req, res, next) {
+    try {
+        const limit = Math.min(parseInt(req.query.limit, 10) || 10, 100);
+        const topDonors = await donationService.getTopDonors(limit);
+        return successRes(res, topDonors);
+    } catch (err) { next(err); }
+}
+
+module.exports = { getDonationsByCampaign, getDonationsByDonor, getTopDonors };
