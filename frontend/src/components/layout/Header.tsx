@@ -1,26 +1,56 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useAuth } from '@/lib';
+
+function isLinkActive(href: string, pathname: string): boolean {
+  if (href === '/campaigns') {
+    return pathname === '/campaigns' || (pathname.startsWith('/campaigns/') && !pathname.startsWith('/campaigns/create'));
+  }
+  if (href === '/campaigns/create') {
+    return pathname.startsWith('/campaigns/create');
+  }
+  return pathname === href || pathname.startsWith(href + '/');
+}
 
 const WalletConnectButton = dynamic(() => import('@/components/wallet/WalletConnectButton'), {
   ssr: false,
 });
 
 export default function Header() {
+  const pathname = usePathname();
+  const [isMounted, setIsMounted] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const hasProvider =
-    typeof window === 'undefined' ||
-    Boolean((window as Window & { ethereum?: unknown }).ethereum);
+  const { token, user } = useAuth();
 
-  const navigationLinks = [
+  // Avoid hydration mismatch: first render must match SSR output.
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  const hasProvider = !isMounted
+    ? true
+    : Boolean((window as Window & { ethereum?: unknown }).ethereum);
+  const isSignedIn = isMounted ? Boolean(token && user?.wallet) : false;
+
+  // Public navigation always hiển thị trên header
+  const publicLinks = [
     { href: '/campaigns', label: 'Chiến dịch' },
-    { href: '/campaigns/create', label: 'Tạo mới' },
-    { href: '/donations', label: 'Quyên góp' },
-    { href: '/certificates', label: 'Chứng chỉ của tôi' },
-    { href: '/my-campaigns', label: 'Chiến dịch của tôi' },
+    { href: '/leaderboard', label: 'Bảng xếp hạng' },
     { href: '/status', label: 'Trạng thái' },
+  ];
+
+  // Các trang cá nhân gom vào nhóm "Tài khoản" để header gọn hơn
+  const accountLinks = [
+    { href: '/dashboard', label: 'Tổng quan' },
+    { href: '/my-campaigns', label: 'Chiến dịch của tôi' },
+    { href: '/campaigns/create', label: 'Tạo mới campaign' },
+    { href: '/donations', label: 'Quyên góp của tôi' },
+    { href: '/certificates', label: 'Chứng chỉ của tôi' },
+    { href: '/settings', label: 'Cài đặt' },
   ];
 
   return (
@@ -61,17 +91,54 @@ export default function Header() {
           </Link>
 
           {/* Desktop Navigation Links */}
-          <div className="hidden lg:flex items-center gap-1">
-            {navigationLinks.map((link) => (
-              <div key={link.href} className="relative group">
-                <Link
-                  href={link.href}
-                  className="px-3 py-2 text-sm font-medium text-slate-700 hover:text-blue-600 transition-colors relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-0.5 after:bg-gradient-to-r after:from-blue-500 after:to-blue-600 hover:after:w-full after:transition-all after:duration-300"
+          <div className="hidden lg:flex items-center gap-2">
+            {publicLinks.map((link) => {
+              const active = isLinkActive(link.href, pathname ?? '');
+              return (
+                <div key={link.href} className="relative group">
+                  <Link
+                    href={link.href}
+                    className={`px-3 py-2 text-sm font-medium transition-colors relative after:absolute after:bottom-0 after:left-0 after:h-0.5 after:bg-gradient-to-r after:from-blue-500 after:to-blue-600 after:transition-all after:duration-300 ${
+                      active
+                        ? 'text-blue-600 after:w-full'
+                        : 'text-slate-700 hover:text-blue-600 after:w-0 hover:after:w-full'
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                </div>
+              );
+            })}
+
+            {isSignedIn && (
+              <div className="relative group">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-blue-500 hover:text-blue-600"
                 >
-                  {link.label}
-                </Link>
+                  Tài khoản
+                  <span className="text-[10px]">▾</span>
+                </button>
+                <div className="invisible absolute right-0 top-full z-40 mt-0 w-56 rounded-xl border border-slate-200 bg-white p-2 text-sm text-slate-700 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100">
+                  {accountLinks.map((link) => {
+                    const active = isLinkActive(link.href, pathname ?? '');
+                    return (
+                      <Link
+                        key={link.href}
+                        href={link.href}
+                        className={`block rounded-lg px-3 py-2 text-xs font-medium ${
+                          active
+                            ? 'bg-blue-50 text-blue-700'
+                            : 'hover:bg-slate-50 hover:text-blue-600'
+                        }`}
+                      >
+                        {link.label}
+                      </Link>
+                    );
+                  })}
+                </div>
               </div>
-            ))}
+            )}
           </div>
 
           {/* Right Section - Wallet Button */}
@@ -100,17 +167,48 @@ export default function Header() {
         {isMobileMenuOpen && (
           <div className="lg:hidden border-t border-slate-200/50 bg-gradient-to-b from-slate-50 to-white">
             <div className="px-4 py-4 space-y-2">
-              {navigationLinks.map((link) => (
-                <div key={link.href}>
+              {publicLinks.map((link) => {
+                const active = isLinkActive(link.href, pathname ?? '');
+                return (
                   <Link
+                    key={link.href}
                     href={link.href}
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className="block px-3 py-2 text-sm font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors"
+                    className={`block rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                      active
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'text-slate-700 hover:bg-blue-50 hover:text-blue-600'
+                    }`}
                   >
                     {link.label}
                   </Link>
-                </div>
-              ))}
+                );
+              })}
+
+              {isSignedIn && (
+                <>
+                  <p className="pt-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Tài khoản
+                  </p>
+                  {accountLinks.map((link) => {
+                    const active = isLinkActive(link.href, pathname ?? '');
+                    return (
+                      <Link
+                        key={link.href}
+                        href={link.href}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className={`block rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                          active
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'text-slate-700 hover:bg-blue-50 hover:text-blue-600'
+                        }`}
+                      >
+                        {link.label}
+                      </Link>
+                    );
+                  })}
+                </>
+              )}
             </div>
           </div>
         )}

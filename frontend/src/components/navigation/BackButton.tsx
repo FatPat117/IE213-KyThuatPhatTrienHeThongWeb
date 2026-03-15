@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 interface BackButtonProps {
   fallbackHref?: string;
   className?: string;
+  preferFallback?: boolean;
 }
 
 /**
@@ -12,10 +13,14 @@ interface BackButtonProps {
  * - go to previous page when browser history exists
  * - fallback to a safe route when opened directly
  */
-export default function BackButton({ fallbackHref = '/', className }: BackButtonProps) {
+export default function BackButton({ fallbackHref = '/', className, preferFallback = false }: BackButtonProps) {
   const router = useRouter();
 
   const handleBack = () => {
+    if (preferFallback) {
+      router.push(fallbackHref);
+      return;
+    }
     if (typeof window !== 'undefined' && window.history.length > 1) {
       router.back();
       return;

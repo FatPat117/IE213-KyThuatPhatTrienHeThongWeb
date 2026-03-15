@@ -1,5 +1,5 @@
 const express = require("express");
-const { getDonationsByCampaign, getDonationsByDonor } = require("../controllers/donation.controller");
+const { getDonationsByCampaign, getDonationsByDonor, getTopDonors } = require("../controllers/donation.controller");
 const validateAddress = require("../middlewares/validateAddress");
 
 const router = express.Router();
@@ -52,5 +52,11 @@ router.get("/campaign/:id", getDonationsByCampaign);
  *         description: Địa chỉ ví không hợp lệ
  */
 router.get("/donor/:wallet", validateAddress, getDonationsByDonor);
+
+/**
+ * GET /api/donations/leaderboard/top-donors?limit=10
+ * Top nhà hảo tâm theo tổng ETH đã quyên góp (từ indexer Donated).
+ */
+router.get("/leaderboard/top-donors", getTopDonors);
 
 module.exports = router;

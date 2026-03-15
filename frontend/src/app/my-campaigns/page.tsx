@@ -4,7 +4,13 @@ import Link from 'next/link';
 import { useMemo } from 'react';
 import { formatEther } from 'viem';
 import { useAccount } from 'wagmi';
-import { useBackendCampaigns, useReadAllCampaigns } from '@/lib';
+import {
+  getCampaignMetadataFromCache,
+  isPlaceholderCampaignDescription,
+  isPlaceholderCampaignTitle,
+  useBackendCampaigns,
+  useReadAllCampaigns
+} from '@/lib';
 import BackButton from '@/components/navigation/BackButton';
 
 function formatEthAmount(value: number) {
@@ -33,10 +39,15 @@ export default function MyCampaignsPage() {
     >();
 
     campaignsQuery.data.forEach((campaign) => {
+      const cached = getCampaignMetadataFromCache(campaign.onChainId);
       map.set(campaign.onChainId, {
         onChainId: campaign.onChainId,
-        title: campaign.title || `Campaign #${campaign.onChainId}`,
-        description: campaign.description || '',
+        title: !isPlaceholderCampaignTitle(campaign.title, campaign.onChainId)
+          ? campaign.title
+          : (cached?.title || `Campaign #${campaign.onChainId}`),
+        description: !isPlaceholderCampaignDescription(campaign.description)
+          ? campaign.description
+          : (cached?.description || ''),
         creator: campaign.creator,
         goal: campaign.goal || '0',
         raised: campaign.raised || '0',
@@ -61,10 +72,11 @@ export default function MyCampaignsPage() {
           status: inferredStatus,
         });
       } else {
+        const cached = getCampaignMetadataFromCache(campaign.id);
         map.set(campaign.id, {
           onChainId: campaign.id,
-          title: `Campaign #${campaign.id}`,
-          description: 'Campaign data is stored on-chain without off-chain metadata.',
+          title: cached?.title || `Campaign #${campaign.id}`,
+          description: cached?.description || 'Campaign data is stored on-chain without off-chain metadata.',
           creator: campaign.creator,
           goal: campaign.goal.toString(),
           raised: campaign.raised.toString(),
@@ -149,48 +161,129 @@ export default function MyCampaignsPage() {
         )}
 
         {!campaignsQuery.isLoading && !onChainQuery.isLoading && myCampaigns.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {myCampaigns.map((campaign) => {
-              const goalEth = Number(formatEther(BigInt(campaign.goal || '0')));
-              const raisedEth = Number(formatEther(BigInt(campaign.raised || '0')));
-              const progress = goalEth > 0 ? (raisedEth / goalEth) * 100 : 0;
+          <section className="space-y-10">
+            {[
+              {
+                key: 'active' as const,
+                title: 'Đang diễn ra',
+                description: 'Các chiến dịch đang mở và có thể tiếp tục nhận quyên góp.',
+              },
+              {
+                key: 'ended' as const,
+                title: 'Đã kết thúc',
+                description: 'Chiến dịch đã kết thúc, có thể rút tiền nếu đạt mục tiêu.',
+              },
+              {
+                key: 'failed' as const,
+                title: 'Thất bại',
+                description: 'Chiến dịch không đạt mục tiêu, donor có thể yêu cầu hoàn tiền.',
+              },
+            ].map((group) => {
+              const campaignsInGroup = myCampaigns.filter(
+                (campaign) => campaign.status === group.key
+              );
 
               return (
-                <Link
-                  key={campaign.onChainId}
-                  href={`/campaigns/${campaign.onChainId}`}
-                  className="group rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md transition-all duration-300"
-                >
-                  <h3 className="text-lg font-bold text-slate-900 mb-2 group-hover:text-blue-600 transition">
-                    {campaign.title || `Campaign #${campaign.onChainId}`}
-                  </h3>
-                  <p className="text-sm text-slate-600 mb-4 line-clamp-2">{campaign.description || 'No description'}</p>
-                  <div className="mb-4">
-                    <p className="text-sm text-slate-700">
-                      {formatEthAmount(raisedEth)} / {formatEthAmount(goalEth)} ETH
-                    </p>
-                    <div className="h-2 w-full rounded-full bg-slate-200 overflow-hidden mt-2">
-                      <div
-                        className="h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all duration-500"
-                        style={{ width: `${Math.min(progress, 100)}%` }}
-                      />
-                    </div>
+                <div key={group.key} className="space-y-4">
+                  <div>
+                    <h2 className="text-xl font-semibold text-slate-900">{group.title}</h2>
+                    <p className="mt-1 text-sm text-slate-600">{group.description}</p>
                   </div>
-                  <p className="text-sm font-semibold text-blue-600">{campaign.status}</p>
-                  <p className="mt-2 text-xs text-slate-500">
-                    {campaign.status === 'active'
-                      ? 'Đang diễn ra - chưa thể rút tiền'
-                      : campaign.status === 'ended'
-                        ? 'Đủ điều kiện rút tiền trong trang chi tiết'
-                        : 'Chiến dịch failed - không thể rút, donor sẽ yêu cầu refund'}
-                  </p>
-                  <p className="mt-3 text-sm font-semibold text-blue-600 group-hover:text-blue-700">
-                    Quản lý campaign →
-                  </p>
-                </Link>
+
+                  {campaignsInGroup.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                      Chưa có chiến dịch nào thuộc nhóm này.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                      {campaignsInGroup.map((campaign) => {
+                        const goalEth = Number(formatEther(BigInt(campaign.goal || '0')));
+                        const raisedEth = Number(formatEther(BigInt(campaign.raised || '0')));
+                        const progress = goalEth > 0 ? (raisedEth / goalEth) * 100 : 0;
+
+                        const statusStyles =
+                          campaign.status === 'active'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : campaign.status === 'ended'
+                            ? 'bg-slate-100 text-slate-700 border-slate-200'
+                            : 'bg-red-50 text-red-700 border-red-200';
+
+                        const progressBarColor =
+                          campaign.status === 'active'
+                            ? 'bg-emerald-500'
+                            : campaign.status === 'ended'
+                            ? 'bg-slate-400'
+                            : 'bg-red-500';
+
+                        return (
+                          <div
+                            key={campaign.onChainId}
+                            className="flex h-full flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+                          >
+                            {/* Header */}
+                            <div className="mb-3 flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <h3 className="truncate text-lg font-bold text-slate-900">
+                                  {campaign.title || `Campaign #${campaign.onChainId}`}
+                                </h3>
+                              </div>
+                              <span
+                                className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold capitalize ${statusStyles}`}
+                              >
+                                {campaign.status}
+                              </span>
+                            </div>
+
+                            {/* Body */}
+                            <p className="mb-4 line-clamp-3 text-sm text-slate-600">
+                              {campaign.description || 'No description'}
+                            </p>
+
+                            <div className="mb-4 space-y-2">
+                              <div className="flex justify-between text-xs font-medium text-slate-600">
+                                <span>Đã huy động: {formatEthAmount(raisedEth)} ETH</span>
+                                <span>Mục tiêu: {formatEthAmount(goalEth)} ETH</span>
+                              </div>
+                              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                                <div
+                                  className={`h-full ${progressBarColor} transition-all duration-500`}
+                                  style={{ width: `${Math.min(progress, 100)}%` }}
+                                />
+                              </div>
+                              <p className="text-xs text-slate-500">
+                                {goalEth > 0
+                                  ? `${Math.min(progress, 100).toFixed(1)}% hoàn thành`
+                                  : 'Chưa cấu hình mục tiêu'}
+                              </p>
+                            </div>
+
+                            {/* Status helper text */}
+                            <p className="mt-auto text-xs text-slate-500">
+                              {campaign.status === 'active'
+                                ? 'Đang diễn ra - chưa thể rút tiền'
+                                : campaign.status === 'ended'
+                                ? 'Đủ điều kiện rút tiền trong trang chi tiết'
+                                : 'Chiến dịch failed - không thể rút, donor sẽ yêu cầu refund'}
+                            </p>
+
+                            {/* Footer */}
+                            <div className="mt-4">
+                              <Link
+                                href={`/campaigns/${campaign.onChainId}`}
+                                className="inline-flex w-full items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 hover:shadow-md"
+                              >
+                                Quản lý campaign
+                              </Link>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               );
             })}
-          </div>
+          </section>
         )}
       </main>
     </div>

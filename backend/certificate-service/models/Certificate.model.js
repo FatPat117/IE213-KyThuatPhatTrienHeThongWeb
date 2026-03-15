@@ -107,6 +107,27 @@ const CertificateSchema = new mongoose.Schema(
             default: "",
             trim: true,
         },
+        displayName: {
+            type: String,
+            default: "",
+            trim: true,
+            maxlength: [100, "displayName tối đa 100 ký tự"],
+        },
+        campaignTitle: {
+            type: String,
+            default: "",
+            trim: true,
+            maxlength: [200, "campaignTitle tối đa 200 ký tự"],
+        },
+        donatedAmountEth: {
+            type: Number,
+            default: 0,
+        },
+        certificateMessage: {
+            type: String,
+            default: "",
+            trim: true,
+        },
         mintedAt: {
             type: Date,
             default: Date.now,

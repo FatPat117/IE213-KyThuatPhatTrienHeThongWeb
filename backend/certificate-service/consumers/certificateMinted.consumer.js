@@ -119,6 +119,7 @@ async function startCertificateMintedConsumer() {
              * Payload from listener-service:
              * { tokenId, campaignOnChainId, ownerWallet, txHash, txContext }
              */
+            const details = await resolveCertificateDetails(payload);
             await certificateService.createCertificate({
                 tokenId: payload.tokenId,
                 campaignOnChainId: payload.campaignOnChainId,

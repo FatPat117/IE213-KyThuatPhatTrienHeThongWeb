@@ -55,6 +55,7 @@ function createPrintableCertificateHtml(node: HTMLDivElement) {
 
 export default function MyCertificatesPage() {
     const { address, isConnected, chain } = useAccount();
+    const campaignsQuery = useBackendCampaigns();
     const [certificates, setCertificates] = useState<CertificateRecord[]>([]);
     const [page, setPage] = useState(1);
     const [meta, setMeta] = useState<PaginatedResponseMeta>(EMPTY_PAGINATION_META);
@@ -104,6 +105,13 @@ export default function MyCertificatesPage() {
     }, [address, isConnected, page]);
 
     const certificateCount = certificates.length;
+    const campaignById = useMemo(() => {
+        const map = new Map<number, (typeof campaignsQuery.data)[number]>();
+        campaignsQuery.data.forEach((campaign) => {
+            map.set(campaign.onChainId, campaign);
+        });
+        return map;
+    }, [campaignsQuery.data]);
     const latestMintDate = useMemo(() => {
         if (certificateCount === 0) return null;
         return new Date(certificates[0].mintedAt).toLocaleDateString('vi-VN');
@@ -261,6 +269,93 @@ export default function MyCertificatesPage() {
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
             <Header />
 
+            const frameWindow = printFrame.contentWindow;
+            const frameDocument = frameWindow?.document;
+            if (!frameWindow || !frameDocument) {
+                printFrame.remove();
+                throw new Error('Không thể khởi tạo tài liệu in. Vui lòng thử lại.');
+            }
+
+            frameDocument.open();
+            frameDocument.write(`
+              <html>
+                <head>
+                  <meta charset="utf-8" />
+                  <title>Certificate #${tokenId}</title>
+                  <style>
+                    html, body { margin: 0; padding: 0; }
+                    body {
+                      padding: 24px;
+                      background: #f8fafc;
+                      color: #0f172a;
+                      font-family: Inter, Arial, sans-serif;
+                    }
+                    .print-wrapper {
+                      width: 100%;
+                      max-width: 960px;
+                      margin: 0 auto;
+                    }
+                    @media print {
+                      body {
+                        background: #fff;
+                        padding: 0;
+                      }
+                      .print-wrapper { max-width: 100%; }
+                    }
+                  </style>
+                </head>
+                <body>
+                  <div class="print-wrapper">${printableCertificate}</div>
+                </body>
+              </html>
+            `);
+            frameDocument.close();
+
+            const cleanup = () => {
+                window.setTimeout(() => {
+                    printFrame.remove();
+                }, 500);
+            };
+
+            frameWindow.onafterprint = cleanup;
+            const fonts = (frameDocument as Document & { fonts?: FontFaceSet }).fonts;
+            const triggerPrint = () => {
+                frameWindow.focus();
+                frameWindow.print();
+            };
+
+            if (fonts?.ready) {
+                fonts.ready.then(triggerPrint).catch(triggerPrint);
+            } else {
+                window.setTimeout(triggerPrint, 200);
+            }
+        } catch (err) {
+            setExportError(err instanceof Error ? err.message : 'Xuất chứng chỉ thất bại. Vui lòng thử lại.');
+        } finally {
+            setPrintingTokenId(null);
+        }
+    };
+
+    const handleShare = async (tokenId: number) => {
+        try {
+            const url = `${window.location.origin}/certificates#token-${tokenId}`;
+            if (navigator.share) {
+                await navigator.share({
+                    title: `Certificate #${tokenId}`,
+                    text: 'Chứng chỉ đóng góp của tôi trên hệ thống gây quỹ.',
+                    url,
+                });
+                return;
+            }
+            await navigator.clipboard?.writeText(url);
+            alert('Đã copy link chứng chỉ vào clipboard.');
+        } catch {
+            alert('Không thể chia sẻ hoặc copy link. Vui lòng thử lại.');
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-linear-to-b from-slate-50 to-white">
             <main className="mx-auto w-full max-w-6xl px-6 py-12 md:px-10">
                 <div className="mb-8 flex items-center justify-between gap-4">
                     <div>
@@ -389,9 +484,10 @@ export default function MyCertificatesPage() {
 
                             {isLoading && <p className="text-sm text-slate-600">Đang tải dữ liệu chứng nhận...</p>}
                             {!isLoading && error && <p className="text-sm text-red-700">{error}</p>}
+                            {!isLoading && !error && exportError && <p className="text-sm text-red-700">{exportError}</p>}
 
                             {!isLoading && !error && certificateCount === 0 && (
-                                <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-sm text-slate-600">
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-8 text-sm text-slate-600 text-center">
                                     Chưa có chứng nhận. Sau khi donate thành công và mint certificate, chứng nhận sẽ xuất hiện tại đây.
                                 </div>
                             )}
@@ -589,7 +685,8 @@ export default function MyCertificatesPage() {
                                                 </a>
                                             </div>
                                         </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
