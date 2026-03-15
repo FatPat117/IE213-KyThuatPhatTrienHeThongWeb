@@ -7,7 +7,7 @@ const { getChannel, EXCHANGE } = require("../config/rabbitmq");
  * 2. Mark the related transaction as successful in transaction-service.
  */
 async function publishCertificateMinted(eventData) {
-    const { tokenId, campaignId, owner, txHash } = eventData;
+    const { tokenId, campaignId, owner, txHash, txContext } = eventData;
 
     const channel = getChannel();
     if (!channel) {
@@ -20,6 +20,7 @@ async function publishCertificateMinted(eventData) {
             campaignOnChainId: Number(campaignId),
             ownerWallet: owner.toLowerCase(),
             txHash,
+            txContext,
         };
 
         channel.publish(
@@ -38,7 +39,7 @@ async function publishCertificateMinted(eventData) {
         try {
             await axios.patch(
                 `${process.env.TRANSACTION_SERVICE_URL}/api/transactions/${txHash}/status`,
-                { status: "success" },
+                { status: "success", txContext },
             );
             console.log(
                 `[listener-service] Updated transaction status to success for txHash=${txHash}`,

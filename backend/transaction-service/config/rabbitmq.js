@@ -1,9 +1,11 @@
 const amqp = require("amqplib");
-const Transaction = require("../models/transaction.model");
+const Transaction = require("../models/Transaction.model");
+const { normalizeTxContext } = require("../services/transaction.service");
 
 const RABBITMQ_URL = process.env.RABBITMQ_URL;
 const EXCHANGE = process.env.RABBITMQ_EXCHANGE || "funding.events";
-const QUEUE = process.env.RABBITMQ_QUEUE_TX_DONATED || "transaction.donation.queue";
+const QUEUE =
+    process.env.RABBITMQ_QUEUE_TX_DONATED || "transaction.donation.queue";
 const ROUTING_KEY = process.env.RABBITMQ_RKEY_DONATED || "donation.received";
 
 let channel = null;
@@ -30,20 +32,26 @@ async function connectRabbitMQ() {
                     const content = JSON.parse(msg.content.toString());
                     console.log(
                         `[transaction-service] Received message from ${msg.fields.routingKey}:`,
-                        content
+                        content,
                     );
 
                     await handleDonationEvent(msg.fields.routingKey, content);
                     channel.ack(msg);
                 } catch (error) {
-                    console.error("[transaction-service] Failed to process message:", error);
+                    console.error(
+                        "[transaction-service] Failed to process message:",
+                        error,
+                    );
                     channel.nack(msg, false, false);
                 }
             },
-            { noAck: false }
+            { noAck: false },
         );
     } catch (error) {
-        console.error("[transaction-service] Failed to connect to RabbitMQ:", error.message);
+        console.error(
+            "[transaction-service] Failed to connect to RabbitMQ:",
+            error.message,
+        );
         setTimeout(connectRabbitMQ, 5000);
     }
 }
@@ -53,7 +61,7 @@ async function handleDonationEvent(routingKey, content) {
         return;
     }
 
-    const { txHash, donorWallet, campaignOnChainId } = content;
+    const { txHash, donorWallet, campaignOnChainId, txContext } = content;
 
     if (!txHash) {
         throw new Error("Missing txHash in donation payload");
@@ -69,7 +77,9 @@ async function handleDonationEvent(routingKey, content) {
 
     const existingTransaction = await Transaction.findOne({ txHash });
     if (existingTransaction) {
-        console.log(`[transaction-service] Transaction ${txHash} already exists. Skipping duplicate event.`);
+        console.log(
+            `[transaction-service] Transaction ${txHash} already exists. Skipping duplicate event.`,
+        );
         return;
     }
 
@@ -79,10 +89,14 @@ async function handleDonationEvent(routingKey, content) {
         action: "donate",
         status: "success",
         campaignOnChainId: Number(campaignOnChainId),
+        ...normalizeTxContext(txContext),
+        lastSyncedAt: new Date(),
     });
 
     await newTransaction.save();
-    console.log(`[transaction-service] Stored transaction ${txHash} successfully.`);
+    console.log(
+        `[transaction-service] Stored transaction ${txHash} successfully.`,
+    );
 }
 
 module.exports = { connectRabbitMQ };

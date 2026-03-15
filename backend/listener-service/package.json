@@ -12,7 +12,9 @@
         "amqplib": "^0.10.4",
         "axios": "^1.7.2",
         "dotenv": "^17.2.3",
-        "ethers": "^6.13.0"
+        "ethers": "^6.13.0",
+        "mongoose": "^8.19.1",
+        "node-cron": "^4.2.1"
     },
     "devDependencies": {
         "nodemon": "^3.1.11"

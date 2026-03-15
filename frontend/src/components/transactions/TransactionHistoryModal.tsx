@@ -6,9 +6,17 @@ export interface TransactionItem {
   txHash: string;
   campaignId?: number;
   campaignName?: string;
-  amountWei?: bigint;
+  amountWei?: string;
   timestamp?: number;
   status?: 'pending' | 'success' | 'failed';
+}
+
+function formatWeiToEth(wei: string) {
+  try {
+    return Number(formatEther(BigInt(wei))).toFixed(4);
+  } catch {
+    return '0.0000';
+  }
 }
 
 interface TransactionHistoryModalProps {
@@ -39,11 +47,12 @@ export default function TransactionHistoryModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 p-4">
+    <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-900/60 p-4">
       <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <h3 className="text-lg font-bold text-slate-900">{title}</h3>
           <button
+            type="button"
             onClick={onClose}
             className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
           >
@@ -72,7 +81,7 @@ export default function TransactionHistoryModal({
               <div className="space-y-1 text-xs text-slate-600">
                 {tx.amountWei !== undefined && (
                   <p>
-                    Amount: <span className="font-semibold text-slate-800">{Number(formatEther(tx.amountWei)).toFixed(4)} ETH</span>
+                    Amount: <span className="font-semibold text-slate-800">{formatWeiToEth(tx.amountWei)} ETH</span>
                   </p>
                 )}
                 {tx.timestamp && <p>Time: {new Date(tx.timestamp).toLocaleString('vi-VN')}</p>}

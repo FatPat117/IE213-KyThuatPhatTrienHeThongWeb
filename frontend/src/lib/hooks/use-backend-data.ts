@@ -2,7 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { useCallback } from 'react';
-import type { CampaignRecord, DonationRecord, TransactionRecord } from '@/lib/api/types';
+import type {
+  CampaignRecord,
+  DonationRecord,
+  PaginatedResponseMeta,
+  TransactionRecord,
+} from '@/lib/api/types';
 import { getCampaignById, getCampaigns, getDonationsByWallet, getTransactionsByWallet } from '@/lib';
 import { useAuth } from '@/lib';
 
@@ -14,6 +19,16 @@ type QueryState<T> = {
   isLoading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
+};
+
+type PaginatedQueryState<T> = QueryState<T[]> & {
+  meta: PaginatedResponseMeta;
+};
+
+const EMPTY_PAGINATION_META: PaginatedResponseMeta = {
+  totalItems: 0,
+  totalPages: 0,
+  currentPage: 1,
 };
 
 export function useBackendCampaigns(): QueryState<CampaignRecord[]> {
@@ -93,31 +108,39 @@ export function useBackendDonations(wallet: string | null): QueryState<DonationR
   return { data, isLoading, error, refetch: fetchData };
 }
 
-export function useBackendTransactions(wallet: string | null): QueryState<TransactionRecord[]> {
+export function useBackendTransactions(
+  wallet: string | null,
+  page = 1,
+  limit = 10
+): PaginatedQueryState<TransactionRecord> {
   const { token } = useAuth();
   const [data, setData] = useState<TransactionRecord[]>([]);
+  const [meta, setMeta] = useState<PaginatedResponseMeta>(EMPTY_PAGINATION_META);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!wallet) {
       setData([]);
+      setMeta(EMPTY_PAGINATION_META);
       return;
     }
     try {
       setIsLoading(true);
       setError(null);
-      setData(await getTransactionsByWallet(token, wallet));
+      const response = await getTransactionsByWallet(token, wallet, page, limit);
+      setData(response.data);
+      setMeta(response.meta);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không thể tải transaction');
+      setError(err instanceof Error ? err.message : 'Failed to load transactions');
     } finally {
       setIsLoading(false);
     }
-  }, [token, wallet]);
+  }, [token, wallet, page, limit]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  return { data, isLoading, error, refetch: fetchData };
+  return { data, meta, isLoading, error, refetch: fetchData };
 }

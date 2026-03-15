@@ -2,12 +2,12 @@ const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const axios = require("axios");
 
 /**
- * Khi contract emit event Donated(campaignId, donor, amount):
- *  1. PUBLISH to RabbitMQ → donation-service consume → lưu MongoDB (async)
- *  2. PATCH transaction-service → update tx status = success (HTTP REST sync)
+ * When the contract emits Donated(campaignId, donor, amount):
+ * 1. Publish to RabbitMQ so donation-service can persist it.
+ * 2. Patch transaction-service to mark the transaction as success.
  */
 async function publishDonated(eventData) {
-    const { campaignId, donor, amount, txHash } = eventData;
+    const { campaignId, donor, amount, txHash, txContext } = eventData;
 
     const channel = getChannel();
     if (channel) {
@@ -20,25 +20,31 @@ async function publishDonated(eventData) {
             donorWallet: donor.toLowerCase(),
             amount: amountBigInt.toString(),
             amountEth,
+            txContext,
         };
 
         channel.publish(
             EXCHANGE,
             process.env.RABBITMQ_RKEY_DONATED || "donation.received",
             Buffer.from(JSON.stringify(payload)),
-            { persistent: true }
+            { persistent: true },
         );
-        console.log(`[listener-service] Published donation.received: txHash=${txHash}`);
+        console.log(
+            `[listener-service] Published donation.received: txHash=${txHash}`,
+        );
     }
 
     if (txHash) {
         try {
             await axios.patch(
                 `${process.env.TRANSACTION_SERVICE_URL}/api/transactions/${txHash}/status`,
-                { status: "success" }
+                { status: "success", txContext },
             );
         } catch (err) {
-            console.error("[listener-service] Không thể cập nhật tx status:", err.message);
+            console.error(
+                "[listener-service] Failed to update transaction status:",
+                err.message,
+            );
         }
     }
 }

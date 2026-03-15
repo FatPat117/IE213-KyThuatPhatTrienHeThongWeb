@@ -26,6 +26,7 @@ export { useIsSepoliaNetwork, useShortenAddress, useWalletStatus, useWalletValid
 
 // API
 export { getCampaignById, getCampaigns, updateCampaignMetadata } from './api/campaigns';
+export { getCertificatesByOwner } from './api/certificates';
 export { getDonationsByCampaign, getDonationsByWallet } from './api/donations';
 export { createTransaction, getTransactionsByWallet } from './api/transactions';
 export { requestNonce, refreshAuthToken, verifyWalletSignature } from './api/auth';

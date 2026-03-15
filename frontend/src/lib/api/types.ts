@@ -28,11 +28,35 @@ export interface DonationRecord {
   donatedAt: string;
 }
 
+export interface PaginatedResponseMeta {
+  totalItems: number;
+  totalPages: number;
+  currentPage: number;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  meta: PaginatedResponseMeta;
+}
+
+export type TransactionAction =
+  | 'donate'
+  | 'createCampaign'
+  | 'mintNFT'
+  | 'withdraw'
+  | 'refund'
+  | 'markAsFailed'
+  | 'cancelCampaign';
+
 export interface TransactionRecord {
   txHash: string;
   walletAddress: string;
-  action: 'donate' | 'createCampaign' | 'mintNFT';
+  action: TransactionAction;
   status: 'pending' | 'success' | 'failed';
+  amountWei: string;
+  blockNumber: number;
+  chainId: number;
+  gasUsed: number;
   campaignOnChainId?: number | null;
   errorMessage?: string;
   createdAt: string;
@@ -44,5 +68,8 @@ export interface CertificateRecord {
   campaignOnChainId: number;
   ownerWallet: string;
   metadataUri: string;
+  donatedAmountWei: string;
+  imageUrl: string;
+  txHash: string;
   mintedAt: string;
 }

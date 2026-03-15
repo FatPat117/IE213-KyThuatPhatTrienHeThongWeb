@@ -1,163 +1,170 @@
 version: "3.9"
 
 services:
-  # ─────────────────────────────────────────────────────────
-  # Infrastructure
-  # ─────────────────────────────────────────────────────────
-  mongodb:
-    image: mongo:7
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    # ─────────────────────────────────────────────────────────
+    # Infrastructure
+    # ─────────────────────────────────────────────────────────
+    mongodb:
+        image: mongo:7
+        ports:
+            - "27017:27017"
+        volumes:
+            - mongo_data:/data/db
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
 
-  rabbitmq:
-    image: rabbitmq:3-management
-    ports:
-      - "5672:5672"      # AMQP
-      - "15672:15672"    # Management UI: http://localhost:15672 (admin/password)
-    environment:
-      RABBITMQ_DEFAULT_USER: admin
-      RABBITMQ_DEFAULT_PASS: password
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    rabbitmq:
+        image: rabbitmq:3-management
+        ports:
+            - "5672:5672" # AMQP
+            - "15672:15672" # Management UI: http://localhost:15672 (admin/password)
+        environment:
+            RABBITMQ_DEFAULT_USER: admin
+            RABBITMQ_DEFAULT_PASS: password
+        volumes:
+            - rabbitmq_data:/var/lib/rabbitmq
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD", "rabbitmq-diagnostics", "ping"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
 
-  anvil:
-    image: ghcr.io/foundry-rs/foundry:latest
-    ports:
-      - "8545:8545"
-    entrypoint: ["anvil", "--host", "0.0.0.0"]
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "cast", "chain-id", "--rpc-url", "http://localhost:8545"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+    anvil:
+        image: ghcr.io/foundry-rs/foundry:latest
+        ports:
+            - "8545:8545"
+        entrypoint: ["anvil", "--host", "0.0.0.0"]
+        restart: unless-stopped
+        healthcheck:
+            test:
+                [
+                    "CMD",
+                    "cast",
+                    "chain-id",
+                    "--rpc-url",
+                    "http://localhost:8545",
+                ]
+            interval: 5s
+            timeout: 5s
+            retries: 5
 
-  contracts-deploy:
-    build: ./smart-contracts
-    profiles: ["deploy"]
-    environment:
-      - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}
-      - DEPLOYER_PRIVATE_KEY=${DEPLOYER_PRIVATE_KEY}
-    volumes:
-      - shared_data:/shared
-    depends_on:
-      anvil:
-        condition: service_healthy
+    contracts-deploy:
+        build: ./smart-contracts
+        profiles: ["deploy"]
+        environment:
+            - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}
+            - DEPLOYER_PRIVATE_KEY=${DEPLOYER_PRIVATE_KEY}
+        volumes:
+            - shared_data:/shared
+        depends_on:
+            anvil:
+                condition: service_healthy
 
-  # ─────────────────────────────────────────────────────────
-  # API Gateway – single entrypoint cho Frontend
-  # ─────────────────────────────────────────────────────────
-  gateway:
-    build: ./backend/gateway
-    ports:
-      - "${GATEWAY_PORT}:${GATEWAY_PORT}"
-    environment:
-      - PORT=${GATEWAY_PORT}
-      - NODE_ENV=${NODE_ENV}
-      - JWT_SECRET=${JWT_SECRET}
-      - AUTH_SERVICE_URL=${AUTH_SERVICE_URL}
-      - USER_SERVICE_URL=${USER_SERVICE_URL}
-      - CAMPAIGN_SERVICE_URL=${CAMPAIGN_SERVICE_URL}
-      - DONATION_SERVICE_URL=${DONATION_SERVICE_URL}
-      - CERTIFICATE_SERVICE_URL=${CERTIFICATE_SERVICE_URL}
-      - TRANSACTION_SERVICE_URL=${TRANSACTION_SERVICE_URL}
-    volumes:
-      - ./backend/gateway:/app
-      - /app/node_modules
-    depends_on:
-      - auth-service
-      - user-service
-      - campaign-service
-      - donation-service
-      - certificate-service
-      - transaction-service
-    restart: unless-stopped
+    # ─────────────────────────────────────────────────────────
+    # API Gateway – single entrypoint cho Frontend
+    # ─────────────────────────────────────────────────────────
+    gateway:
+        build: ./backend/gateway
+        ports:
+            - "${GATEWAY_PORT}:${GATEWAY_PORT}"
+        environment:
+            - PORT=${GATEWAY_PORT}
+            - NODE_ENV=${NODE_ENV}
+            - JWT_SECRET=${JWT_SECRET}
+            - AUTH_SERVICE_URL=${AUTH_SERVICE_URL}
+            - USER_SERVICE_URL=${USER_SERVICE_URL}
+            - CAMPAIGN_SERVICE_URL=${CAMPAIGN_SERVICE_URL}
+            - DONATION_SERVICE_URL=${DONATION_SERVICE_URL}
+            - CERTIFICATE_SERVICE_URL=${CERTIFICATE_SERVICE_URL}
+            - TRANSACTION_SERVICE_URL=${TRANSACTION_SERVICE_URL}
+        volumes:
+            - ./backend/gateway:/app
+            - /app/node_modules
+        depends_on:
+            - auth-service
+            - user-service
+            - campaign-service
+            - donation-service
+            - certificate-service
+            - transaction-service
+        restart: unless-stopped
 
-  # ─────────────────────────────────────────────────────────
-  # Auth Service – SIWE + JWT
-  # ─────────────────────────────────────────────────────────
-  auth-service:
-    build: ./backend/auth-service
-    ports:
-      - "${AUTH_SERVICE_PORT}:${AUTH_SERVICE_PORT}"
-    environment:
-      - GATEWAY_PORT=${GATEWAY_PORT}
-      - PORT=${AUTH_SERVICE_PORT}
-      - NODE_ENV=${NODE_ENV}
-      - MONGO_URI=${MONGO_URI_USERS}
-      - JWT_SECRET=${JWT_SECRET}
-      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
-    volumes:
-      - ./backend/auth-service:/app
-      - /app/node_modules
-    depends_on:
-      mongodb:
-        condition: service_healthy
-    restart: unless-stopped
+    # ─────────────────────────────────────────────────────────
+    # Auth Service – SIWE + JWT
+    # ─────────────────────────────────────────────────────────
+    auth-service:
+        build: ./backend/auth-service
+        ports:
+            - "${AUTH_SERVICE_PORT}:${AUTH_SERVICE_PORT}"
+        environment:
+            - GATEWAY_PORT=${GATEWAY_PORT}
+            - PORT=${AUTH_SERVICE_PORT}
+            - NODE_ENV=${NODE_ENV}
+            - MONGO_URI=${MONGO_URI_USERS}
+            - JWT_SECRET=${JWT_SECRET}
+            - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
+        volumes:
+            - ./backend/auth-service:/app
+            - /app/node_modules
+        depends_on:
+            mongodb:
+                condition: service_healthy
+        restart: unless-stopped
 
-  # ─────────────────────────────────────────────────────────
-  # Domain Microservices
-  # ─────────────────────────────────────────────────────────
-  user-service:
-    build: ./backend/user-service
-    ports:
-      - "${USER_SERVICE_PORT}:${USER_SERVICE_PORT}"
-    environment:
-      - GATEWAY_PORT=${GATEWAY_PORT}
-      - PORT=${USER_SERVICE_PORT}
-      - NODE_ENV=${NODE_ENV}
-      - MONGO_URI=${MONGO_URI_USERS}
-      - INITIAL_ADMIN_WALLET=${INITIAL_ADMIN_WALLET}
-    volumes:
-      - ./backend/user-service:/app
-      - /app/node_modules
-    depends_on:
-      mongodb:
-        condition: service_healthy
-    restart: unless-stopped
+    # ─────────────────────────────────────────────────────────
+    # Domain Microservices
+    # ─────────────────────────────────────────────────────────
+    user-service:
+        build: ./backend/user-service
+        ports:
+            - "${USER_SERVICE_PORT}:${USER_SERVICE_PORT}"
+        environment:
+            - GATEWAY_PORT=${GATEWAY_PORT}
+            - PORT=${USER_SERVICE_PORT}
+            - NODE_ENV=${NODE_ENV}
+            - MONGO_URI=${MONGO_URI_USERS}
+            - INITIAL_ADMIN_WALLET=${INITIAL_ADMIN_WALLET}
+        volumes:
+            - ./backend/user-service:/app
+            - /app/node_modules
+        depends_on:
+            mongodb:
+                condition: service_healthy
+        restart: unless-stopped
 
-  campaign-service:
-    build: ./backend/campaign-service
-    ports:
-      - "${CAMPAIGN_SERVICE_PORT}:${CAMPAIGN_SERVICE_PORT}"
-    environment:
-      - GATEWAY_PORT=${GATEWAY_PORT}
-      - PORT=${CAMPAIGN_SERVICE_PORT}
-      - NODE_ENV=${NODE_ENV}
-      - MONGO_URI=${MONGO_URI_CAMPAIGNS}
-      - RABBITMQ_URL=${RABBITMQ_URL}
-      - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE}
-      - RABBITMQ_QUEUE_CAMP_CREATED=${RABBITMQ_QUEUE_CAMP_CREATED}
-      - RABBITMQ_QUEUE_CAMP_CANCELLED=${RABBITMQ_QUEUE_CAMP_CANCELLED}
-      - RABBITMQ_QUEUE_CAMP_DONATED=${RABBITMQ_QUEUE_CAMP_DONATED}
-      - RABBITMQ_QUEUE_CAMP_WITHDRAWN=${RABBITMQ_QUEUE_CAMP_WITHDRAWN}
-      - RABBITMQ_RKEY_CAMP_CREATED=${RABBITMQ_RKEY_CAMP_CREATED}
-      - RABBITMQ_RKEY_CAMP_CANCELLED=${RABBITMQ_RKEY_CAMP_CANCELLED}
-      - RABBITMQ_RKEY_DONATED=${RABBITMQ_RKEY_DONATED}
-      - RABBITMQ_RKEY_WITHDRAWN=${RABBITMQ_RKEY_WITHDRAWN}
-    volumes:
-      - ./backend/campaign-service:/app
-      - /app/node_modules
-    depends_on:
-      mongodb:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    restart: unless-stopped
+    campaign-service:
+        build: ./backend/campaign-service
+        ports:
+            - "${CAMPAIGN_SERVICE_PORT}:${CAMPAIGN_SERVICE_PORT}"
+        environment:
+            - GATEWAY_PORT=${GATEWAY_PORT}
+            - PORT=${CAMPAIGN_SERVICE_PORT}
+            - NODE_ENV=${NODE_ENV}
+            - MONGO_URI=${MONGO_URI_CAMPAIGNS}
+            - RABBITMQ_URL=${RABBITMQ_URL}
+            - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE}
+            - RABBITMQ_QUEUE_CAMP_CREATED=${RABBITMQ_QUEUE_CAMP_CREATED}
+            - RABBITMQ_QUEUE_CAMP_CANCELLED=${RABBITMQ_QUEUE_CAMP_CANCELLED}
+            - RABBITMQ_QUEUE_CAMP_DONATED=${RABBITMQ_QUEUE_CAMP_DONATED}
+            - RABBITMQ_QUEUE_CAMP_WITHDRAWN=${RABBITMQ_QUEUE_CAMP_WITHDRAWN}
+            - RABBITMQ_RKEY_CAMP_CREATED=${RABBITMQ_RKEY_CAMP_CREATED}
+            - RABBITMQ_RKEY_CAMP_CANCELLED=${RABBITMQ_RKEY_CAMP_CANCELLED}
+            - RABBITMQ_RKEY_DONATED=${RABBITMQ_RKEY_DONATED}
+            - RABBITMQ_RKEY_WITHDRAWN=${RABBITMQ_RKEY_WITHDRAWN}
+        volumes:
+            - ./backend/campaign-service:/app
+            - /app/node_modules
+        depends_on:
+            mongodb:
+                condition: service_healthy
+            rabbitmq:
+                condition: service_healthy
+        restart: unless-stopped
 
   donation-service:
     build: ./backend/donation-service
@@ -168,6 +175,12 @@ services:
       - PORT=${DONATION_SERVICE_PORT}
       - NODE_ENV=${NODE_ENV}
       - MONGO_URI=${MONGO_URI_DONATIONS}
+      - CROWDFUNDING_CONTRACT_ADDRESS=${CROWDFUNDING_CONTRACT_ADDRESS}
+      - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY}
+      - ETHERSCAN_LOGS_API_URL=${ETHERSCAN_LOGS_API_URL}
+      - ETHERSCAN_CHAIN_ID=${ETHERSCAN_CHAIN_ID}
+      - ETHERSCAN_LOGS_MAX_PAGES=${ETHERSCAN_LOGS_MAX_PAGES}
+      - ETHERSCAN_LOGS_OFFSET=${ETHERSCAN_LOGS_OFFSET}
       - RABBITMQ_URL=${RABBITMQ_URL}
       - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE}
       - RABBITMQ_QUEUE_DONATED_SVC=${RABBITMQ_QUEUE_DONATED_SVC}
@@ -182,101 +195,103 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  certificate-service:
-    build: ./backend/certificate-service
-    ports:
-      - "${CERTIFICATE_SERVICE_PORT}:${CERTIFICATE_SERVICE_PORT}"
-    environment:
-      - GATEWAY_PORT=${GATEWAY_PORT}
-      - PORT=${CERTIFICATE_SERVICE_PORT}
-      - NODE_ENV=${NODE_ENV}
-      - MONGO_URI=${MONGO_URI_CERTIFICATES}
-      - RABBITMQ_URL=${RABBITMQ_URL}
-      - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE}
-      - RABBITMQ_QUEUE_CERT_MINTED=${RABBITMQ_QUEUE_CERT_MINTED}
-      - RABBITMQ_RKEY_CERT_MINTED=${RABBITMQ_RKEY_CERT_MINTED}
-    volumes:
-      - ./backend/certificate-service:/app
-      - /app/node_modules
-    depends_on:
-      mongodb:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    restart: unless-stopped
+    certificate-service:
+        build: ./backend/certificate-service
+        ports:
+            - "${CERTIFICATE_SERVICE_PORT}:${CERTIFICATE_SERVICE_PORT}"
+        environment:
+            - GATEWAY_PORT=${GATEWAY_PORT}
+            - PORT=${CERTIFICATE_SERVICE_PORT}
+            - NODE_ENV=${NODE_ENV}
+            - MONGO_URI=${MONGO_URI_CERTIFICATES}
+            - RABBITMQ_URL=${RABBITMQ_URL}
+            - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE}
+            - RABBITMQ_QUEUE_CERT_MINTED=${RABBITMQ_QUEUE_CERT_MINTED}
+            - RABBITMQ_RKEY_CERT_MINTED=${RABBITMQ_RKEY_CERT_MINTED}
+        volumes:
+            - ./backend/certificate-service:/app
+            - /app/node_modules
+        depends_on:
+            mongodb:
+                condition: service_healthy
+            rabbitmq:
+                condition: service_healthy
+        restart: unless-stopped
 
-  transaction-service:
-    build: ./backend/transaction-service
-    ports:
-      - "${TRANSACTION_SERVICE_PORT}:${TRANSACTION_SERVICE_PORT}"
-    environment:
-      - GATEWAY_PORT=${GATEWAY_PORT}
-      - PORT=${TRANSACTION_SERVICE_PORT}
-      - NODE_ENV=${NODE_ENV}
-      - MONGO_URI=${MONGO_URI_TRANSACTIONS}
-      - RABBITMQ_URL=${RABBITMQ_URL}
-      - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE}
-      - RABBITMQ_QUEUE_TX_DONATED=${RABBITMQ_QUEUE_TX_DONATED}
-      - RABBITMQ_RKEY_DONATED=${RABBITMQ_RKEY_DONATED}
-    volumes:
-      - ./backend/transaction-service:/app
-      - /app/node_modules
-    depends_on:
-      mongodb:
-        condition: service_healthy
-    restart: unless-stopped
+    transaction-service:
+        build: ./backend/transaction-service
+        ports:
+            - "${TRANSACTION_SERVICE_PORT}:${TRANSACTION_SERVICE_PORT}"
+        environment:
+            - GATEWAY_PORT=${GATEWAY_PORT}
+            - PORT=${TRANSACTION_SERVICE_PORT}
+            - NODE_ENV=${NODE_ENV}
+            - MONGO_URI=${MONGO_URI_TRANSACTIONS}
+            - RABBITMQ_URL=${RABBITMQ_URL}
+            - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE}
+            - RABBITMQ_QUEUE_TX_DONATED=${RABBITMQ_QUEUE_TX_DONATED}
+            - RABBITMQ_RKEY_DONATED=${RABBITMQ_RKEY_DONATED}
+        volumes:
+            - ./backend/transaction-service:/app
+            - /app/node_modules
+        depends_on:
+            mongodb:
+                condition: service_healthy
+        restart: unless-stopped
 
-  # ─────────────────────────────────────────────────────────
-  # Blockchain Event Listener
-  # Điền SEPOLIA_RPC_URL và CROWDFUNDING_CONTRACT_ADDRESS vào
-  # backend/listener-service/.env trước khi chạy
-  # ─────────────────────────────────────────────────────────
-  listener-service:
-    build: ./backend/listener-service
-    environment:
-      - NODE_ENV=${NODE_ENV}
-      - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}
-      - CROWDFUNDING_CONTRACT_ADDRESS=${CROWDFUNDING_CONTRACT_ADDRESS}
-      - USE_DYNAMIC_CONTRACT_ADDRESS=${USE_DYNAMIC_CONTRACT_ADDRESS}
-      - RABBITMQ_URL=${RABBITMQ_URL}
-      - TRANSACTION_SERVICE_URL=${TRANSACTION_SERVICE_URL}
-      - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE}
-      - RABBITMQ_RKEY_CAMP_CREATED=${RABBITMQ_RKEY_CAMP_CREATED}
-      - RABBITMQ_RKEY_CAMP_CANCELLED=${RABBITMQ_RKEY_CAMP_CANCELLED}
-      - RABBITMQ_RKEY_DONATED=${RABBITMQ_RKEY_DONATED}
-      - RABBITMQ_RKEY_WITHDRAWN=${RABBITMQ_RKEY_WITHDRAWN}
-      - RABBITMQ_RKEY_CERT_MINTED=${RABBITMQ_RKEY_CERT_MINTED}
-    volumes:
-      - ./backend/listener-service:/app
-      - /app/node_modules
-      - shared_data:/app/shared
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-      transaction-service:
-        condition: service_started
-    restart: unless-stopped
+    # ─────────────────────────────────────────────────────────
+    # Blockchain Event Listener
+    # Điền SEPOLIA_RPC_URL và CROWDFUNDING_CONTRACT_ADDRESS vào
+    # backend/listener-service/.env trước khi chạy
+    # ─────────────────────────────────────────────────────────
+    listener-service:
+        build: ./backend/listener-service
+        environment:
+            - NODE_ENV=${NODE_ENV}
+            - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}
+            - CROWDFUNDING_CONTRACT_ADDRESS=${CROWDFUNDING_CONTRACT_ADDRESS}
+            - ADMIN_PRIVATE_KEY=${ADMIN_PRIVATE_KEY}
+            - MONGO_URI=${MONGO_URI_CAMPAIGNS}
+            - USE_DYNAMIC_CONTRACT_ADDRESS=${USE_DYNAMIC_CONTRACT_ADDRESS}
+            - RABBITMQ_URL=${RABBITMQ_URL}
+            - TRANSACTION_SERVICE_URL=${TRANSACTION_SERVICE_URL}
+            - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE}
+            - RABBITMQ_RKEY_CAMP_CREATED=${RABBITMQ_RKEY_CAMP_CREATED}
+            - RABBITMQ_RKEY_CAMP_CANCELLED=${RABBITMQ_RKEY_CAMP_CANCELLED}
+            - RABBITMQ_RKEY_DONATED=${RABBITMQ_RKEY_DONATED}
+            - RABBITMQ_RKEY_WITHDRAWN=${RABBITMQ_RKEY_WITHDRAWN}
+            - RABBITMQ_RKEY_CERT_MINTED=${RABBITMQ_RKEY_CERT_MINTED}
+        volumes:
+            - ./backend/listener-service:/app
+            - /app/node_modules
+            - shared_data:/app/shared
+        depends_on:
+            rabbitmq:
+                condition: service_healthy
+            transaction-service:
+                condition: service_started
+        restart: unless-stopped
 
-  # ─────────────────────────────────────────────────────────
-  # Frontend
-  # ─────────────────────────────────────────────────────────
-  frontend:
-    build: ./frontend
-    ports:
-      - "${FRONTEND_PORT}:${FRONTEND_PORT}"
-    environment:
-      - NODE_ENV=${NODE_ENV}
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-      - NEXT_PUBLIC_SEPOLIA_RPC_URL=${NEXT_PUBLIC_SEPOLIA_RPC_URL}
-      - NEXT_PUBLIC_CROWDFUNDING_CONTRACT_ADDRESS=${NEXT_PUBLIC_CROWDFUNDING_CONTRACT_ADDRESS}
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    depends_on:
-      - gateway
-    restart: unless-stopped
+    # ─────────────────────────────────────────────────────────
+    # Frontend
+    # ─────────────────────────────────────────────────────────
+    frontend:
+        build: ./frontend
+        ports:
+            - "${FRONTEND_PORT}:${FRONTEND_PORT}"
+        environment:
+            - NODE_ENV=${NODE_ENV}
+            - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+            - NEXT_PUBLIC_SEPOLIA_RPC_URL=${NEXT_PUBLIC_SEPOLIA_RPC_URL}
+            - NEXT_PUBLIC_CROWDFUNDING_CONTRACT_ADDRESS=${NEXT_PUBLIC_CROWDFUNDING_CONTRACT_ADDRESS}
+        volumes:
+            - ./frontend:/app
+            - /app/node_modules
+        depends_on:
+            - gateway
+        restart: unless-stopped
 
 volumes:
-  mongo_data:
-  rabbitmq_data:
-  shared_data:
+    mongo_data:
+    rabbitmq_data:
+    shared_data:

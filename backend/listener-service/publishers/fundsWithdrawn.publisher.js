@@ -2,12 +2,12 @@ const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const axios = require("axios");
 
 /**
- * Khi contract emit event FundsWithdrawn(campaignId, beneficiary, amount):
- *  1. PUBLISH to RabbitMQ → campaign-service consume → cập nhật status = ended (async)
- *  2. PATCH transaction-service → update tx status = success (HTTP REST sync)
+ * When the contract emits FundsWithdrawn(campaignId, beneficiary, amount):
+ * 1. Publish to RabbitMQ so campaign-service can update campaign status.
+ * 2. Patch transaction-service to mark the transaction as success.
  */
 async function publishFundsWithdrawn(eventData) {
-    const { campaignId, beneficiary, amount, txHash } = eventData;
+    const { campaignId, beneficiary, amount, txHash, txContext } = eventData;
 
     const channel = getChannel();
     if (channel) {
@@ -18,25 +18,31 @@ async function publishFundsWithdrawn(eventData) {
             amount: amountBigInt.toString(),
             amountEth: Number(amountBigInt) / 1e18,
             txHash,
+            txContext,
         };
 
         channel.publish(
             EXCHANGE,
             process.env.RABBITMQ_RKEY_WITHDRAWN || "funds.withdrawn",
             Buffer.from(JSON.stringify(payload)),
-            { persistent: true }
+            { persistent: true },
         );
-        console.log(`[listener-service] Published funds.withdrawn: campaignId=${campaignId}`);
+        console.log(
+            `[listener-service] Published funds.withdrawn: campaignId=${campaignId}`,
+        );
     }
 
     if (txHash) {
         try {
             await axios.patch(
                 `${process.env.TRANSACTION_SERVICE_URL}/api/transactions/${txHash}/status`,
-                { status: "success" }
+                { status: "success", txContext },
             );
         } catch (err) {
-            console.error("[listener-service] Không thể cập nhật tx status:", err.message);
+            console.error(
+                "[listener-service] Failed to update transaction status:",
+                err.message,
+            );
         }
     }
 }

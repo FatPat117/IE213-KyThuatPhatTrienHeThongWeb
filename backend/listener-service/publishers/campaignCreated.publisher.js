@@ -2,12 +2,20 @@ const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const axios = require("axios");
 
 /**
- * Khi contract emit event CampaignCreated(id, creator, beneficiary, goal, deadline):
- *  1. PUBLISH to RabbitMQ → campaign-service consume → lưu MongoDB (async)
- *  2. PATCH transaction-service → update tx status = success (HTTP REST sync)
+ * When the contract emits CampaignCreated(id, creator, beneficiary, goal, deadline):
+ * 1. Publish to RabbitMQ for campaign-service persistence.
+ * 2. Patch transaction-service to mark the transaction as success.
  */
 async function publishCampaignCreated(eventData) {
-    const { campaignId, creator, beneficiary, goal, deadline, txHash } = eventData;
+    const {
+        campaignId,
+        creator,
+        beneficiary,
+        goal,
+        deadline,
+        txHash,
+        txContext,
+    } = eventData;
 
     const channel = getChannel();
     if (channel) {
@@ -18,24 +26,30 @@ async function publishCampaignCreated(eventData) {
             goal: goal.toString(),
             deadline: Number(deadline),
             txHash,
+            txContext,
         };
         channel.publish(
             EXCHANGE,
             process.env.RABBITMQ_RKEY_CAMP_CREATED || "campaign.created",
             Buffer.from(JSON.stringify(payload)),
-            { persistent: true }
+            { persistent: true },
         );
-        console.log(`[listener-service] Published campaign.created: campaignId=${campaignId}`);
+        console.log(
+            `[listener-service] Published campaign.created: campaignId=${campaignId}`,
+        );
     }
 
     if (txHash) {
         try {
             await axios.patch(
                 `${process.env.TRANSACTION_SERVICE_URL}/api/transactions/${txHash}/status`,
-                { status: "success" }
+                { status: "success", txContext },
             );
         } catch (err) {
-            console.error("[listener-service] Không thể cập nhật tx status:", err.message);
+            console.error(
+                "[listener-service] Failed to update transaction status:",
+                err.message,
+            );
         }
     }
 }

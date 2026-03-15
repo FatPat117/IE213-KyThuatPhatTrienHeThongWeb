@@ -12,13 +12,20 @@ import type { DonationRecord } from '@/lib/api/types';
 import { contractConfig, useBackendDonations, useBackendTransactions } from '@/lib';
 
 export default function MyDonationsPage() {
+  const TX_PAGE_SIZE = 10;
   const { address, isConnected, chain } = useAccount();
   const publicClient = usePublicClient();
   const [showTxModal, setShowTxModal] = useState(false);
+  const [txPage, setTxPage] = useState(1);
   const [onChainDonations, setOnChainDonations] = useState<DonationRecord[]>([]);
   const [isOnChainLoading, setIsOnChainLoading] = useState(false);
   const donationQuery = useBackendDonations(address ?? null);
-  const transactionQuery = useBackendTransactions(address ?? null);
+  const transactionQuery = useBackendTransactions(address ?? null, txPage, TX_PAGE_SIZE);
+  const campaignsQuery = useBackendCampaigns();
+
+  useEffect(() => {
+    setTxPage(1);
+  }, [address]);
 
   useEffect(() => {
     const fetchOnChainDonations = async () => {
@@ -92,11 +99,15 @@ export default function MyDonationsPage() {
         txHash: tx.txHash,
         campaignId: tx.campaignOnChainId ?? undefined,
         campaignName: tx.campaignOnChainId ? `Campaign #${tx.campaignOnChainId}` : 'Unknown campaign',
+        amountWei: tx.amountWei,
         status: tx.status,
         timestamp: new Date(tx.updatedAt || tx.createdAt).getTime(),
       })),
     [transactionQuery.data]
   );
+
+  const hasPreviousTxPage = txPage > 1;
+  const hasNextTxPage = txPage < transactionQuery.meta.totalPages;
 
   const donationItems = useMemo(() => {
     const txStatusByHash = new Map(
@@ -150,7 +161,7 @@ export default function MyDonationsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-linear-to-b from-slate-50 to-white py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-5xl mx-auto">
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-4">
@@ -172,13 +183,34 @@ export default function MyDonationsPage() {
 
         <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-8">
           <div className="flex items-center justify-between gap-3 mb-6">
-            <h2 className="text-xl font-bold text-slate-900">Lịch sử quyên góp</h2>
-            <button
-              onClick={() => setShowTxModal(true)}
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              Xem transaction log
-            </button>
+            <h2 className="text-xl font-bold text-slate-900">Quyên góp của tôi</h2>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setTxPage((current) => Math.max(1, current - 1))}
+                disabled={!hasPreviousTxPage}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <span className="text-xs text-slate-600">
+                Page {transactionQuery.meta.currentPage} of {Math.max(transactionQuery.meta.totalPages, 1)}
+              </span>
+              <button
+                type="button"
+                onClick={() => setTxPage((current) => current + 1)}
+                disabled={!hasNextTxPage}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+              </button>
+              <button
+                onClick={() => setShowTxModal(true)}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                View transaction log
+              </button>
+            </div>
           </div>
 
           {transactionQuery.error && (
