@@ -34,29 +34,6 @@ services:
       timeout: 5s
       retries: 5
 
-  anvil:
-    image: ghcr.io/foundry-rs/foundry:latest
-    ports:
-      - "8545:8545"
-    entrypoint: ["anvil", "--host", "0.0.0.0"]
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "cast", "chain-id", "--rpc-url", "http://localhost:8545"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  contracts-deploy:
-    build: ./smart-contracts
-    profiles: ["deploy"]
-    environment:
-      - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}
-      - DEPLOYER_PRIVATE_KEY=${DEPLOYER_PRIVATE_KEY}
-    volumes:
-      - shared_data:/shared
-    depends_on:
-      anvil:
-        condition: service_healthy
 
   # ─────────────────────────────────────────────────────────
   # API Gateway – single entrypoint cho Frontend
