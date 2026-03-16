@@ -1,10 +1,12 @@
 const { ethers } = require("ethers");
 const axios = require("axios");
+const cron = require("node-cron");
 const { CONTRACT_ABI, resolveContractConfig } = require("../config/contract");
 const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 
 const ACTIVE_STATUS = 0;
-const DAY_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_CRON = "0 0 * * *"; // chạy lúc 00:00 mỗi ngày
+const DEFAULT_TIMEZONE = "UTC";
 
 function isCampaignFailedByRule(campaign, nowSec) {
     if (!campaign) return false;
@@ -126,31 +128,40 @@ function startMarkFailedDailyJob() {
         return null;
     }
 
-    const everyMs = Number(process.env.MARK_FAILED_JOB_INTERVAL_MS || DAY_MS);
-    if (!Number.isFinite(everyMs) || everyMs <= 0) {
-        console.warn(
-            "[listener-service] MARK_FAILED_JOB_INTERVAL_MS không hợp lệ, dùng mặc định 24h.",
+    const cronExpression =
+        (process.env.MARK_FAILED_JOB_CRON || DEFAULT_CRON).trim() ||
+        DEFAULT_CRON;
+    const timezone =
+        (process.env.MARK_FAILED_JOB_TIMEZONE || DEFAULT_TIMEZONE).trim() ||
+        DEFAULT_TIMEZONE;
+
+    if (!cron.validate(cronExpression)) {
+        console.error(
+            `[listener-service] MARK_FAILED_JOB_CRON không hợp lệ: "${cronExpression}"`,
         );
+        return null;
     }
 
-    const intervalMs =
-        Number.isFinite(everyMs) && everyMs > 0 ? everyMs : DAY_MS;
-
-    runMarkFailedSweep().catch((err) => {
-        console.error(
-            "[listener-service] markAsFailed job failed:",
-            err?.message || err,
-        );
-    });
-
-    return setInterval(() => {
+    const safeRun = () =>
         runMarkFailedSweep().catch((err) => {
             console.error(
                 "[listener-service] markAsFailed job failed:",
                 err?.message || err,
             );
         });
-    }, intervalMs);
+
+    // Chạy ngay 1 lần lúc startup (giữ hành vi cũ), sau đó theo cron schedule
+    safeRun();
+
+    const task = cron.schedule(cronExpression, safeRun, {
+        timezone,
+    });
+
+    console.log(
+        `[listener-service] markAsFailed cron started: expression="${cronExpression}", timezone="${timezone}"`,
+    );
+
+    return task;
 }
 
 module.exports = { startMarkFailedDailyJob, runMarkFailedSweep };
