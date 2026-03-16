@@ -1,5 +1,6 @@
 const { getChannel } = require("../config/rabbitmq");
 const Campaign = require("../models/Campaign.model");
+const notificationService = require("../services/notification.service");
 
 const QUEUE =
     process.env.RABBITMQ_QUEUE_CAMP_DONATED || "campaign.donation.queue";
@@ -117,6 +118,30 @@ async function startDonatedConsumer() {
             console.log(
                 `[campaign-service] Campaign ${updatedCampaign.onChainId} updated successfully. raised=${updatedCampaign.raised}, status=${updatedCampaign.status}`,
             );
+
+            // Gửi notification cho creator khi chiến dịch đạt mục tiêu
+            if (updatedCampaign.status === "ended") {
+                try {
+                    const campaign = await Campaign.findOne({
+                        onChainId: updatedCampaign.onChainId,
+                    });
+                    if (campaign?.creator) {
+                        await notificationService.createNotification({
+                            recipientWallet: campaign.creator,
+                            type: "campaign_succeeded",
+                            title: "🎉 Chiến dịch đã đạt mục tiêu!",
+                            message: `Chiến dịch "${campaign.title || `#${updatedCampaign.onChainId}`}" đã đạt mục tiêu quyên góp. Bạn có thể rút tiền ngay bây giờ.`,
+                            campaignOnChainId: updatedCampaign.onChainId,
+                            txHash: txHash || "",
+                        });
+                    }
+                } catch (notifErr) {
+                    console.warn(
+                        "[campaign-service] Không thể gửi notification campaign_succeeded:",
+                        notifErr.message,
+                    );
+                }
+            }
 
             channel.ack(msg);
         } catch (err) {

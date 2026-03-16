@@ -24,19 +24,30 @@ async function publishFundsWithdrawn(eventData) {
             EXCHANGE,
             process.env.RABBITMQ_RKEY_WITHDRAWN || "funds.withdrawn",
             Buffer.from(JSON.stringify(payload)),
-            { persistent: true }
+            { persistent: true },
         );
-        console.log(`[listener-service] Published funds.withdrawn: campaignId=${campaignId}`);
+        console.log(
+            `[listener-service] Published funds.withdrawn: campaignId=${campaignId}`,
+        );
     }
 
-    if (txHash) {
+    // Upsert tx withdrawFunds (frontend không tạo pending trước)
+    if (txHash && beneficiary) {
         try {
-            await axios.patch(
-                `${process.env.TRANSACTION_SERVICE_URL}/api/transactions/${txHash}/status`,
-                { status: "success" }
+            await axios.post(
+                `${process.env.TRANSACTION_SERVICE_URL}/api/transactions/internal/upsert`,
+                {
+                    txHash,
+                    walletAddress: beneficiary.toLowerCase(),
+                    action: "withdrawFunds",
+                    campaignOnChainId: Number(campaignId),
+                },
             );
         } catch (err) {
-            console.error("[listener-service] Không thể cập nhật tx status:", err.message);
+            console.error(
+                "[listener-service] Không thể upsert tx withdrawFunds:",
+                err.message,
+            );
         }
     }
 }

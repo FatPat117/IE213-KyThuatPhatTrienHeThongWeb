@@ -72,9 +72,40 @@ async function getByCampaign(req, res, next) {
     }
 }
 
+// POST /api/transactions/internal/upsert  – listener-service gọi nội bộ (không qua gateway auth)
+async function internalUpsert(req, res, next) {
+    try {
+        const {
+            txHash,
+            walletAddress,
+            action,
+            campaignOnChainId,
+            campaignTitle,
+        } = req.body;
+        if (!txHash || !walletAddress || !action) {
+            return errorRes(
+                res,
+                "txHash, walletAddress, action là bắt buộc",
+                400,
+            );
+        }
+        const tx = await transactionService.upsertTransactionSuccess({
+            txHash,
+            walletAddress,
+            action,
+            campaignOnChainId,
+            campaignTitle,
+        });
+        return successRes(res, tx, 200);
+    } catch (err) {
+        next(err);
+    }
+}
+
 module.exports = {
     createTransaction,
     updateStatus,
+    internalUpsert,
     getByWallet,
     getByCampaign,
 };

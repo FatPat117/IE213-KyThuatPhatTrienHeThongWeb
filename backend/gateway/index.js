@@ -78,6 +78,30 @@ const proxy = (target) =>
         },
     });
 
+// SSE proxy – tắt timeout để streaming không bị ngắt
+const sseProxy = (target) =>
+    createProxyMiddleware({
+        target,
+        changeOrigin: true,
+        pathRewrite: (path, req) => req.originalUrl.split("?")[0],
+        proxyTimeout: 0,
+        timeout: 0,
+        on: {
+            error: (err, req, res) => {
+                console.error(
+                    `[gateway] SSE Proxy error → ${target}:`,
+                    err.message,
+                );
+                if (!res.headersSent) {
+                    res.status(502).json({
+                        success: false,
+                        error: "Service unavailable",
+                    });
+                }
+            },
+        },
+    });
+
 // ── Swagger JSON specs – public, no auth ─────────────────────
 // Đặt TRƯỚC các route auth; mỗi service tự expose alias path
 app.get("/api/auth/api-docs.json", proxy(AUTH_SERVICE_URL));
@@ -129,6 +153,23 @@ app.use(
     verifyToken,
     requireAuth,
     proxy(TRANSACTION_SERVICE_URL),
+);
+
+// Notifications (served by campaign-service)
+//   GET /api/notifications/stream → SSE, requireAuth
+//   GET /api/notifications/me     → requireAuth
+//   PATCH /api/notifications/...  → requireAuth
+app.get(
+    "/api/notifications/stream",
+    verifyToken,
+    requireAuth,
+    sseProxy(CAMPAIGN_SERVICE_URL),
+);
+app.use(
+    "/api/notifications",
+    verifyToken,
+    requireAuth,
+    proxy(CAMPAIGN_SERVICE_URL),
 );
 
 // ── 404 Fallback ─────────────────────────────────────────────

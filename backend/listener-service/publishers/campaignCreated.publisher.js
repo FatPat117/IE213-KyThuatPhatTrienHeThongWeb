@@ -7,7 +7,8 @@ const axios = require("axios");
  *  2. PATCH transaction-service → update tx status = success (HTTP REST sync)
  */
 async function publishCampaignCreated(eventData) {
-    const { campaignId, creator, beneficiary, goal, deadline, txHash } = eventData;
+    const { campaignId, creator, beneficiary, goal, deadline, txHash } =
+        eventData;
 
     const channel = getChannel();
     if (channel) {
@@ -23,19 +24,24 @@ async function publishCampaignCreated(eventData) {
             EXCHANGE,
             process.env.RABBITMQ_RKEY_CAMP_CREATED || "campaign.created",
             Buffer.from(JSON.stringify(payload)),
-            { persistent: true }
+            { persistent: true },
         );
-        console.log(`[listener-service] Published campaign.created: campaignId=${campaignId}`);
+        console.log(
+            `[listener-service] Published campaign.created: campaignId=${campaignId}`,
+        );
     }
 
     if (txHash) {
         try {
             await axios.patch(
                 `${process.env.TRANSACTION_SERVICE_URL}/api/transactions/${txHash}/status`,
-                { status: "success" }
+                { status: "success" },
             );
         } catch (err) {
-            console.error("[listener-service] Không thể cập nhật tx status:", err.message);
+            console.error(
+                "[listener-service] Không thể cập nhật tx status:",
+                err.message,
+            );
         }
     }
 }

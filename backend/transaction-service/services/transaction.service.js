@@ -170,9 +170,55 @@ async function getTransactionByHash(txHash) {
     return Transaction.findOne({ txHash: txHash.toLowerCase() });
 }
 
+/**
+ * Upsert transaction với status success – dùng bởi listener-service cho các action
+ * mà frontend không tạo pending trước (withdrawFunds, cancelCampaign, claimRefund, markAsFailed).
+ * - Nếu txHash đã tồn tại với status pending → update thành success.
+ * - Nếu chưa tồn tại → tạo mới trực tiếp với status success.
+ */
+async function upsertTransactionSuccess({
+    txHash,
+    walletAddress,
+    action,
+    campaignOnChainId,
+    campaignTitle,
+}) {
+    const normalizedHash = txHash.toLowerCase();
+    const existing = await Transaction.findOne({ txHash: normalizedHash });
+
+    if (existing) {
+        if (existing.status === "pending") {
+            return Transaction.findOneAndUpdate(
+                { txHash: normalizedHash },
+                { $set: { status: "success" } },
+                { new: true },
+            );
+        }
+        return existing;
+    }
+
+    const normalizedCampaignId =
+        campaignOnChainId != null ? Number(campaignOnChainId) : null;
+    const resolvedTitle =
+        (typeof campaignTitle === "string" ? campaignTitle.trim() : "") ||
+        (normalizedCampaignId
+            ? await fetchCampaignTitle(normalizedCampaignId)
+            : "");
+
+    return Transaction.create({
+        txHash: normalizedHash,
+        walletAddress: walletAddress.toLowerCase(),
+        action,
+        campaignOnChainId: normalizedCampaignId,
+        campaignTitle: resolvedTitle,
+        status: "success",
+    });
+}
+
 module.exports = {
     createTransaction,
     updateTransactionStatus,
+    upsertTransactionSuccess,
     getTransactionsByWallet,
     getTransactionsByCampaign,
     getTransactionByHash,

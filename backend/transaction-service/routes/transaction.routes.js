@@ -2,6 +2,7 @@ const express = require("express");
 const {
     createTransaction,
     updateStatus,
+    internalUpsert,
     getByWallet,
     getByCampaign,
 } = require("../controllers/transaction.controller");
@@ -42,6 +43,31 @@ const router = express.Router();
  *         description: Dữ liệu không hợp lệ
  */
 router.post("/", createTransaction);
+
+/**
+ * @swagger
+ * /internal/upsert:
+ *   post:
+ *     summary: "[Internal] Upsert transaction với status success (listener-service dùng nội bộ)"
+ *     tags: [Transactions]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [txHash, walletAddress, action]
+ *             properties:
+ *               txHash: { type: string }
+ *               walletAddress: { type: string }
+ *               action: { type: string }
+ *               campaignOnChainId: { type: integer }
+ *               campaignTitle: { type: string }
+ *     responses:
+ *       200:
+ *         description: Upserted thành công
+ */
+router.post("/internal/upsert", internalUpsert);
 
 /**
  * @swagger

@@ -1,5 +1,7 @@
 const { ethers } = require("ethers");
+const axios = require("axios");
 const { CONTRACT_ABI, resolveContractConfig } = require("../config/contract");
+const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 
 const ACTIVE_STATUS = 0;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -15,23 +17,38 @@ function isCampaignFailedByRule(campaign, nowSec) {
 
 async function runMarkFailedSweep() {
     const resolved = resolveContractConfig();
-    const privateKey = process.env.MARK_FAILED_PRIVATE_KEY || process.env.PRIVATE_KEY || process.env.DEPLOYER_PRIVATE_KEY;
+    const privateKey =
+        process.env.MARK_FAILED_PRIVATE_KEY ||
+        process.env.PRIVATE_KEY ||
+        process.env.DEPLOYER_PRIVATE_KEY;
 
     if (!resolved || !privateKey) {
-        console.warn("[listener-service] markAsFailed job bị tắt (thiếu contract config hoặc private key).");
+        console.warn(
+            "[listener-service] markAsFailed job bị tắt (thiếu contract config hoặc private key).",
+        );
         return;
     }
 
     const provider = new ethers.JsonRpcProvider(resolved.rpcUrl);
     const wallet = new ethers.Wallet(privateKey, provider);
-    const readContract = new ethers.Contract(resolved.contractAddress, CONTRACT_ABI, provider);
-    const writeContract = new ethers.Contract(resolved.contractAddress, CONTRACT_ABI, wallet);
+    const readContract = new ethers.Contract(
+        resolved.contractAddress,
+        CONTRACT_ABI,
+        provider,
+    );
+    const writeContract = new ethers.Contract(
+        resolved.contractAddress,
+        CONTRACT_ABI,
+        wallet,
+    );
 
     const nowSec = Math.floor(Date.now() / 1000);
     const campaignCount = Number(await readContract.campaignCount());
 
     if (!campaignCount) {
-        console.log("[listener-service] markAsFailed job: không có campaign nào.");
+        console.log(
+            "[listener-service] markAsFailed job: không có campaign nào.",
+        );
         return;
     }
 
@@ -43,39 +60,95 @@ async function runMarkFailedSweep() {
             if (!isCampaignFailedByRule(campaign, nowSec)) continue;
 
             const tx = await writeContract.markAsFailed(BigInt(campaignId));
-            console.log(`[listener-service] markAsFailed tx sent: campaignId=${campaignId}, tx=${tx.hash}`);
+            console.log(
+                `[listener-service] markAsFailed tx sent: campaignId=${campaignId}, tx=${tx.hash}`,
+            );
             await tx.wait();
             updatedCount += 1;
+
+            // 1. Publish campaign.failed → campaign-service cập nhật status + gửi notification
+            const mqChannel = getChannel();
+            if (mqChannel) {
+                mqChannel.publish(
+                    EXCHANGE,
+                    process.env.RABBITMQ_RKEY_CAMP_FAILED || "campaign.failed",
+                    Buffer.from(
+                        JSON.stringify({
+                            campaignOnChainId: Number(campaignId),
+                            txHash: tx.hash,
+                        }),
+                    ),
+                    { persistent: true },
+                );
+            }
+
+            // 2. Upsert tx markAsFailed vào transaction-service
+            try {
+                const walletAddr = await wallet.getAddress();
+                await axios.post(
+                    `${process.env.TRANSACTION_SERVICE_URL}/api/transactions/internal/upsert`,
+                    {
+                        txHash: tx.hash,
+                        walletAddress: walletAddr,
+                        action: "markAsFailed",
+                        campaignOnChainId: Number(campaignId),
+                    },
+                );
+            } catch (upsertErr) {
+                console.warn(
+                    `[listener-service] markAsFailed: không thể upsert tx campaignId=${campaignId}:`,
+                    upsertErr.message,
+                );
+            }
         } catch (err) {
-            const message = err?.shortMessage || err?.reason || err?.message || "unknown error";
-            console.warn(`[listener-service] markAsFailed bỏ qua campaignId=${campaignId}: ${message}`);
+            const message =
+                err?.shortMessage ||
+                err?.reason ||
+                err?.message ||
+                "unknown error";
+            console.warn(
+                `[listener-service] markAsFailed bỏ qua campaignId=${campaignId}: ${message}`,
+            );
         }
     }
 
-    console.log(`[listener-service] markAsFailed job hoàn tất. campaigns updated=${updatedCount}`);
+    console.log(
+        `[listener-service] markAsFailed job hoàn tất. campaigns updated=${updatedCount}`,
+    );
 }
 
 function startMarkFailedDailyJob() {
     const enabled = process.env.MARK_FAILED_JOB_ENABLED !== "false";
     if (!enabled) {
-        console.log("[listener-service] markAsFailed job disabled by MARK_FAILED_JOB_ENABLED=false");
+        console.log(
+            "[listener-service] markAsFailed job disabled by MARK_FAILED_JOB_ENABLED=false",
+        );
         return null;
     }
 
     const everyMs = Number(process.env.MARK_FAILED_JOB_INTERVAL_MS || DAY_MS);
     if (!Number.isFinite(everyMs) || everyMs <= 0) {
-        console.warn("[listener-service] MARK_FAILED_JOB_INTERVAL_MS không hợp lệ, dùng mặc định 24h.");
+        console.warn(
+            "[listener-service] MARK_FAILED_JOB_INTERVAL_MS không hợp lệ, dùng mặc định 24h.",
+        );
     }
 
-    const intervalMs = Number.isFinite(everyMs) && everyMs > 0 ? everyMs : DAY_MS;
+    const intervalMs =
+        Number.isFinite(everyMs) && everyMs > 0 ? everyMs : DAY_MS;
 
     runMarkFailedSweep().catch((err) => {
-        console.error("[listener-service] markAsFailed job failed:", err?.message || err);
+        console.error(
+            "[listener-service] markAsFailed job failed:",
+            err?.message || err,
+        );
     });
 
     return setInterval(() => {
         runMarkFailedSweep().catch((err) => {
-            console.error("[listener-service] markAsFailed job failed:", err?.message || err);
+            console.error(
+                "[listener-service] markAsFailed job failed:",
+                err?.message || err,
+            );
         });
     }, intervalMs);
 }

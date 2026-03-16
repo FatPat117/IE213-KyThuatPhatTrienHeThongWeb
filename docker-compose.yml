@@ -125,6 +125,8 @@ services:
             - RABBITMQ_RKEY_CAMP_CANCELLED=${RABBITMQ_RKEY_CAMP_CANCELLED}
             - RABBITMQ_RKEY_DONATED=${RABBITMQ_RKEY_DONATED}
             - RABBITMQ_RKEY_WITHDRAWN=${RABBITMQ_RKEY_WITHDRAWN}
+            - RABBITMQ_RKEY_CAMP_FAILED=${RABBITMQ_RKEY_CAMP_FAILED}
+            - RABBITMQ_QUEUE_CAMP_FAILED=${RABBITMQ_QUEUE_CAMP_FAILED}
         volumes:
             - ./backend/campaign-service:/app
             - /app/node_modules
@@ -229,6 +231,7 @@ services:
             - RABBITMQ_RKEY_DONATED=${RABBITMQ_RKEY_DONATED}
             - RABBITMQ_RKEY_WITHDRAWN=${RABBITMQ_RKEY_WITHDRAWN}
             - RABBITMQ_RKEY_CERT_MINTED=${RABBITMQ_RKEY_CERT_MINTED}
+            - RABBITMQ_RKEY_CAMP_FAILED=${RABBITMQ_RKEY_CAMP_FAILED}
         volumes:
             - ./backend/listener-service:/app
             - /app/node_modules
