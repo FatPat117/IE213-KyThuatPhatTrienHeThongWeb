@@ -1,5 +1,10 @@
 const express = require("express");
-const { createTransaction, updateStatus, getByWallet } = require("../controllers/transaction.controller");
+const {
+    createTransaction,
+    updateStatus,
+    getByWallet,
+    getByCampaign,
+} = require("../controllers/transaction.controller");
 const validateAddress = require("../middlewares/validateAddress");
 
 const router = express.Router();
@@ -67,6 +72,27 @@ router.post("/", createTransaction);
  *         description: Không tìm thấy giao dịch
  */
 router.patch("/:txHash/status", updateStatus);
+
+/**
+ * @swagger
+ * /campaign/{id}:
+ *   get:
+ *     summary: Lấy lịch sử giao dịch của một chiến dịch
+ *     tags: [Transactions]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: integer
+ *         required: true
+ *         description: onChainId của campaign
+ *     responses:
+ *       200:
+ *         description: Thành công
+ *       400:
+ *         description: campaign id không hợp lệ
+ */
+router.get("/campaign/:id", getByCampaign);
 
 /**
  * @swagger

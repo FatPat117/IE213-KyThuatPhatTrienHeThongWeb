@@ -19,7 +19,15 @@ const TransactionSchema = new mongoose.Schema(
         },
         action: {
             type: String,
-            enum: ["donate", "createCampaign", "mintNFT"],
+            enum: [
+                "donate", // user donate
+                "createCampaign", // user tạo campaign
+                "mintNFT", // user mint NFT (nếu có)
+                "withdrawFunds", // creator rút tiền về sau khi campaign thành công
+                "claimRefund", // user rút tiền về sau khi campaign thất bại
+                "cancelCampaign", // creator hủy campaign
+                "markAsFailed", // listener/service đánh dấu campaign thất bại nếu deadline trôi qua mà chưa đạt goal
+            ],
             required: [true, "action là bắt buộc"],
         },
         status: {
@@ -31,16 +39,26 @@ const TransactionSchema = new mongoose.Schema(
             type: Number,
             default: null,
         },
+        campaignTitle: {
+            type: String,
+            trim: true,
+            maxlength: [200, "Tên campaign tối đa 200 ký tự"],
+            default: "",
+        },
         // Ghi lại lý do thất bại (nếu failed)
         errorMessage: {
             type: String,
             default: "",
         },
     },
-    { timestamps: true } // createdAt = lúc pending, updatedAt = lúc success/failed
+    { timestamps: true }, // createdAt = lúc pending, updatedAt = lúc success/failed
 );
 
 TransactionSchema.index({ walletAddress: 1 });
 TransactionSchema.index({ status: 1 });
+TransactionSchema.index({ campaignOnChainId: 1 });
+TransactionSchema.index({ campaignOnChainId: 1, createdAt: -1 });
 
-module.exports = mongoose.models.Transaction || mongoose.model("Transaction", TransactionSchema);
+module.exports =
+    mongoose.models.Transaction ||
+    mongoose.model("Transaction", TransactionSchema);

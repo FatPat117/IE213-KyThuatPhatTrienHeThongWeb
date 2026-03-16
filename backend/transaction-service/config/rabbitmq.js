@@ -3,10 +3,49 @@ const Transaction = require("../models/transaction.model");
 
 const RABBITMQ_URL = process.env.RABBITMQ_URL;
 const EXCHANGE = process.env.RABBITMQ_EXCHANGE || "funding.events";
-const QUEUE = process.env.RABBITMQ_QUEUE_TX_DONATED || "transaction.donation.queue";
+const QUEUE =
+    process.env.RABBITMQ_QUEUE_TX_DONATED || "transaction.donation.queue";
 const ROUTING_KEY = process.env.RABBITMQ_RKEY_DONATED || "donation.received";
+const CAMPAIGN_SERVICE_URL =
+    process.env.CAMPAIGN_SERVICE_URL || "http://campaign-service:4002";
 
 let channel = null;
+
+// Hỗ trợ lấy title của campaign từ campaign-service nếu payload không có hoặc có nhưng rỗng
+async function resolveCampaignTitle(campaignOnChainId, payloadTitle) {
+    const normalizedPayloadTitle =
+        typeof payloadTitle === "string" ? payloadTitle.trim() : "";
+
+    if (normalizedPayloadTitle) {
+        return normalizedPayloadTitle;
+    }
+
+    const normalizedCampaignId = Number(campaignOnChainId);
+    if (!Number.isFinite(normalizedCampaignId)) {
+        return "";
+    }
+
+    try {
+        const response = await fetch(
+            `${CAMPAIGN_SERVICE_URL}/api/campaigns/${normalizedCampaignId}`,
+        );
+
+        if (!response.ok) {
+            return "";
+        }
+
+        const payload = await response.json();
+        return typeof payload?.data?.title === "string"
+            ? payload.data.title.trim()
+            : "";
+    } catch (error) {
+        console.warn(
+            `[transaction-service] Could not resolve campaign title for campaignOnChainId=${normalizedCampaignId}:`,
+            error.message,
+        );
+        return "";
+    }
+}
 
 async function connectRabbitMQ() {
     try {
@@ -30,20 +69,26 @@ async function connectRabbitMQ() {
                     const content = JSON.parse(msg.content.toString());
                     console.log(
                         `[transaction-service] Received message from ${msg.fields.routingKey}:`,
-                        content
+                        content,
                     );
 
                     await handleDonationEvent(msg.fields.routingKey, content);
                     channel.ack(msg);
                 } catch (error) {
-                    console.error("[transaction-service] Failed to process message:", error);
+                    console.error(
+                        "[transaction-service] Failed to process message:",
+                        error,
+                    );
                     channel.nack(msg, false, false);
                 }
             },
-            { noAck: false }
+            { noAck: false },
         );
     } catch (error) {
-        console.error("[transaction-service] Failed to connect to RabbitMQ:", error.message);
+        console.error(
+            "[transaction-service] Failed to connect to RabbitMQ:",
+            error.message,
+        );
         setTimeout(connectRabbitMQ, 5000);
     }
 }
@@ -53,7 +98,7 @@ async function handleDonationEvent(routingKey, content) {
         return;
     }
 
-    const { txHash, donorWallet, campaignOnChainId } = content;
+    const { txHash, donorWallet, campaignOnChainId, campaignTitle } = content;
 
     if (!txHash) {
         throw new Error("Missing txHash in donation payload");
@@ -69,9 +114,16 @@ async function handleDonationEvent(routingKey, content) {
 
     const existingTransaction = await Transaction.findOne({ txHash });
     if (existingTransaction) {
-        console.log(`[transaction-service] Transaction ${txHash} already exists. Skipping duplicate event.`);
+        console.log(
+            `[transaction-service] Transaction ${txHash} already exists. Skipping duplicate event.`,
+        );
         return;
     }
+
+    const resolvedCampaignTitle = await resolveCampaignTitle(
+        campaignOnChainId,
+        campaignTitle,
+    );
 
     const newTransaction = new Transaction({
         txHash,
@@ -79,10 +131,13 @@ async function handleDonationEvent(routingKey, content) {
         action: "donate",
         status: "success",
         campaignOnChainId: Number(campaignOnChainId),
+        campaignTitle: resolvedCampaignTitle,
     });
 
     await newTransaction.save();
-    console.log(`[transaction-service] Stored transaction ${txHash} successfully.`);
+    console.log(
+        `[transaction-service] Stored transaction ${txHash} successfully.`,
+    );
 }
 
 module.exports = { connectRabbitMQ };

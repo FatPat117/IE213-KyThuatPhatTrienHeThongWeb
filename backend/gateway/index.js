@@ -6,7 +6,11 @@ const morgan = require("morgan");
 const { createProxyMiddleware } = require("http-proxy-middleware");
 const swaggerUi = require("swagger-ui-express");
 
-const { verifyToken, requireAuth, requireRole } = require("./middlewares/auth.middleware");
+const {
+    verifyToken,
+    requireAuth,
+    requireRole,
+} = require("./middlewares/auth.middleware");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -18,7 +22,7 @@ app.use(morgan("dev"));
 
 // ── Health Check ─────────────────────────────────────────────
 app.get("/api/health", (req, res) =>
-    res.json({ success: true, service: "api-gateway", status: "ok" })
+    res.json({ success: true, service: "api-gateway", status: "ok" }),
 );
 
 // ── Swagger UI (Centralized) ──────────────────────────────────
@@ -34,16 +38,25 @@ const swaggerUrls = [
 app.use(
     "/api-docs",
     swaggerUi.serve,
-    swaggerUi.setup(null, { explorer: true, swaggerOptions: { urls: swaggerUrls } })
+    swaggerUi.setup(null, {
+        explorer: true,
+        swaggerOptions: { urls: swaggerUrls },
+    }),
 );
 
 // ── Service URLs ─────────────────────────────────────────────
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || "http://auth-service:4006";
-const USER_SERVICE_URL = process.env.USER_SERVICE_URL || "http://user-service:4001";
-const CAMPAIGN_SERVICE_URL = process.env.CAMPAIGN_SERVICE_URL || "http://campaign-service:4002";
-const DONATION_SERVICE_URL = process.env.DONATION_SERVICE_URL || "http://donation-service:4003";
-const CERTIFICATE_SERVICE_URL = process.env.CERTIFICATE_SERVICE_URL || "http://certificate-service:4004";
-const TRANSACTION_SERVICE_URL = process.env.TRANSACTION_SERVICE_URL || "http://transaction-service:4005";
+const AUTH_SERVICE_URL =
+    process.env.AUTH_SERVICE_URL || "http://auth-service:4006";
+const USER_SERVICE_URL =
+    process.env.USER_SERVICE_URL || "http://user-service:4001";
+const CAMPAIGN_SERVICE_URL =
+    process.env.CAMPAIGN_SERVICE_URL || "http://campaign-service:4002";
+const DONATION_SERVICE_URL =
+    process.env.DONATION_SERVICE_URL || "http://donation-service:4003";
+const CERTIFICATE_SERVICE_URL =
+    process.env.CERTIFICATE_SERVICE_URL || "http://certificate-service:4004";
+const TRANSACTION_SERVICE_URL =
+    process.env.TRANSACTION_SERVICE_URL || "http://transaction-service:4005";
 
 // ── Proxy Helper ─────────────────────────────────────────────
 const proxy = (target) =>
@@ -53,18 +66,24 @@ const proxy = (target) =>
         pathRewrite: (path, req) => req.originalUrl.split("?")[0],
         on: {
             error: (err, req, res) => {
-                console.error(`[gateway] Proxy error → ${target}:`, err.message);
-                res.status(502).json({ success: false, error: "Service unavailable" });
+                console.error(
+                    `[gateway] Proxy error → ${target}:`,
+                    err.message,
+                );
+                res.status(502).json({
+                    success: false,
+                    error: "Service unavailable",
+                });
             },
         },
     });
 
 // ── Swagger JSON specs – public, no auth ─────────────────────
 // Đặt TRƯỚC các route auth; mỗi service tự expose alias path
-app.get("/api/auth/api-docs.json",         proxy(AUTH_SERVICE_URL));
-app.get("/api/users/api-docs.json",        proxy(USER_SERVICE_URL));
-app.get("/api/campaigns/api-docs.json",    proxy(CAMPAIGN_SERVICE_URL));
-app.get("/api/donations/api-docs.json",    proxy(DONATION_SERVICE_URL));
+app.get("/api/auth/api-docs.json", proxy(AUTH_SERVICE_URL));
+app.get("/api/users/api-docs.json", proxy(USER_SERVICE_URL));
+app.get("/api/campaigns/api-docs.json", proxy(CAMPAIGN_SERVICE_URL));
+app.get("/api/donations/api-docs.json", proxy(DONATION_SERVICE_URL));
 app.get("/api/certificates/api-docs.json", proxy(CERTIFICATE_SERVICE_URL));
 app.get("/api/transactions/api-docs.json", proxy(TRANSACTION_SERVICE_URL));
 
@@ -96,14 +115,28 @@ app.use("/api/donations", verifyToken, proxy(DONATION_SERVICE_URL));
 app.use("/api/certificates", verifyToken, proxy(CERTIFICATE_SERVICE_URL));
 
 // Transactions
+//   GET  /api/transactions/campaign/:id → public (verifyToken optional)
 //   POST /api/transactions           → requireAuth
 //   GET  /api/transactions/:wallet   → requireAuth (service kiểm tra ownership)
 //   PATCH /api/transactions/:txHash/status → internal (listener-service), bảo vệ tại service level
-app.use("/api/transactions", verifyToken, requireAuth, proxy(TRANSACTION_SERVICE_URL));
+app.get(
+    "/api/transactions/campaign/:id",
+    verifyToken,
+    proxy(TRANSACTION_SERVICE_URL),
+);
+app.use(
+    "/api/transactions",
+    verifyToken,
+    requireAuth,
+    proxy(TRANSACTION_SERVICE_URL),
+);
 
 // ── 404 Fallback ─────────────────────────────────────────────
 app.use((req, res) => {
-    res.status(404).json({ success: false, error: "Route không tồn tại trong gateway" });
+    res.status(404).json({
+        success: false,
+        error: "Route không tồn tại trong gateway",
+    });
 });
 
 app.listen(PORT, () => {
