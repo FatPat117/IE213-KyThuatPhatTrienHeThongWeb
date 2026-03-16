@@ -11,6 +11,7 @@ export interface CampaignRecord {
   description: string;
   images: string[];
   creator: string;
+  beneficiary?: string;
   goal: string;
   raised: string;
   deadline: string;

@@ -109,17 +109,15 @@ export default function Header() {
                 </div>
               );
             })}
+          </div>
 
-            {isSignedIn && (
-              <div className="relative group">
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-blue-500 hover:text-blue-600"
-                >
-                  Tài khoản
-                  <span className="text-[10px]">▾</span>
-                </button>
-                <div className="invisible absolute right-0 top-full z-40 mt-0 w-56 rounded-xl border border-slate-200 bg-white p-2 text-sm text-slate-700 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100">
+          {/* Right Section - Wallet Button + Account Dropdown */}
+          <div className="flex items-center gap-3">
+            {/* Desktop: gắn dropdown tài khoản ngay dưới thẻ thông tin ví */}
+            {isSignedIn ? (
+              <div className="relative hidden md:block group">
+                <WalletConnectButton />
+                <div className="invisible absolute right-0 top-full z-40 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 text-sm text-slate-700 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100">
                   {accountLinks.map((link) => {
                     const active = isLinkActive(link.href, pathname ?? '');
                     return (
@@ -138,12 +136,15 @@ export default function Header() {
                   })}
                 </div>
               </div>
+            ) : (
+              <WalletConnectButton />
             )}
-          </div>
-
-          {/* Right Section - Wallet Button */}
-          <div className="flex items-center gap-3">
-            <WalletConnectButton />
+            {/* Mobile & small screens luôn hiển thị nút ví riêng */}
+            {isSignedIn && (
+              <div className="md:hidden">
+                <WalletConnectButton />
+              </div>
+            )}
 
             {/* Mobile Menu Button */}
             <button

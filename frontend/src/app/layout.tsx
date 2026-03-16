@@ -4,6 +4,7 @@ import "./globals.css";
 import { AuthProvider, NetworkStatusMonitor, StatusProvider, WagmiProviderWrapper } from "@/lib";
 import { SystemStatusDisplay } from "@/components/system/SystemStatusDisplay";
 import Header from "@/components/layout/Header";
+import { Toaster } from "react-hot-toast";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -36,6 +37,7 @@ export default function RootLayout({
               <SystemStatusDisplay />
               <NetworkStatusMonitor />
               <Header />
+              <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
               {children}
             </StatusProvider>
           </AuthProvider>

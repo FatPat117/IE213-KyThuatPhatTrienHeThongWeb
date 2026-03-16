@@ -12,6 +12,7 @@ import {
   useAuth,
   useCreateCampaign,
 } from '@/lib';
+import { showErrorToast, showSuccessToast } from '@/lib/ui/toast';
 import CreateCampaignForm from '@/components/campaign-create/CreateCampaignForm';
 import CreateCampaignGuardCard from '@/components/campaign-create/CreateCampaignGuardCard';
 import CreateCampaignHeader from '@/components/campaign-create/CreateCampaignHeader';
@@ -139,6 +140,7 @@ export default function CreateCampaignPage() {
 
   useEffect(() => {
     if (transactionStatus !== 'success') return;
+    showSuccessToast('Tạo chiến dịch thành công! Đang chuyển tới trang chi tiết...');
     const target = createdCampaignId !== null ? `/campaigns/${createdCampaignId}` : '/campaigns';
     const timer = setTimeout(() => router.push(target), 3000);
     return () => clearTimeout(timer);
@@ -183,9 +185,24 @@ export default function CreateCampaignPage() {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!isConnected) return setManualError('Vui lòng kết nối ví trước.');
-    if (!isSepoliaNetwork) return setManualError('Vui lòng chuyển sang Sepolia để tạo chiến dịch.');
-    if (!address) return setManualError('Không tìm thấy địa chỉ ví. Vui lòng kết nối lại ví.');
+    if (!isConnected) {
+      const msg = 'Vui lòng kết nối ví trước.';
+      setManualError(msg);
+      showErrorToast(msg);
+      return;
+    }
+    if (!isSepoliaNetwork) {
+      const msg = 'Vui lòng chuyển sang Sepolia để tạo chiến dịch.';
+      setManualError(msg);
+      showErrorToast(msg);
+      return;
+    }
+    if (!address) {
+      const msg = 'Không tìm thấy địa chỉ ví. Vui lòng kết nối lại ví.';
+      setManualError(msg);
+      showErrorToast(msg);
+      return;
+    }
     if (!validateForm()) return;
 
     try {
@@ -203,10 +220,13 @@ export default function CreateCampaignPage() {
         normalized.includes('wrong network') ||
         normalized.includes('chain id')
       ) {
-        setManualError('Sai mạng. Vui lòng chuyển ví sang Sepolia trước khi tạo chiến dịch.');
+        const msg = 'Sai mạng. Vui lòng chuyển ví sang Sepolia trước khi tạo chiến dịch.';
+        setManualError(msg);
+        showErrorToast(msg);
         return;
       }
       setManualError(message);
+      showErrorToast(message);
     }
   };
 

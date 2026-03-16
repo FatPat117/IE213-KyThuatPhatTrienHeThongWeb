@@ -1,7 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useContractStats, useReadAllCampaigns } from '@/lib';
+import {
+  getCampaignMetadataFromCache,
+  isPlaceholderCampaignTitle,
+  useContractStats,
+  useReadAllCampaigns,
+} from '@/lib';
 import { useWalletStatus } from '@/lib';
 
 /**
@@ -137,31 +142,37 @@ export function CampaignListDisplay() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-        {campaigns.map((campaign) => (
-          <Link
-            key={campaign.id}
-            href={`/campaigns/${campaign.id}`}
-            className="group block rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200 hover:border-indigo-200 hover:shadow-lg"
-          >
-            <div className="flex justify-between items-start mb-3">
-              <div className="flex-1 min-w-0">
-                <h4 className="font-semibold text-slate-900 truncate transition-colors group-hover:text-indigo-600">
-                  {campaign.title}
-                </h4>
-                <p className="text-xs text-slate-500 mt-1">
-                  ID: {campaign.id} • Tạo bởi: {campaign.creator.slice(0, 6)}...
-                </p>
+        {campaigns.map((campaign) => {
+          const cached = getCampaignMetadataFromCache(campaign.id);
+          const effectiveTitle = !isPlaceholderCampaignTitle(campaign.title, campaign.id)
+            ? campaign.title
+            : cached?.title || `Campaign #${campaign.id}`;
+
+          return (
+            <Link
+              key={campaign.id}
+              href={`/campaigns/${campaign.id}`}
+              className="group block rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200 hover:border-indigo-200 hover:shadow-lg"
+            >
+              <div className="flex justify-between items-start mb-3">
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-semibold text-slate-900 truncate transition-colors group-hover:text-indigo-600">
+                    {effectiveTitle}
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-1">
+                    ID: {campaign.id} • Tạo bởi: {campaign.creator.slice(0, 6)}...
+                  </p>
+                </div>
+                <span
+                  className={`shrink-0 text-xs px-2.5 py-1 rounded-full font-medium ${
+                    campaign.completed
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-indigo-100 text-indigo-700'
+                  }`}
+                >
+                  {campaign.completed ? '✓ Hoàn thành' : 'Đang hoạt động'}
+                </span>
               </div>
-              <span
-                className={`shrink-0 text-xs px-2.5 py-1 rounded-full font-medium ${
-                  campaign.completed
-                    ? 'bg-green-100 text-green-700'
-                    : 'bg-indigo-100 text-indigo-700'
-                }`}
-              >
-                {campaign.completed ? '✓ Hoàn thành' : 'Đang hoạt động'}
-              </span>
-            </div>
 
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
@@ -205,8 +216,9 @@ export function CampaignListDisplay() {
                 % đạt được
               </p>
             </div>
-          </Link>
-        ))}
+            </Link>
+          );
+        })}
       </div>
     </div>
   );

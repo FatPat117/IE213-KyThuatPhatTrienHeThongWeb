@@ -7,10 +7,19 @@ interface WalletConnectedCardProps {
   onDisconnect: () => void;
   onSwitchToSepolia?: () => void;
   isSwitchingNetwork?: boolean;
+  displayName?: string | null;
+  avatarUrl?: string | null;
 }
 
 function shortenAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+function getInitial(displayName: string | null | undefined, address: string) {
+  if (displayName && displayName.trim().length > 0) {
+    return displayName.trim().charAt(0).toUpperCase();
+  }
+  return address.charAt(2).toUpperCase();
 }
 
 /**
@@ -23,7 +32,11 @@ export default function WalletConnectedCard({
   onDisconnect,
   onSwitchToSepolia,
   isSwitchingNetwork,
+  displayName,
+  avatarUrl,
 }: WalletConnectedCardProps) {
+  const primaryLabel = displayName && displayName.trim().length > 0 ? displayName.trim() : shortenAddress(address);
+
   return (
     <div className="flex items-center gap-2">
       <div
@@ -35,8 +48,27 @@ export default function WalletConnectedCard({
           className={`h-2 w-2 rounded-full ${isSepoliaNetwork ? 'bg-emerald-500' : 'bg-amber-500'}`}
           aria-hidden
         />
-        <span className="text-xs text-slate-600 hidden sm:inline">Ví:</span>
-        <span className="text-sm font-mono font-semibold text-slate-900">{shortenAddress(address)}</span>
+        <div className="flex items-center gap-2">
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt={primaryLabel}
+              className="h-6 w-6 rounded-full object-cover border border-slate-200 bg-white"
+            />
+          ) : (
+            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-[11px] font-bold text-white">
+              {getInitial(displayName, address)}
+            </div>
+          )}
+          <div className="flex flex-col leading-tight">
+            <span className="text-xs font-semibold text-slate-900 max-w-[120px] truncate">
+              {primaryLabel}
+            </span>
+            <span className="text-[10px] font-mono text-slate-500 hidden sm:inline">
+              {shortenAddress(address)}
+            </span>
+          </div>
+        </div>
         {authRole && <span className="hidden md:inline text-xs text-slate-500">({authRole})</span>}
       </div>
 
