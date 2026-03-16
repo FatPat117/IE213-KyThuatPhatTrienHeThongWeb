@@ -133,11 +133,11 @@ export default function Header() {
 
                     {/* Right Section - Wallet Button + Account Dropdown */}
                     <div className="flex items-center gap-3">
-                        {/* Desktop: gắn dropdown tài khoản ngay dưới thẻ thông tin ví */}
                         {isSignedIn ? (
                             <div className="relative hidden md:block group">
                                 <WalletConnectButton />
-                                <div className="invisible absolute right-0 top-85% z-40 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 text-sm text-slate-700 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100">
+                                {/* THE INVISIBLE BRIDGE FIX IS ADDED HERE */}
+                                <div className="invisible absolute right-0 top-full z-40 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 text-sm text-slate-700 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 before:absolute before:-top-2 before:left-0 before:h-2 before:w-full before:content-['']">
                                     {accountLinks.map((link) => {
                                         const active = isLinkActive(
                                             link.href,
@@ -162,14 +162,13 @@ export default function Header() {
                         ) : (
                             <WalletConnectButton />
                         )}
-                        {/* Mobile & small screens luôn hiển thị nút ví riêng */}
+
                         {isSignedIn && (
                             <div className="md:hidden">
                                 <WalletConnectButton />
                             </div>
                         )}
 
-                        {/* Mobile Menu Button */}
                         <button
                             onClick={() =>
                                 setIsMobileMenuOpen(!isMobileMenuOpen)
