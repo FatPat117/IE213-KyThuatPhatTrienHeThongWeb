@@ -227,10 +227,10 @@ export function useReadFilteredCampaigns(isCompleted?: boolean) {
  * @returns write function và transaction state
  */
 export function useDonateToCampaign() {
-    const { writeContract, data, isPending, error } = useWriteContract();
+    const { writeContractAsync, data, isPending, error } = useWriteContract();
 
     const donate = (campaignId: number, amountEth: string) => {
-        return writeContract({
+        return writeContractAsync({
             ...contractConfig,
             functionName: 'donate',
             args: [BigInt(campaignId)],

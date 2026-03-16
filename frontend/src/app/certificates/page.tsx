@@ -1,9 +1,15 @@
 'use client';
 
 import { API_BASE_URL } from '@/lib/api/client';
-import { CROWDFUNDING_CONTRACT_ADDRESS, useBackendCampaigns } from '@/lib';
+import {
+    CROWDFUNDING_CONTRACT_ADDRESS,
+    getCampaignMetadataFromCache,
+    isPlaceholderCampaignDescription,
+    isPlaceholderCampaignTitle,
+    useBackendCampaigns,
+} from '@/lib';
 import Link from 'next/link';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAccount } from 'wagmi';
 
 interface CertificateRecord {
@@ -79,6 +85,7 @@ function createPrintableCertificateHtml(node: HTMLDivElement) {
 
 export default function MyCertificatesPage() {
     const { address, isConnected, chain } = useAccount();
+    const [hasMounted, setHasMounted] = useState(false);
     const campaignsQuery = useBackendCampaigns();
     const [certificates, setCertificates] = useState<CertificateRecord[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -88,53 +95,93 @@ export default function MyCertificatesPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'amount'>('newest');
     const [filterCampaignId, setFilterCampaignId] = useState<number | 'all'>('all');
+    const [autoRefreshNonce, setAutoRefreshNonce] = useState(0);
     const certificatePreviewRefs = useRef<Record<number, HTMLDivElement | null>>({});
     const SHOW_CERTIFICATE_DETAILS = false;
+
+    useEffect(() => {
+        setHasMounted(true);
+    }, []);
 
     const uniqueCampaignIds = useMemo(() => {
         const ids = new Set(certificates.map((c) => c.campaignOnChainId));
         return Array.from(ids).sort((a, b) => a - b);
     }, [certificates]);
 
-    useEffect(() => {
-        const loadCertificates = async () => {
-            if (!isConnected || !address) {
-                setCertificates([]);
-                return;
+    const loadCertificates = useCallback(async () => {
+        if (!isConnected || !address) {
+            setCertificates([]);
+            return;
+        }
+
+        try {
+            setIsLoading(true);
+            setError(null);
+
+            const response = await fetch(`${API_BASE_URL}/certificates/owner/${address}`, {
+                // Tránh cache để khi vừa mint xong bấm "Xem chứng chỉ" sẽ luôn lấy dữ liệu mới nhất
+                cache: 'no-store',
+            });
+            if (!response.ok) {
+                throw new Error('Không thể tải danh sách chứng nhận');
             }
 
-            try {
-                setIsLoading(true);
-                setError(null);
-
-                const response = await fetch(`${API_BASE_URL}/certificates/owner/${address}`, {
-                    // Tránh cache để khi vừa mint xong bấm "Xem chứng chỉ" sẽ luôn lấy dữ liệu mới nhất
-                    cache: 'no-store',
-                });
-                if (!response.ok) {
-                    throw new Error('Không thể tải danh sách chứng nhận');
-                }
-
-                const payload = await response.json();
-                const rows = Array.isArray(payload?.data) ? payload.data : [];
-                // Đảm bảo chứng chỉ được sắp xếp theo thời gian mint gần nhất ở đầu
-                rows.sort((a: CertificateRecord, b: CertificateRecord) => new Date(b.mintedAt).getTime() - new Date(a.mintedAt).getTime());
-                setCertificates(rows);
-            } catch (err) {
-                setError(err instanceof Error ? err.message : 'Lỗi không xác định');
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        loadCertificates();
+            const payload = await response.json();
+            const rows = Array.isArray(payload?.data) ? payload.data : [];
+            // Đảm bảo chứng chỉ được sắp xếp theo thời gian mint gần nhất ở đầu
+            rows.sort(
+                (a: CertificateRecord, b: CertificateRecord) =>
+                    new Date(b.mintedAt).getTime() - new Date(a.mintedAt).getTime(),
+            );
+            setCertificates(rows);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Lỗi không xác định');
+        } finally {
+            setIsLoading(false);
+        }
     }, [address, isConnected]);
+
+    useEffect(() => {
+        loadCertificates();
+    }, [loadCertificates, autoRefreshNonce]);
+
+    useEffect(() => {
+        if (!isConnected || !address) return;
+
+        let attempts = 0;
+        const intervalId = window.setInterval(() => {
+            attempts += 1;
+            setAutoRefreshNonce((prev) => prev + 1);
+            if (attempts >= 3) {
+                window.clearInterval(intervalId);
+            }
+        }, 5000);
+
+        return () => {
+            window.clearInterval(intervalId);
+        };
+    }, [isConnected, address]);
 
     const certificateCount = certificates.length;
     const campaignById = useMemo(() => {
-        const map = new Map<number, (typeof campaignsQuery.data)[number]>();
+        const map = new Map<
+            number,
+            (typeof campaignsQuery.data)[number] & { effectiveTitle: string; effectiveDescription: string | null }
+        >();
         campaignsQuery.data.forEach((campaign) => {
-            map.set(campaign.onChainId, campaign);
+            const cached = getCampaignMetadataFromCache(campaign.onChainId);
+            const effectiveTitle = !isPlaceholderCampaignTitle(campaign.title, campaign.onChainId)
+                ? campaign.title
+                : cached?.title || `Campaign #${campaign.onChainId}`;
+            const effectiveDescription = !isPlaceholderCampaignDescription(campaign.description)
+                ? campaign.description
+                : cached?.description || null;
+
+            map.set(campaign.onChainId, {
+                ...campaign,
+                effectiveTitle,
+                effectiveDescription,
+            });
         });
         return map;
     }, [campaignsQuery.data]);
@@ -152,10 +199,11 @@ export default function MyCertificatesPage() {
         if (query) {
             result = result.filter((item) => {
                 const campaign = campaignById.get(item.campaignOnChainId);
+                const rawTitle = item.campaignTitle;
                 const title =
-                    item.campaignTitle ||
-                    campaign?.title ||
-                    `Campaign #${item.campaignOnChainId}`;
+                    rawTitle && !isPlaceholderCampaignTitle(rawTitle, item.campaignOnChainId)
+                        ? rawTitle
+                        : campaign?.effectiveTitle || `Campaign #${item.campaignOnChainId}`;
                 const owner = item.ownerWallet.toLowerCase();
                 const displayName = (item.displayName || '').toLowerCase();
                 return (
@@ -381,7 +429,7 @@ export default function MyCertificatesPage() {
                                         <option value="all">Tất cả chiến dịch</option>
                                         {uniqueCampaignIds.map((id) => {
                                             const c = campaignById.get(id);
-                                            const title = c?.title || `Campaign #${id}`;
+                                            const title = c?.effectiveTitle || `Campaign #${id}`;
                                             return (
                                                 <option key={id} value={id}>
                                                     {title}
@@ -411,6 +459,14 @@ export default function MyCertificatesPage() {
                                         <option value="oldest">Cũ nhất</option>
                                         <option value="amount">Số tiền donate</option>
                                     </select>
+                                    <button
+                                        type="button"
+                                        onClick={loadCertificates}
+                                        disabled={isLoading}
+                                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:border-blue-500 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                                    >
+                                        🔄 Tải lại danh sách
+                                    </button>
                                 </div>
                             </div>
 
@@ -449,12 +505,15 @@ export default function MyCertificatesPage() {
                                                       )?.value || 0
                                                   );
                                         const campaign = campaignById.get(item.campaignOnChainId);
+                                        const rawTitle = item.campaignTitle;
                                         const campaignTitle =
-                                            item.campaignTitle ||
-                                            campaign?.title ||
-                                            `Campaign #${item.campaignOnChainId}`;
-                                        const campaignDescription = campaign?.description || null;
-                                        // Ưu tiên message do người dùng nhập, sau đó đến desc của campaign, cuối cùng mới đến description trong metadata
+                                            rawTitle && !isPlaceholderCampaignTitle(rawTitle, item.campaignOnChainId)
+                                                ? rawTitle
+                                                : campaign?.effectiveTitle ||
+                                                  `Campaign #${item.campaignOnChainId}`;
+                                        const campaignDescription =
+                                            campaign?.effectiveDescription || null;
+                                        // Ưu tiên message do người dùng nhập, sau đó đến desc của campaign (đã chuẩn hóa giống các màn campaign), cuối cùng mới đến description trong metadata
                                         const gratitudeMessage =
                                             item.certificateMessage || campaignDescription || inlineMetadata?.description || null;
                                         const amountTagClass =
@@ -611,19 +670,33 @@ export default function MyCertificatesPage() {
                                                 >
                                                     Xem campaign
                                                 </Link>
-                                                {hasUsableMetadata(item.metadataUri) ? (
-                                                    <a
-                                                        href={normalizeMetadataUri(item.metadataUri) || '#'}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
+                                                {hasUsableMetadata(item.metadataUri) && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const normalized = normalizeMetadataUri(item.metadataUri);
+                                                            if (!normalized) return;
+
+                                                            // Với metadata inline dạng data:application/json, tạo file JSON tạm để mở.
+                                                            if (normalized.startsWith('data:application/json')) {
+                                                                const parsed = parseInlineMetadata(item.metadataUri) ?? {};
+                                                                const pretty = JSON.stringify(parsed, null, 2);
+                                                                const blob = new Blob([pretty], {
+                                                                    type: 'application/json;charset=utf-8',
+                                                                });
+                                                                const url = URL.createObjectURL(blob);
+                                                                window.open(url, '_blank', 'noopener,noreferrer');
+                                                                // Thu hồi URL sau một thời gian ngắn.
+                                                                window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+                                                                return;
+                                                            }
+
+                                                            window.open(normalized, '_blank', 'noopener,noreferrer');
+                                                        }}
                                                         className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:border-blue-500 hover:text-blue-600"
                                                     >
                                                         Mở metadata
-                                                    </a>
-                                                ) : (
-                                                    <span className="rounded-lg border border-slate-200 bg-slate-100 px-3.5 py-2 text-sm font-semibold text-slate-500">
-                                                        Metadata chưa có
-                                                    </span>
+                                                    </button>
                                                 )}
                                                 <a
                                                     href={`https://sepolia.etherscan.io/token/${CROWDFUNDING_CONTRACT_ADDRESS}?a=${item.tokenId}`}

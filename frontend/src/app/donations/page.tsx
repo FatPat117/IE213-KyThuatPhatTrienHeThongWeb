@@ -9,7 +9,14 @@ import DonationSummaryCards from '@/components/donations/DonationSummaryCards';
 import BackButton from '@/components/navigation/BackButton';
 import TransactionHistoryModal from '@/components/transactions/TransactionHistoryModal';
 import type { DonationRecord } from '@/lib/api/types';
-import { contractConfig, useBackendCampaigns, useBackendDonations, useBackendTransactions } from '@/lib';
+import {
+  contractConfig,
+  getCampaignMetadataFromCache,
+  isPlaceholderCampaignTitle,
+  useBackendCampaigns,
+  useBackendDonations,
+  useBackendTransactions,
+} from '@/lib';
 
 export default function MyDonationsPage() {
   const { address, isConnected, chain } = useAccount();
@@ -80,7 +87,11 @@ export default function MyDonationsPage() {
   const campaignTitleById = useMemo(() => {
     const map = new Map<number, string>();
     campaignsQuery.data.forEach((campaign) => {
-      map.set(campaign.onChainId, campaign.title || `Campaign #${campaign.onChainId}`);
+      const cached = getCampaignMetadataFromCache(campaign.onChainId);
+      const effectiveTitle = !isPlaceholderCampaignTitle(campaign.title, campaign.onChainId)
+        ? campaign.title
+        : cached?.title || `Campaign #${campaign.onChainId}`;
+      map.set(campaign.onChainId, effectiveTitle);
     });
     return map;
   }, [campaignsQuery.data]);

@@ -18,6 +18,7 @@ import {
   useRefundDonation,
   useWithdrawFunds,
 } from "@/lib";
+import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { formatEther, parseAbiItem } from "viem";
@@ -265,24 +266,38 @@ export default function CampaignDetailPage() {
     useEffect(() => {
         if (isConfirmed) {
             refetch();
-            setAmount("0.01"); // Reset amount after successful donation
+            setAmount("0.01");
+            showSuccessToast("Quyên góp thành công! Giao dịch đang được xác nhận.");
         }
     }, [isConfirmed, refetch]);
 
     const handleDonate = () => {
         if (!Number.isFinite(id)) return;
         if (parseFloat(amount) <= 0) return;
-        donate(id, amount);
+        donate(id, amount).catch((err) => {
+            const friendly = getFriendlyError(err);
+            showErrorToast(friendly || "Không thể thực hiện quyên góp. Vui lòng thử lại.");
+        });
     };
 
     const handleWithdraw = () => {
         if (!Number.isFinite(id)) return;
-        withdrawFunds(id);
+        try {
+            withdrawFunds(id);
+        } catch (err) {
+            const friendly = getFriendlyError(err as { message?: string });
+            showErrorToast(friendly || "Không thể rút tiền từ chiến dịch. Vui lòng thử lại.");
+        }
     };
 
     const handleRefund = () => {
         if (!Number.isFinite(id)) return;
-        refund(id);
+        try {
+            refund(id);
+        } catch (err) {
+            const friendly = getFriendlyError(err as { message?: string });
+            showErrorToast(friendly || "Không thể hoàn tiền. Vui lòng thử lại.");
+        }
     };
 
     const handleMintCertificate = async (displayName: string) => {
@@ -310,9 +325,12 @@ export default function CampaignDetailPage() {
                 avatarUrl: user?.avatarUrl || "",
             });
             setAuth(token, toAuthUserProfile(updated));
-            mintCertificate(id);
+            await mintCertificate(id);
         } catch (err) {
-            setMintFlowError(err instanceof Error ? err.message : "Không thể cập nhật tên hiển thị trước khi mint.");
+            const message = err instanceof Error ? err.message : "Không thể cập nhật tên hiển thị trước khi mint.";
+            setMintFlowError(message);
+            const friendly = getFriendlyError({ message } as { message: string });
+            showErrorToast(friendly || message);
         } finally {
             setMintProfileSaving(false);
         }
@@ -322,12 +340,18 @@ export default function CampaignDetailPage() {
     };
     const handleMarkAsFailed = () => {
         if (!Number.isFinite(id)) return;
-        markAsFailed(id);
+        try {
+            markAsFailed(id);
+        } catch (err) {
+            const friendly = getFriendlyError(err as { message?: string });
+            showErrorToast(friendly || "Không thể cập nhật trạng thái Failed. Vui lòng thử lại.");
+        }
     };
 
     useEffect(() => {
         if (markAsFailedConfirmed) {
             refetch();
+            showSuccessToast("Đã cập nhật campaign sang trạng thái Failed.");
         }
     }, [markAsFailedConfirmed, refetch]);
 
@@ -353,10 +377,6 @@ export default function CampaignDetailPage() {
         const raisedEth = Number(formatEther(campaign.raised));
         return goalEth > 0 ? Math.min((raisedEth / goalEth) * 100, 100) : 0;
     }, [campaign]);
-    const cachedCampaignMetadata = useMemo(
-        () => (Number.isFinite(id) ? getCampaignMetadataFromCache(id) : null),
-        [id]
-    );
 
     const isSepolia = chain?.id === 11155111;
     const canDonate = Boolean(isConnected && isSepolia && campaign && !campaign.completed);
@@ -382,7 +402,7 @@ export default function CampaignDetailPage() {
                 </header>
 
                 {/* Loading State */}
-                {isLoading && (
+                {(isLoading || backendCampaign.isLoading) && (
                     <div className="space-y-6 animate-pulse">
                         <div className="rounded-2xl bg-white border border-slate-200 p-8 shadow-sm">
                             <div className="h-8 w-2/3 rounded bg-slate-200 mb-4" />
@@ -410,7 +430,7 @@ export default function CampaignDetailPage() {
                 )}
 
                 {/* Campaign Content */}
-                {!isLoading && !isError && campaign && (
+                {!isLoading && !backendCampaign.isLoading && !isError && campaign && (
                     <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
                         {/* Left Column - Main Content */}
                         <div className="space-y-6">
@@ -419,12 +439,12 @@ export default function CampaignDetailPage() {
                                 backendTitle={
                                     !isPlaceholderCampaignTitle(backendCampaign.data?.title, id)
                                         ? backendCampaign.data?.title
-                                        : (cachedCampaignMetadata?.title || undefined)
+                                        : undefined
                                 }
                                 backendDescription={
                                     !isPlaceholderCampaignDescription(backendCampaign.data?.description)
                                         ? backendCampaign.data?.description
-                                        : (cachedCampaignMetadata?.description || undefined)
+                                        : undefined
                                 }
                                 progress={progress}
                             />

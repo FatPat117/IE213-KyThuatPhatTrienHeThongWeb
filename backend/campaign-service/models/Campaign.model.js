@@ -30,6 +30,16 @@ const CampaignSchema = new mongoose.Schema(
             trim: true,
             match: [/^0x[a-fA-F0-9]{40}$/, "Địa chỉ ví creator không hợp lệ"],
         },
+        beneficiary: {
+            type: String,
+            lowercase: true,
+            trim: true,
+            match: [
+                /^0x[a-fA-F0-9]{40}$/,
+                "Địa chỉ ví beneficiary không hợp lệ",
+            ],
+            default: null,
+        },
         // Lưu dạng String để tránh mất precision khi xử lý BigInt wei
         goal: {
             type: String,
@@ -51,11 +61,13 @@ const CampaignSchema = new mongoose.Schema(
         },
         // TODO: Thêm category, tags nếu cần filter nâng cao
     },
-    { timestamps: true }
+    { timestamps: true },
 );
 
 CampaignSchema.index({ onChainId: 1 });
 CampaignSchema.index({ creator: 1 });
+CampaignSchema.index({ beneficiary: 1 });
 CampaignSchema.index({ status: 1 });
 
-module.exports = mongoose.models.Campaign || mongoose.model("Campaign", CampaignSchema);
+module.exports =
+    mongoose.models.Campaign || mongoose.model("Campaign", CampaignSchema);

@@ -4,7 +4,12 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAccount } from 'wagmi';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { useReadCampaign } from '@/lib';
+import {
+  getCampaignMetadataFromCache,
+  isPlaceholderCampaignDescription,
+  isPlaceholderCampaignTitle,
+  useReadCampaign,
+} from '@/lib';
 import { formatEther } from 'viem';
 
 export default function EditCampaignPage() {
@@ -28,9 +33,17 @@ export default function EditCampaignPage() {
   // Populate form when campaign loads
   useEffect(() => {
     if (campaign) {
+      const cached = getCampaignMetadataFromCache(campaign.id);
+      const effectiveTitle = !isPlaceholderCampaignTitle(campaign.title, campaign.id)
+        ? campaign.title
+        : cached?.title || '';
+      const effectiveDescription = !isPlaceholderCampaignDescription(campaign.description)
+        ? campaign.description
+        : cached?.description || '';
+
       setFormData({
-        title: campaign.title || '',
-        description: campaign.description || '',
+        title: effectiveTitle,
+        description: effectiveDescription,
       });
     }
   }, [campaign]);

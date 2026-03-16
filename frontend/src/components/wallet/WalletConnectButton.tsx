@@ -148,6 +148,8 @@ export default function WalletConnectButton() {
       address={address}
       isSepoliaNetwork={isSepoliaNetwork}
       authRole={user?.role ?? null}
+      displayName={user?.displayName}
+      avatarUrl={user?.avatarUrl}
       onDisconnect={handleDisconnect}
       onSwitchToSepolia={handleSwitchNetwork}
       isSwitchingNetwork={isSwitchingNetwork}
