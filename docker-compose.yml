@@ -201,7 +201,9 @@ services:
             - RABBITMQ_URL=${RABBITMQ_URL}
             - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE}
             - RABBITMQ_QUEUE_TX_DONATED=${RABBITMQ_QUEUE_TX_DONATED}
+            - RABBITMQ_QUEUE_TX_REFUND_ISSUED=${RABBITMQ_QUEUE_TX_REFUND_ISSUED}
             - RABBITMQ_RKEY_DONATED=${RABBITMQ_RKEY_DONATED}
+            - RABBITMQ_RKEY_REFUND_ISSUED=${RABBITMQ_RKEY_REFUND_ISSUED}
             - CAMPAIGN_SERVICE_URL=${CAMPAIGN_SERVICE_URL}
         volumes:
             - ./backend/transaction-service:/app
@@ -232,6 +234,7 @@ services:
             - RABBITMQ_RKEY_WITHDRAWN=${RABBITMQ_RKEY_WITHDRAWN}
             - RABBITMQ_RKEY_CERT_MINTED=${RABBITMQ_RKEY_CERT_MINTED}
             - RABBITMQ_RKEY_CAMP_FAILED=${RABBITMQ_RKEY_CAMP_FAILED}
+            - RABBITMQ_RKEY_REFUND_ISSUED=${RABBITMQ_RKEY_REFUND_ISSUED}
         volumes:
             - ./backend/listener-service:/app
             - /app/node_modules

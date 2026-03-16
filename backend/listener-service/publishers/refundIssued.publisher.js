@@ -1,37 +1,41 @@
-const axios = require("axios");
-
-const TRANSACTION_SERVICE_URL =
-    process.env.TRANSACTION_SERVICE_URL || "http://transaction-service:4005";
+const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 
 /**
  * Khi contract emit event RefundIssued(campaignId, donor, amount):
- * Upsert transaction-service → ghi nhận action claimRefund với status success.
- * (Không cần publish RabbitMQ vì không có consumer cần event này)
+ * Publish RabbitMQ → transaction-service consume để ghi action claimRefund.
  */
 async function publishRefundIssued(eventData) {
     const { campaignId, donor, amount, txHash } = eventData;
 
-    if (!txHash || !donor) return;
+    if (!txHash || !donor || amount === undefined || amount === null) return;
 
-    try {
-        await axios.post(
-            `${TRANSACTION_SERVICE_URL}/api/transactions/internal/upsert`,
-            {
-                txHash,
-                walletAddress: donor.toLowerCase(),
-                action: "claimRefund",
-                campaignOnChainId: Number(campaignId),
-            },
+    const channel = getChannel();
+    if (!channel) {
+        console.warn(
+            "[listener-service] publishRefundIssued: RabbitMQ channel không có",
         );
-        console.log(
-            `[listener-service] Upserted claimRefund tx: campaignId=${campaignId}, donor=${donor}`,
-        );
-    } catch (err) {
-        console.error(
-            "[listener-service] publishRefundIssued: failed to upsert tx:",
-            err.message,
-        );
+        return;
     }
+
+    const amountBigInt = BigInt(amount);
+    const payload = {
+        campaignOnChainId: Number(campaignId),
+        donorWallet: donor.toLowerCase(),
+        amount: amountBigInt.toString(),
+        amountEth: Number(amountBigInt) / 1e18,
+        txHash,
+    };
+
+    channel.publish(
+        EXCHANGE,
+        process.env.RABBITMQ_RKEY_REFUND_ISSUED || "refund.issued",
+        Buffer.from(JSON.stringify(payload)),
+        { persistent: true },
+    );
+
+    console.log(
+        `[listener-service] Published refund.issued: campaignId=${campaignId}, donor=${donor}`,
+    );
 }
 
 module.exports = { publishRefundIssued };

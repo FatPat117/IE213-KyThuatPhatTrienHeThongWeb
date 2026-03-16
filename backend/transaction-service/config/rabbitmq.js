@@ -1,11 +1,17 @@
 const amqp = require("amqplib");
 const Transaction = require("../models/transaction.model");
+const transactionService = require("../services/transaction.service");
 
 const RABBITMQ_URL = process.env.RABBITMQ_URL;
 const EXCHANGE = process.env.RABBITMQ_EXCHANGE || "funding.events";
 const QUEUE =
     process.env.RABBITMQ_QUEUE_TX_DONATED || "transaction.donation.queue";
 const ROUTING_KEY = process.env.RABBITMQ_RKEY_DONATED || "donation.received";
+const REFUND_QUEUE =
+    process.env.RABBITMQ_QUEUE_TX_REFUND_ISSUED ||
+    "transaction.refund.issued.queue";
+const REFUND_ROUTING_KEY =
+    process.env.RABBITMQ_RKEY_REFUND_ISSUED || "refund.issued";
 const CAMPAIGN_SERVICE_URL =
     process.env.CAMPAIGN_SERVICE_URL || "http://campaign-service:4002";
 
@@ -58,7 +64,18 @@ async function connectRabbitMQ() {
         const queue = await channel.assertQueue(QUEUE, { durable: true });
         await channel.bindQueue(queue.queue, EXCHANGE, ROUTING_KEY);
 
-        console.log(`[transaction-service] Listening on queue: ${queue.queue}`);
+        const refundQueue = await channel.assertQueue(REFUND_QUEUE, {
+            durable: true,
+        });
+        await channel.bindQueue(
+            refundQueue.queue,
+            EXCHANGE,
+            REFUND_ROUTING_KEY,
+        );
+
+        console.log(
+            `[transaction-service] Listening on queues: ${queue.queue}, ${refundQueue.queue}`,
+        );
 
         channel.consume(
             queue.queue,
@@ -77,6 +94,34 @@ async function connectRabbitMQ() {
                 } catch (error) {
                     console.error(
                         "[transaction-service] Failed to process message:",
+                        error,
+                    );
+                    channel.nack(msg, false, false);
+                }
+            },
+            { noAck: false },
+        );
+
+        channel.consume(
+            refundQueue.queue,
+            async (msg) => {
+                if (!msg) return;
+
+                try {
+                    const content = JSON.parse(msg.content.toString());
+                    console.log(
+                        `[transaction-service] Received message from ${msg.fields.routingKey}:`,
+                        content,
+                    );
+
+                    await handleRefundIssuedEvent(
+                        msg.fields.routingKey,
+                        content,
+                    );
+                    channel.ack(msg);
+                } catch (error) {
+                    console.error(
+                        "[transaction-service] Failed to process refund message:",
                         error,
                     );
                     channel.nack(msg, false, false);
@@ -137,6 +182,37 @@ async function handleDonationEvent(routingKey, content) {
     await newTransaction.save();
     console.log(
         `[transaction-service] Stored transaction ${txHash} successfully.`,
+    );
+}
+
+async function handleRefundIssuedEvent(routingKey, content) {
+    if (routingKey !== REFUND_ROUTING_KEY) {
+        return;
+    }
+
+    const { txHash, donorWallet, campaignOnChainId } = content;
+
+    if (!txHash) {
+        throw new Error("Missing txHash in refund payload");
+    }
+
+    if (!donorWallet) {
+        throw new Error("Missing donorWallet in refund payload");
+    }
+
+    if (campaignOnChainId === undefined || campaignOnChainId === null) {
+        throw new Error("Missing campaignOnChainId in refund payload");
+    }
+
+    await transactionService.upsertTransactionSuccess({
+        txHash,
+        walletAddress: donorWallet,
+        action: "claimRefund",
+        campaignOnChainId: Number(campaignOnChainId),
+    });
+
+    console.log(
+        `[transaction-service] Stored refund transaction ${txHash} successfully.`,
     );
 }
 
