@@ -1,10 +1,15 @@
 import { createConfig, http } from 'wagmi';
-import { mainnet, sepolia } from 'wagmi/chains';
+import { sepolia } from 'wagmi/chains';
+
+const sepoliaRpcUrl = process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL;
+
+if (!sepoliaRpcUrl) {
+    throw new Error('NEXT_PUBLIC_SEPOLIA_RPC_URL is not defined in environment variables');
+}
 
 export const config = createConfig({
-  chains: [mainnet, sepolia],
-  transports: {
-    [mainnet.id]: http(),
-    [sepolia.id]: http('https://eth-sepolia.g.alchemy.com/v2/demo'),
-  },
+    chains: [sepolia],
+    transports: {
+        [sepolia.id]: http(sepoliaRpcUrl),
+    },
 });

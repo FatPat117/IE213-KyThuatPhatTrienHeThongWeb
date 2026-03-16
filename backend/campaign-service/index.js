@@ -6,11 +6,21 @@ const morgan = require("morgan");
 
 const { connectDB } = require("./config/db");
 const { connectRabbitMQ } = require("./config/rabbitmq");
-const { startCampaignCreatedConsumer } = require("./consumers/campaignCreated.consumer");
-const { startFundsWithdrawnConsumer } = require("./consumers/fundsWithdrawn.consumer");
-const { startCampaignCancelledConsumer } = require("./consumers/campaignCancelled.consumer");
+const {
+    startCampaignCreatedConsumer,
+} = require("./consumers/campaignCreated.consumer");
+const {
+    startFundsWithdrawnConsumer,
+} = require("./consumers/fundsWithdrawn.consumer");
+const {
+    startCampaignCancelledConsumer,
+} = require("./consumers/campaignCancelled.consumer");
 const { startDonatedConsumer } = require("./consumers/donated.consumer");
+const {
+    startCampaignFailedConsumer,
+} = require("./consumers/campaignFailed.consumer");
 const campaignRoutes = require("./routes/campaign.routes");
+const notificationRoutes = require("./routes/notification.routes");
 const errorHandler = require("./middlewares/errorHandler");
 
 const app = express();
@@ -24,7 +34,7 @@ app.use(express.json());
 
 // ── Routes ───────────────────────────────────────────────────
 app.get("/api/health", (req, res) =>
-    res.json({ success: true, service: "campaign-service", status: "ok" })
+    res.json({ success: true, service: "campaign-service", status: "ok" }),
 );
 
 // Swagger setup
@@ -41,6 +51,7 @@ app.get("/api/campaigns/api-docs.json", (req, res) => {
     res.send(specs);
 });
 app.use("/api/campaigns", campaignRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // ── Error Handler ────────────────────────────────────────────
 app.use(errorHandler);
@@ -53,6 +64,7 @@ async function start() {
     await startFundsWithdrawnConsumer();
     await startCampaignCancelledConsumer();
     await startDonatedConsumer();
+    await startCampaignFailedConsumer();
 
     app.listen(PORT, () => {
         console.log(`[campaign-service] Running at http://localhost:${PORT}`);

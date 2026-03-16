@@ -1,31 +1,100 @@
 'use client';
 
-import { useAccount, useConnect, useDisconnect, useChainId } from 'wagmi';
-import { injected } from 'wagmi/connectors';
 import { useEffect, useState } from 'react';
+import { useAccount, useChainId, useConnect, useDisconnect, useSignMessage, useSwitchChain } from 'wagmi';
+import { injected } from 'wagmi/connectors';
+import WalletConnectedCard from './WalletConnectedCard';
+import WalletDisconnectedCard from './WalletDisconnectedCard';
+import { requestNonce, useAuth, verifyWalletSignature } from '@/lib';
 
 const SEPOLIA_CHAIN_ID = 11155111;
+const isIgnorableConnectorError = (message: string) => {
+  const normalized = message.toLowerCase();
+  return normalized.includes('connector not connected');
+};
 
 export default function WalletConnectButton() {
   const { address, isConnected } = useAccount();
   const { connect, isPending } = useConnect();
   const { disconnect } = useDisconnect();
+  const { signMessageAsync } = useSignMessage();
+  const { switchChain, isPending: isSwitchingNetwork } = useSwitchChain();
+  const { user, token, setAuth, clearAuth } = useAuth();
   const chainId = useChainId();
   const [hasProvider, setHasProvider] = useState<boolean | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [authAttemptedWallet, setAuthAttemptedWallet] = useState<string | null>(null);
 
   const isSepoliaNetwork = chainId === SEPOLIA_CHAIN_ID;
+  const isAuthenticated = Boolean(
+    token &&
+      user?.wallet &&
+      address &&
+      user.wallet.toLowerCase() === address.toLowerCase()
+  );
+
+  const authenticateWallet = async (walletAddress: string) => {
+    try {
+      setIsAuthenticating(true);
+      setErrorMessage(null);
+      setAuthAttemptedWallet(walletAddress.toLowerCase());
+
+      const { nonce } = await requestNonce(walletAddress);
+      const signature = await signMessageAsync({ message: nonce });
+      const auth = await verifyWalletSignature(walletAddress, signature);
+      setAuth(auth.token, auth.user);
+    } catch (error) {
+      clearAuth();
+      const rawMessage = error instanceof Error ? error.message : 'SIWE đăng nhập thất bại.';
+      const normalized = rawMessage.toLowerCase();
+      if (isDisconnecting || isIgnorableConnectorError(rawMessage)) {
+        // Ignore transient errors caused by user-initiated disconnect.
+        return;
+      }
+      if (normalized.includes('user rejected') || normalized.includes('user denied')) {
+        setErrorMessage('Bạn cần ký xác thực để tiếp tục sử dụng tính năng.');
+      } else {
+        setErrorMessage(rawMessage);
+      }
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
 
   useEffect(() => {
-    // Kiểm tra sự tồn tại của window.ethereum
+    // Check browser wallet provider once on mount.
     if (typeof window !== 'undefined') {
-      setHasProvider(Boolean((window as any).ethereum));
+      setHasProvider(Boolean((window as { ethereum?: unknown }).ethereum));
     }
   }, []);
+
+  useEffect(() => {
+    if (!isConnected || !address) return;
+    if (isDisconnecting) return;
+    if (isAuthenticated || isAuthenticating) return;
+    if (authAttemptedWallet === address.toLowerCase()) return;
+
+    authenticateWallet(address);
+  }, [address, authAttemptedWallet, isAuthenticated, isAuthenticating, isConnected, isDisconnecting, signMessageAsync]);
+
+  useEffect(() => {
+    if (isConnected) return;
+    setAuthAttemptedWallet(null);
+    setErrorMessage(null);
+    setIsDisconnecting(false);
+  }, [isConnected]);
 
   const handleConnect = async () => {
     try {
       setErrorMessage(null);
+
+      if (isConnected && address) {
+        await authenticateWallet(address);
+        return;
+      }
+
       if (!hasProvider) {
         window.open('https://metamask.io/download/', '_blank');
         return;
@@ -33,89 +102,57 @@ export default function WalletConnectButton() {
       connect({ connector: injected() });
     } catch (error) {
       console.error('Failed to connect wallet:', error);
+      const rawMessage = error instanceof Error ? error.message : '';
+      if (isIgnorableConnectorError(rawMessage)) {
+        setErrorMessage(null);
+        return;
+      }
       setErrorMessage('Kết nối ví thất bại. Vui lòng thử lại hoặc kiểm tra MetaMask.');
     }
   };
 
-  const handleDisconnect = () => {
-    disconnect();
+  const handleDisconnect = async () => {
+    setIsDisconnecting(true);
+    try {
+      await disconnect();
+    } catch {
+      // No-op: disconnect can throw if connector is already gone.
+    }
+    clearAuth();
+    setAuthAttemptedWallet(null);
     setErrorMessage(null);
   };
 
-  const shortenAddress = (addr: string | undefined) => {
-    if (!addr) return '';
-    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  const handleSwitchNetwork = () => {
+    setErrorMessage(null);
+    switchChain({ chainId: SEPOLIA_CHAIN_ID });
   };
 
-  // Hiển thị khi chưa kết nối ví
-  if (!isConnected) {
+  if (!isConnected || !isAuthenticated) {
     return (
-      <div className="flex flex-col gap-3 max-w-xs">
-        <button
-          onClick={handleConnect}
-          disabled={isPending}
-          className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors"
-        >
-          {isPending ? 'Đang kết nối...' : 'Kết nối ví'}
-        </button>
-        {errorMessage && (
-          <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
-            ⚠️ {errorMessage}
-          </div>
-        )}
-      </div>
+      <WalletDisconnectedCard
+        isPending={isPending || isAuthenticating}
+        errorMessage={errorMessage}
+        onConnect={handleConnect}
+        buttonLabel={isConnected ? 'Ký xác thực ví' : 'Kết nối ví'}
+      />
     );
   }
 
-  // Hiển thị khi đã kết nối ví
+  if (!address) {
+    return null;
+  }
+
   return (
-    <div className="flex flex-col gap-2 max-w-xs">
-      {/* Thông tin ví */}
-      <div className={`px-4 py-3 rounded-lg border ${
-        isSepoliaNetwork
-          ? 'bg-green-50 border-green-300'
-          : 'bg-yellow-50 border-yellow-300'
-      }`}>
-        <p className="text-xs text-gray-700 mb-1">Ví đã kết nối:</p>
-        <p className="text-sm font-mono font-bold text-gray-900 break-all">
-          {shortenAddress(address)}
-        </p>
-      </div>
-
-      {/* Thông báo mạng sai */}
-      {!isSepoliaNetwork && (
-        <div className="px-4 py-3 bg-red-50 border border-red-300 rounded-lg">
-          <p className="text-sm font-semibold text-red-900 mb-2">
-            ⚠️ Mạng lưới sai
-          </p>
-          <p className="text-xs text-red-800 mb-3">
-            Vui lòng chuyển sang mạng Sepolia trong MetaMask để sử dụng tất cả tính năng.
-          </p>
-          <button
-            onClick={() => window.open('https://chainlist.org/?search=sepolia', '_blank')}
-            className="inline-flex items-center justify-center px-3 py-2 rounded-md bg-red-600 text-white text-xs font-semibold hover:bg-red-700 transition"
-          >
-            Hướng dẫn chuyển mạng
-          </button>
-        </div>
-      )}
-
-      {/* Thông báo kết nối Sepolia thành công */}
-      {isSepoliaNetwork && (
-        <div className="px-4 py-2 bg-green-50 border border-green-300 rounded-lg text-center">
-          <p className="text-xs text-green-700 font-semibold">
-            ✓ Kết nối Sepolia thành công
-          </p>
-        </div>
-      )}
-
-      {/* Nút ngắt kết nối */}
-      <button
-        onClick={handleDisconnect}
-        className="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors text-sm"
-      >
-        Ngắt kết nối
-      </button>
-    </div>
+    <WalletConnectedCard
+      address={address}
+      isSepoliaNetwork={isSepoliaNetwork}
+      authRole={user?.role ?? null}
+      displayName={user?.displayName}
+      avatarUrl={user?.avatarUrl}
+      onDisconnect={handleDisconnect}
+      onSwitchToSepolia={handleSwitchNetwork}
+      isSwitchingNetwork={isSwitchingNetwork}
+    />
   );
 }
