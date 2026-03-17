@@ -381,6 +381,11 @@ export default function CampaignDetailPage() {
     const isSepolia = chain?.id === 11155111;
     const canDonate = Boolean(isConnected && isSepolia && campaign && !campaign.completed);
 
+    const isBackendInitializing =
+        backendCampaign.isLoading ||
+        isPlaceholderCampaignTitle(backendCampaign.data?.title, id) ||
+        isPlaceholderCampaignDescription(backendCampaign.data?.description);
+
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
             <main className="mx-auto w-full max-w-6xl px-6 py-12 md:px-10">
@@ -392,7 +397,9 @@ export default function CampaignDetailPage() {
                             <div>
                                 <div className="inline-flex items-center gap-2 mb-1">
                                     <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">
-                                        Campaign #{Number.isFinite(id) ? id : "-"}
+                                        {isLoading || isBackendInitializing
+                                            ? "Đang khởi tạo chiến dịch..."
+                                            : `Campaign #${Number.isFinite(id) ? id : "-"}`}
                                     </span>
                                 </div>
                                 <h1 className="text-3xl font-bold text-slate-900">Chi tiết chiến dịch</h1>
@@ -402,9 +409,12 @@ export default function CampaignDetailPage() {
                 </header>
 
                 {/* Loading State */}
-                {(isLoading || backendCampaign.isLoading) && (
-                    <div className="space-y-6 animate-pulse">
-                        <div className="rounded-2xl bg-white border border-slate-200 p-8 shadow-sm">
+                {(isLoading || isBackendInitializing) && (
+                    <div className="space-y-6">
+                        <div className="rounded-2xl bg-white border border-slate-200 p-8 shadow-sm animate-pulse">
+                            <p className="mb-4 text-sm font-medium text-slate-600">
+                                Chiến dịch đang trong quá trình khởi tạo, dữ liệu sẽ xuất hiện sau khi được đồng bộ.
+                            </p>
                             <div className="h-8 w-2/3 rounded bg-slate-200 mb-4" />
                             <div className="h-4 w-full rounded bg-slate-200 mb-2" />
                             <div className="h-4 w-5/6 rounded bg-slate-200" />
@@ -430,7 +440,7 @@ export default function CampaignDetailPage() {
                 )}
 
                 {/* Campaign Content */}
-                {!isLoading && !backendCampaign.isLoading && !isError && campaign && (
+                {!isLoading && !isBackendInitializing && !isError && campaign && (
                     <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
                         {/* Left Column - Main Content */}
                         <div className="space-y-6">
