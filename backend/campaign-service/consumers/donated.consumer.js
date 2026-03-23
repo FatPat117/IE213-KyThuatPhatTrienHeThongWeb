@@ -21,6 +21,15 @@ async function applyDonationAtomically(campaignOnChainId, amount) {
             return null;
         }
 
+        // Nếu chiến dịch không còn active (đã ended/failed/cancelled),
+        // bỏ qua – không cập nhật raised hay status nữa.
+        if (campaign.status !== "active") {
+            console.log(
+                `[campaign-service] Campaign ${normalizedCampaignId} is "${campaign.status}" – donation event skipped.`,
+            );
+            return { skipped: true, onChainId: normalizedCampaignId, status: campaign.status };
+        }
+
         const currentRaised = BigInt(campaign.raised || "0");
         const goalAmount = BigInt(campaign.goal || "0");
         const newRaised = (currentRaised + donationAmount).toString();
@@ -111,6 +120,12 @@ async function startDonatedConsumer() {
                 console.warn(
                     `[campaign-service] Campaign ${campaignOnChainId} was not found. Donation event was acknowledged without a database update.`,
                 );
+                channel.ack(msg);
+                return;
+            }
+
+            // Chiến dịch không còn active → donation bị bỏ qua, ack và thoát
+            if (updatedCampaign.skipped) {
                 channel.ack(msg);
                 return;
             }
