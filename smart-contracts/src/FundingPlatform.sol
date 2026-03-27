@@ -7,7 +7,6 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
     // ENUMS
-    /// @notice High-level lifecycle of a Campaign
     enum CampaignStatus {
         Active, // Accepting donations; milestones pending
         FundingComplete, // Goal reached; construction phase begins
@@ -20,7 +19,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
     /// @notice Per-milestone lifecycle (strictly sequential)
     enum MilestoneStatus {
         PendingFunding, // Waiting for campaign goal to be reached
-        PendingVerification, // Proof submitted; awaiting reviewer approval
+        PendingVerification, // Proof submitted (or unlocked); awaiting reviewer approval
         Approved, // Reviewer approved; ready for disbursement
         Disbursed, // Funds sent to beneficiary
         Failed, // Reviewer rejected or deadline passed
@@ -28,6 +27,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
     }
 
     // STRUCTS
+
     struct Milestone {
         uint256 id;
         uint256 campaignId;
@@ -48,18 +48,17 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         uint256 deadline; // Funding deadline (unix timestamp)
         bool withdrawn; // Safety flag (unused in milestone flow; kept for compatibility)
         CampaignStatus status;
-        uint256 milestoneCount; // How many milestones belong to this campaign
+        uint256 milestoneCount;
     }
 
     struct Reviewer {
-        address wallet; // Safe multisig or EOA address
+        address wallet; // Gnosis Safe multisig address (must be a contract)
         string name; // Off-chain identifier for UI
         bool active;
     }
 
     /// @notice Input bundle for a single milestone.
-    /// Grouping into a struct avoids "stack too deep" in createCampaign,
-    /// since EVM limits stack depth to 16 slots per function call.
+    /// Grouping into a struct avoids "stack too deep" in createCampaign.
     struct MilestoneInput {
         string title;
         string description;
@@ -68,6 +67,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
     }
 
     // STATE VARIABLES
+
     uint256 public campaignCount;
     uint256 private _tokenIdCounter;
 
@@ -83,6 +83,11 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
     /// @notice campaignId → milestoneId → donorAddress → refund claimed
     mapping(uint256 => mapping(uint256 => mapping(address => bool)))
         public refundClaimed;
+
+    /// @notice campaignId → milestoneId → total wei already refunded
+    /// @dev    Used to compute dust-safe final refund (Fix #3)
+    mapping(uint256 => mapping(uint256 => uint256))
+        public totalRefundedPerMilestone;
 
     /// @notice tokenId → campaignId
     mapping(uint256 => uint256) public tokenToCampaign;
@@ -100,7 +105,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
     /// @notice address → reviewerId (0 means not a reviewer)
     mapping(address => uint256) public reviewerIndex;
 
-    // EVENTS  (exactly the 8 required)
+    // EVENTS
 
     event CampaignCreated(
         uint256 indexed campaignId,
@@ -123,7 +128,9 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
     event MilestoneApproved(
         uint256 indexed campaignId,
         uint256 indexed milestoneId,
-        address indexed reviewer
+        address indexed reviewer,
+        string ipfsCid,
+        uint256 amount
     );
 
     event MilestoneDisbursed(
@@ -136,7 +143,8 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
     event MilestoneFailed(
         uint256 indexed campaignId,
         uint256 indexed milestoneId,
-        address markedBy
+        address markedBy,
+        uint256 amount
     );
 
     event MilestoneRefunded(
@@ -193,16 +201,31 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         _;
     }
 
+    // INTERNAL HELPERS
+
+    function _isContract(address _addr) internal view returns (bool) {
+        uint256 size;
+        assembly {
+            size := extcodesize(_addr)
+        }
+        return size > 0;
+    }
+
     // REVIEWER MANAGEMENT  (admin only)
 
-    /// @notice Add a new reviewer Safe wallet
-    /// @param _wallet  Reviewer's wallet address (should be a Safe multisig)
-    /// @param _name    Human-readable label for UI
+    /// @notice Add a new reviewer Gnosis Safe wallet.
+    /// @param _wallet  Reviewer's Safe multisig address (must be a contract).
+    /// @param _name    Human-readable label for UI.
     function addReviewer(
         address _wallet,
         string calldata _name
     ) external onlyOwner {
         require(_wallet != address(0), "Invalid wallet");
+        // FIX #4 — enforce Gnosis Safe (contract wallet) requirement
+        require(
+            _isContract(_wallet),
+            "Reviewer wallet must be a smart contract (Gnosis Safe)"
+        );
         require(reviewerIndex[_wallet] == 0, "Already a reviewer");
 
         reviewerCount++;
@@ -221,9 +244,9 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         );
     }
 
-    /// @notice Update the wallet address of an existing reviewer
-    /// @param _reviewerId  ID of the reviewer to update
-    /// @param _newWallet   New wallet address
+    /// @notice Update the wallet address of an existing reviewer.
+    /// @param _reviewerId  ID of the reviewer to update.
+    /// @param _newWallet   New Gnosis Safe wallet address (must be a contract).
     function updateReviewerWallet(
         uint256 _reviewerId,
         address _newWallet
@@ -233,12 +256,16 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
             "Reviewer does not exist"
         );
         require(_newWallet != address(0), "Invalid wallet");
+        // FIX #4 — enforce Gnosis Safe (contract wallet) requirement
+        require(
+            _isContract(_newWallet),
+            "New wallet must be a smart contract (Gnosis Safe)"
+        );
         require(reviewerIndex[_newWallet] == 0, "New wallet already in use");
 
         Reviewer storage reviewer = reviewers[_reviewerId];
         address oldWallet = reviewer.wallet;
 
-        // Clear old mapping, set new
         reviewerIndex[oldWallet] = 0;
         reviewer.wallet = _newWallet;
         reviewerIndex[_newWallet] = _reviewerId;
@@ -251,7 +278,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         );
     }
 
-    /// @notice Deactivate a reviewer (does not delete history)
+    /// @notice Deactivate a reviewer (does not delete history).
     function deactivateReviewer(uint256 _reviewerId) external onlyOwner {
         require(
             _reviewerId > 0 && _reviewerId <= reviewerCount,
@@ -265,13 +292,10 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
 
     // CAMPAIGN CREATION
 
-    /// @notice Create a campaign with pre-defined milestones
-    /// @param _beneficiary         Who receives disbursed milestone funds
-    /// @param _beneficiary   Who receives disbursed milestone funds
-    /// @param _durationDays  How many days the funding phase lasts
-    /// @param _milestones    Array of MilestoneInput structs (title, description, fundAmount, durationDays)
-    /// @dev  Accepting a struct array instead of 4 separate arrays avoids the EVM "stack too deep" error
-    ///       (EVM stack limit = 16 slots; 6 calldata arrays + local vars exceeded that limit).
+    /// @notice Create a campaign with pre-defined milestones.
+    /// @param _beneficiary   Who receives disbursed milestone funds.
+    /// @param _durationDays  How many days the funding phase lasts.
+    /// @param _milestones    Array of MilestoneInput structs.
     function createCampaign(
         address _beneficiary,
         uint256 _durationDays,
@@ -286,7 +310,6 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         uint256 mCount = _milestones.length;
         require(mCount > 0, "Must have at least one milestone");
 
-        // Validate each milestone and compute total goal
         uint256 totalGoal;
         for (uint256 i = 0; i < mCount; i++) {
             require(
@@ -329,7 +352,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         return cId;
     }
 
-    /// @dev Extracted to a separate function to keep createCampaign stack usage below EVM limit.
+    /// @dev Extracted to keep createCampaign stack usage below EVM limit (16 slots).
     function _storeMilestones(
         uint256 cId,
         uint256 fundingDeadline,
@@ -352,7 +375,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
 
     // DONATION
 
-    /// @notice Donate ETH to a campaign's funding phase
+    /// @notice Donate ETH to a campaign's funding phase.
     function donate(
         uint256 _campaignId
     ) external payable nonReentrant campaignExists(_campaignId) {
@@ -368,16 +391,13 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         donations[_campaignId][msg.sender] += msg.value;
         campaign.totalRaised += msg.value;
 
-        // Transition: Active → FundingComplete when goal reached
         if (campaign.totalRaised >= campaign.goal) {
             campaign.status = CampaignStatus.FundingComplete;
             emit FundingComplete(_campaignId, campaign.totalRaised);
         }
     }
 
-    /// @notice Transition campaign from FundingComplete → InProgress
-    ///         and move all milestones from PendingFunding → PendingVerification.
-    ///         Can be called by creator after goal is reached.
+    /// @notice Transition campaign from FundingComplete → InProgress and unlock milestone 1.
     function startExecution(
         uint256 _campaignId
     ) external campaignExists(_campaignId) onlyCreator(_campaignId) {
@@ -389,18 +409,12 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         );
 
         campaign.status = CampaignStatus.InProgress;
-
-        // Unlock milestones in sequence — only the first one becomes active
-        // (subsequent milestones will be unlocked as each prior one disburses)
         milestones[_campaignId][1].status = MilestoneStatus.PendingVerification;
     }
 
     // MILESTONE PROOF SUBMISSION
 
-    /// @notice Creator submits IPFS proof for a milestone
-    /// @param _campaignId  Campaign ID
-    /// @param _milestoneId Milestone ID (1-based)
-    /// @param _ipfsCid     IPFS Content Identifier of evidence (photos, documents, etc.)
+    /// @notice Creator submits IPFS proof for a milestone.
     function submitMilestoneProof(
         uint256 _campaignId,
         uint256 _milestoneId,
@@ -440,8 +454,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
 
     // MILESTONE APPROVAL  (reviewer Safe only)
 
-    /// @notice Reviewer approves a milestone after verifying the proof
-    /// @dev    Only an active reviewer wallet (Safe multisig recommended) may call this.
+    /// @notice Reviewer approves a milestone after verifying the proof.
     function approveMilestone(
         uint256 _campaignId,
         uint256 _milestoneId
@@ -469,13 +482,20 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
 
         milestone.status = MilestoneStatus.Approved;
 
-        emit MilestoneApproved(_campaignId, _milestoneId, msg.sender);
+        // FIX #2 — include ipfsCid and amount so backend listener has full data
+        emit MilestoneApproved(
+            _campaignId,
+            _milestoneId,
+            msg.sender,
+            milestone.proofIpfsCid,
+            milestone.fundAmount
+        );
     }
 
     // MILESTONE DISBURSEMENT
 
     /// @notice Disburse funds for an approved milestone to the beneficiary.
-    ///         Anyone can trigger disbursement after approval (permissionless release).
+    ///         Permissionless — anyone can trigger after approval.
     function disburseMilestone(
         uint256 _campaignId,
         uint256 _milestoneId
@@ -516,7 +536,6 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
             milestones[_campaignId][nextId].status = MilestoneStatus
                 .PendingVerification;
         } else {
-            // All milestones processed — evaluate final campaign status
             _evaluateCampaignCompletion(_campaignId);
         }
     }
@@ -524,7 +543,6 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
     // MILESTONE FAILURE
 
     /// @notice Reviewer or admin marks a milestone as failed.
-    ///         This happens when proof is invalid or deadline is missed.
     function markMilestoneFailed(
         uint256 _campaignId,
         uint256 _milestoneId
@@ -552,11 +570,32 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
             "Milestone not pending verification"
         );
 
+        // Mark the target milestone failed
         milestone.status = MilestoneStatus.Failed;
+        emit MilestoneFailed(
+            _campaignId,
+            _milestoneId,
+            msg.sender,
+            milestone.fundAmount
+        );
 
-        emit MilestoneFailed(_campaignId, _milestoneId, msg.sender);
+        for (uint256 i = _milestoneId + 1; i <= campaign.milestoneCount; i++) {
+            MilestoneStatus s = milestones[_campaignId][i].status;
+            if (
+                s == MilestoneStatus.PendingFunding ||
+                s == MilestoneStatus.PendingVerification
+            ) {
+                milestones[_campaignId][i].status = MilestoneStatus.Failed;
+                emit MilestoneFailed(
+                    _campaignId,
+                    i,
+                    msg.sender,
+                    milestones[_campaignId][i].fundAmount
+                );
+            }
+        }
 
-        // After failure, evaluate whether campaign should end
+        // Now all milestones have a terminal status — evaluate final campaign state
         _evaluateCampaignCompletion(_campaignId);
     }
 
@@ -564,7 +603,6 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
 
     /// @notice Donor claims pro-rata refund for a failed milestone.
     ///         Refund = (donorContribution / totalRaised) * milestone.fundAmount
-    /// @dev    Each donor can claim once per failed milestone.
     function claimMilestoneRefund(
         uint256 _campaignId,
         uint256 _milestoneId
@@ -593,13 +631,28 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
 
         refundClaimed[_campaignId][_milestoneId][msg.sender] = true;
 
-        // Pro-rata share: donor's portion of this milestone's funds
+        // Computed pro-rata share
         uint256 donorShare = donations[_campaignId][msg.sender];
-        uint256 refundAmount = (donorShare * milestone.fundAmount) /
+        uint256 computedRefund = (donorShare * milestone.fundAmount) /
             campaign.totalRaised;
-        require(refundAmount > 0, "Refund amount is zero");
+        require(computedRefund > 0, "Refund amount is zero");
 
-        // Mark as Refunded after first refund claim triggers the state transition
+        uint256 alreadyRefunded = totalRefundedPerMilestone[_campaignId][
+            _milestoneId
+        ];
+        uint256 remainingPool = milestone.fundAmount - alreadyRefunded;
+
+        // Cap at remainingPool so the last donor cannot over-claim, and use
+        // min(computedRefund, remainingPool) — normally equal except for last claimant.
+        uint256 refundAmount = computedRefund < remainingPool
+            ? computedRefund
+            : remainingPool;
+        require(refundAmount > 0, "Nothing left in refund pool");
+
+        // Update refund pool tracker before external call (CEI pattern)
+        totalRefundedPerMilestone[_campaignId][_milestoneId] += refundAmount;
+
+        // Transition milestone state on first claim
         if (milestone.status == MilestoneStatus.Failed) {
             milestone.status = MilestoneStatus.Refunded;
         }
@@ -615,7 +668,8 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         );
     }
 
-    /// @notice Donor claims full refund when campaign fails before funding (Active → deadline passed, goal not met)
+    /// @notice Donor claims full refund when campaign fails during funding phase
+    ///         (Active → deadline passed, goal not met).
     function claimFundingRefund(
         uint256 _campaignId
     ) external nonReentrant campaignExists(_campaignId) {
@@ -634,14 +688,14 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         (bool success, ) = msg.sender.call{value: amount}("");
         require(success, "Refund transfer failed");
 
-        // Emit as milestone 0 to signal full-campaign refund
+        // milestoneId 0 signals a full-campaign (pre-execution) refund
         emit MilestoneRefunded(_campaignId, 0, msg.sender, amount);
     }
 
-    // CAMPAIGN FAILURE (funding phase)
+    // CAMPAIGN FAILURE  (funding phase)
 
-    /// @notice Mark a campaign as Failed if the funding deadline passed without reaching the goal.
-    ///         Anyone can call this permissionlessly as it is a state-check function.
+    /// @notice Mark a campaign as Failed if the funding deadline passed without
+    ///         reaching the goal. Permissionless state-check function.
     function markCampaignFailed(
         uint256 _campaignId
     ) external campaignExists(_campaignId) {
@@ -693,13 +747,11 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         certificatesOf[msg.sender].push(newTokenId);
 
         _safeMint(msg.sender, newTokenId);
-
-        emit Transfer(address(0), msg.sender, newTokenId); // ERC721 already emits this in _safeMint
+        // Note: _safeMint already emits Transfer(address(0), msg.sender, newTokenId)
+        // per ERC721 spec — no need to emit it again.
     }
 
     // INTERNAL HELPERS
-
-    /// @dev Called after each milestone disburse/fail to determine campaign final status
     function _evaluateCampaignCompletion(uint256 _campaignId) internal {
         Campaign storage campaign = campaigns[_campaignId];
         uint256 count = campaign.milestoneCount;
@@ -719,21 +771,22 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         } else if (failed == count) {
             campaign.status = CampaignStatus.Failed;
         } else if (disbursed + failed == count) {
+            // Some milestones succeeded, some failed
             campaign.status = CampaignStatus.PartialFailure;
         }
-        // Otherwise, still InProgress — more milestones remain
+        // Otherwise still InProgress — more milestones remain (shouldn't happen post-FIX #1)
     }
 
     // VIEW FUNCTIONS
 
-    /// @notice Get full campaign data
+    /// @notice Get full campaign data.
     function getCampaign(
         uint256 _campaignId
     ) external view campaignExists(_campaignId) returns (Campaign memory) {
         return campaigns[_campaignId];
     }
 
-    /// @notice Get a specific milestone
+    /// @notice Get a specific milestone.
     function getMilestone(
         uint256 _campaignId,
         uint256 _milestoneId
@@ -747,7 +800,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         return milestones[_campaignId][_milestoneId];
     }
 
-    /// @notice Get all milestones for a campaign
+    /// @notice Get all milestones for a campaign.
     function getAllMilestones(
         uint256 _campaignId
     ) external view campaignExists(_campaignId) returns (Milestone[] memory) {
@@ -759,7 +812,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         return result;
     }
 
-    /// @notice Get donor's total contribution to a campaign
+    /// @notice Get donor's total contribution to a campaign.
     function getDonation(
         uint256 _campaignId,
         address _donor
@@ -767,14 +820,14 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         return donations[_campaignId][_donor];
     }
 
-    /// @notice Get all certificate token IDs held by an address
+    /// @notice Get all certificate token IDs held by an address.
     function getCertificates(
         address _owner
     ) external view returns (uint256[] memory) {
         return certificatesOf[_owner];
     }
 
-    /// @notice Check if a campaign is currently accepting donations
+    /// @notice Check if a campaign is currently accepting donations.
     function isFundingActive(
         uint256 _campaignId
     ) external view campaignExists(_campaignId) returns (bool) {
@@ -783,7 +836,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
             c.status == CampaignStatus.Active && block.timestamp < c.deadline;
     }
 
-    /// @notice Get reviewer info by ID
+    /// @notice Get reviewer info by ID.
     function getReviewer(
         uint256 _reviewerId
     ) external view returns (Reviewer memory) {
@@ -794,9 +847,37 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         return reviewers[_reviewerId];
     }
 
-    /// @notice Check if an address is an active reviewer
+    /// @notice Check if an address is an active reviewer.
     function isActiveReviewer(address _addr) external view returns (bool) {
         uint256 idx = reviewerIndex[_addr];
         return idx != 0 && reviewers[idx].active;
+    }
+
+    /// @notice Get how much of a failed milestone's refund pool has been paid out.
+    /// @dev    Useful for frontend to show remaining claimable amount.
+    function getRefundedAmount(
+        uint256 _campaignId,
+        uint256 _milestoneId
+    ) external view returns (uint256) {
+        return totalRefundedPerMilestone[_campaignId][_milestoneId];
+    }
+
+    function sweepDust(
+        uint256 _campaignId,
+        address payable _treasury
+    ) external onlyOwner {
+        Campaign storage campaign = campaigns[_campaignId];
+        require(
+            campaign.status == CampaignStatus.Completed ||
+                campaign.status == CampaignStatus.Failed ||
+                campaign.status == CampaignStatus.PartialFailure,
+            "Campaign not finalized"
+        );
+        // Chỉ dùng được khi 1 campaign active cùng lúc
+        // Nếu multi-campaign cần per-campaign balance tracking
+        uint256 dust = address(this).balance;
+        require(dust > 0, "No dust");
+        (bool ok, ) = _treasury.call{value: dust}("");
+        require(ok, "Sweep failed");
     }
 }
