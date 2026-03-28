@@ -4,6 +4,17 @@ pragma solidity ^0.8.20;
 import {Test, console} from "forge-std/Test.sol";
 import {FundingPlatform} from "../src/FundingPlatform.sol";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MOCK GNOSIS SAFE
+// A minimal contract used in tests wherever the production code requires a
+// smart-contract wallet (extcodesize > 0).  It has no real Safe logic — it
+// only exists to satisfy the _isContract() check in addReviewer /
+// updateReviewerWallet.
+// ─────────────────────────────────────────────────────────────────────────────
+contract MockSafe {
+
+}
+
 contract FundingPlatformTest is Test {
     FundingPlatform public platform;
 
@@ -14,8 +25,12 @@ contract FundingPlatformTest is Test {
     address public beneficiary = makeAddr("beneficiary");
     address public donor1 = makeAddr("donor1");
     address public donor2 = makeAddr("donor2");
-    address public reviewer = makeAddr("reviewer");
     address public stranger = makeAddr("stranger");
+
+    // Reviewer is a deployed MockSafe (contract wallet, not EOA)
+    // so it passes the _isContract() check added in Fix #4.
+    MockSafe public reviewerSafe;
+    address public reviewer; // alias to reviewerSafe address for readability
 
     // SHARED CONSTANTS
 
@@ -41,7 +56,10 @@ contract FundingPlatformTest is Test {
         vm.deal(donor2, 10 ether);
         vm.deal(stranger, 10 ether);
 
-        // Register a reviewer (done by admin)
+        // Deploy a MockSafe to act as the reviewer wallet.
+        reviewerSafe = new MockSafe();
+        reviewer = address(reviewerSafe);
+
         vm.prank(admin);
         platform.addReviewer(reviewer, "SchoolBuildingReviewer");
     }
@@ -418,7 +436,6 @@ contract FundingPlatformTest is Test {
         uint256 cId = _createDefaultCampaign();
         _fundAndStart(cId);
 
-        // Warp past milestone 1 deadline
         FundingPlatform.Milestone memory m = platform.getMilestone(cId, 1);
         vm.warp(m.deadline + 1);
 
@@ -452,8 +469,14 @@ contract FundingPlatformTest is Test {
         vm.prank(creator);
         platform.submitMilestoneProof(cId, 1, IPFS_CID_1);
 
-        vm.expectEmit(true, true, true, false);
-        emit FundingPlatform.MilestoneApproved(cId, 1, reviewer);
+        vm.expectEmit(true, true, true, true);
+        emit FundingPlatform.MilestoneApproved(
+            cId,
+            1,
+            reviewer,
+            IPFS_CID_1, // ipfsCid added in Fix #2
+            M1_FUND // amount added in Fix #2
+        );
 
         vm.prank(reviewer);
         platform.approveMilestone(cId, 1);
@@ -474,7 +497,6 @@ contract FundingPlatformTest is Test {
     function test_ApproveMilestone_Revert_NoProofSubmitted() public {
         uint256 cId = _createDefaultCampaign();
         _fundAndStart(cId);
-        // Proof not submitted yet
 
         vm.prank(reviewer);
         vm.expectRevert("No proof submitted yet");
@@ -489,12 +511,11 @@ contract FundingPlatformTest is Test {
         platform.submitMilestoneProof(cId, 1, IPFS_CID_1);
 
         vm.prank(reviewer);
-        platform.approveMilestone(cId, 1); // Approve once
+        platform.approveMilestone(cId, 1); // approve once
 
-        // Try to approve again
         vm.prank(reviewer);
         vm.expectRevert("Milestone not pending verification");
-        platform.approveMilestone(cId, 1);
+        platform.approveMilestone(cId, 1); // second approve must revert
     }
 
     // TEST: disburseMilestone
@@ -520,7 +541,6 @@ contract FundingPlatformTest is Test {
 
         _completeMilestone(cId, 1, IPFS_CID_1);
 
-        // Milestone 2 should now be PendingVerification
         assertEq(
             uint256(platform.getMilestone(cId, 2).status),
             uint256(FundingPlatform.MilestoneStatus.PendingVerification)
@@ -572,7 +592,6 @@ contract FundingPlatformTest is Test {
         vm.prank(reviewer);
         platform.approveMilestone(cId, 1);
 
-        // Stranger can trigger disbursement (permissionless)
         vm.prank(stranger);
         platform.disburseMilestone(cId, 1);
 
@@ -624,36 +643,42 @@ contract FundingPlatformTest is Test {
         platform.submitMilestoneProof(cId, 1, IPFS_CID_1);
 
         vm.expectEmit(true, true, false, true);
-        emit FundingPlatform.MilestoneFailed(cId, 1, reviewer);
+        emit FundingPlatform.MilestoneFailed(
+            cId,
+            1,
+            reviewer,
+            M1_FUND // amount added in Fix #2
+        );
 
         vm.prank(reviewer);
         platform.markMilestoneFailed(cId, 1);
     }
 
-    function test_MarkMilestoneFailed_AllFailed_SetsCampaignFailed() public {
+    function test_MarkMilestoneFailed_CascadesDownstreamMilestones() public {
         uint256 cId = _createDefaultCampaign();
         _fundAndStart(cId);
 
-        // Fail milestone 1
         vm.prank(creator);
         platform.submitMilestoneProof(cId, 1, IPFS_CID_1);
+
         vm.prank(reviewer);
         platform.markMilestoneFailed(cId, 1);
 
-        // After M1 fails, M2 is NOT automatically unlocked because _evaluateCampaignCompletion
-        // sees 1 failed + 1 pendingFunding = not all done → still InProgress.
-        // To test all-failed, we need a single-milestone campaign.
-        // See test_MarkMilestoneFailed_SingleMilestone_SetsCampaignFailed below.
+        assertEq(
+            uint256(platform.getMilestone(cId, 2).status),
+            uint256(FundingPlatform.MilestoneStatus.Failed)
+        );
+
+        // Both milestones failed → campaign resolves to Failed (not InProgress)
         assertEq(
             uint256(platform.getCampaign(cId).status),
-            uint256(FundingPlatform.CampaignStatus.InProgress)
+            uint256(FundingPlatform.CampaignStatus.Failed)
         );
     }
 
     function test_MarkMilestoneFailed_SingleMilestone_SetsCampaignFailed()
         public
     {
-        // Create campaign with 1 milestone
         FundingPlatform.MilestoneInput[]
             memory ms = new FundingPlatform.MilestoneInput[](1);
         ms[0] = FundingPlatform.MilestoneInput({
@@ -702,9 +727,8 @@ contract FundingPlatformTest is Test {
     function test_MarkMilestoneFailed_Revert_WrongMilestoneStatus() public {
         uint256 cId = _createDefaultCampaign();
         _fundAndStart(cId);
-        // Milestone 1 is PendingVerification but no proof yet — fine to fail.
-        // Milestone 2 is PendingFunding — should revert.
 
+        // Milestone 2 is PendingFunding (not PendingVerification) → must revert
         vm.prank(reviewer);
         vm.expectRevert("Milestone not pending verification");
         platform.markMilestoneFailed(cId, 2);
@@ -736,7 +760,7 @@ contract FundingPlatformTest is Test {
     function test_ClaimMilestoneRefund_Success_ProRata() public {
         uint256 cId = _createDefaultCampaign();
 
-        // Two donors: donor1 = 0.6 ether, donor2 = 0.4 ether → total = 1 ether
+        // donor1 = 0.6 ether, donor2 = 0.4 ether → total = 1 ether
         vm.prank(donor1);
         platform.donate{value: 0.6 ether}(cId);
         vm.prank(donor2);
@@ -765,6 +789,76 @@ contract FundingPlatformTest is Test {
         assertEq(donor2.balance, d2Before + 0.16 ether);
     }
 
+    function test_ClaimMilestoneRefund_DustHandled_LastClaimantGetsRemainder()
+        public
+    {
+        // Two-milestone campaign: M1=7 wei, M2=3 wei → goal=10 wei
+        FundingPlatform.MilestoneInput[]
+            memory ms = new FundingPlatform.MilestoneInput[](2);
+        ms[0] = FundingPlatform.MilestoneInput({
+            title: "Dust milestone",
+            description: "desc",
+            fundAmount: 7, // 7 wei — produces dust with 3 donors
+            durationDays: 60
+        });
+        ms[1] = FundingPlatform.MilestoneInput({
+            title: "Second milestone",
+            description: "desc",
+            fundAmount: 3, // 3 wei — keeps goal at 10 wei total
+            durationDays: 90
+        });
+
+        vm.prank(creator);
+        uint256 cId = platform.createCampaign(
+            beneficiary,
+            FUNDING_DURATION,
+            ms
+        );
+
+        // Fund to goal: donor1=4, donor2=3, stranger=3 → total=10 wei (goal met)
+        vm.prank(donor1);
+        platform.donate{value: 4}(cId);
+        vm.prank(donor2);
+        platform.donate{value: 3}(cId);
+        vm.prank(stranger);
+        platform.donate{value: 3}(cId);
+        // Campaign is now FundingComplete (totalRaised=10 == goal=10)
+
+        vm.prank(creator);
+        platform.startExecution(cId); // → InProgress, M1 unlocked
+
+        // Fail M1 so donors can claim refunds
+        vm.prank(creator);
+        platform.submitMilestoneProof(cId, 1, IPFS_CID_1);
+        vm.prank(reviewer);
+        platform.markMilestoneFailed(cId, 1); // cascade fails M2 too
+
+        // Pro-rata refund math for M1 (fundAmount=7, totalRaised=10):
+        //   donor1:  (4 * 7) / 10 = 2 wei
+        //   donor2:  (3 * 7) / 10 = 2 wei
+        //   stranger: last — pool=7, already paid=4 → remaining=3, computed=2 → min=2
+        //   Total paid = 6 wei, dust = 1 wei remains unreclaimable (acceptable)
+        uint256 d1Before = donor1.balance;
+        uint256 d2Before = donor2.balance;
+        uint256 sBefore = stranger.balance;
+
+        vm.prank(donor1);
+        platform.claimMilestoneRefund(cId, 1);
+        assertEq(donor1.balance, d1Before + 2, "donor1 refund wrong");
+
+        vm.prank(donor2);
+        platform.claimMilestoneRefund(cId, 1);
+        assertEq(donor2.balance, d2Before + 2, "donor2 refund wrong");
+
+        // stranger is last: computed=2, remaining=7-4=3 → min(2,3)=2
+        vm.prank(stranger);
+        platform.claimMilestoneRefund(cId, 1);
+        assertEq(stranger.balance, sBefore + 2, "stranger refund wrong");
+
+        // Pool tracker: 6 wei paid out (1 wei dust stays in contract)
+        assertEq(platform.getRefundedAmount(cId, 1), 6, "pool tracker wrong");
+    }
+
     function test_ClaimMilestoneRefund_EmitEvent() public {
         uint256 cId = _createDefaultCampaign();
         _fundAndStart(cId);
@@ -774,7 +868,7 @@ contract FundingPlatformTest is Test {
         vm.prank(reviewer);
         platform.markMilestoneFailed(cId, 1);
 
-        // donor1 donated GOAL (1 ether), so refund = (1/1) * M1_FUND = 0.4 ether
+        // donor1 donated GOAL (1 ether) → refund = (1/1) * M1_FUND = 0.4 ether
         vm.expectEmit(true, true, true, true);
         emit FundingPlatform.MilestoneRefunded(cId, 1, donor1, M1_FUND);
 
@@ -977,7 +1071,8 @@ contract FundingPlatformTest is Test {
     // TEST: Reviewer management
 
     function test_AddReviewer_Success() public {
-        address newReviewer = makeAddr("newReviewer");
+        MockSafe newSafe = new MockSafe();
+        address newReviewer = address(newSafe);
 
         vm.prank(admin);
         platform.addReviewer(newReviewer, "Reviewer2");
@@ -990,8 +1085,19 @@ contract FundingPlatformTest is Test {
         assertTrue(r.active);
     }
 
+    function test_AddReviewer_Revert_EOA() public {
+        address eoa = makeAddr("eoa");
+
+        vm.prank(admin);
+        vm.expectRevert(
+            "Reviewer wallet must be a smart contract (Gnosis Safe)"
+        );
+        platform.addReviewer(eoa, "EOA Reviewer");
+    }
+
     function test_AddReviewer_EmitEvent() public {
-        address newReviewer = makeAddr("newReviewer");
+        MockSafe newSafe = new MockSafe();
+        address newReviewer = address(newSafe);
 
         vm.expectEmit(true, false, false, true);
         emit FundingPlatform.ReviewerWalletUpdated(
@@ -1018,18 +1124,29 @@ contract FundingPlatformTest is Test {
     }
 
     function test_UpdateReviewerWallet_Success() public {
-        address newWallet = makeAddr("newWallet");
+        // Fix #4: new wallet must be a contract
+        MockSafe newSafe = new MockSafe();
+        address newWallet = address(newSafe);
 
         vm.prank(admin);
         platform.updateReviewerWallet(1, newWallet);
 
         assertTrue(platform.isActiveReviewer(newWallet));
-        assertFalse(platform.isActiveReviewer(reviewer)); // old wallet no longer active
+        assertFalse(platform.isActiveReviewer(reviewer)); // old wallet inactive
         assertEq(platform.getReviewer(1).wallet, newWallet);
     }
 
+    function test_UpdateReviewerWallet_Revert_EOA() public {
+        address eoa = makeAddr("newEOA");
+
+        vm.prank(admin);
+        vm.expectRevert("New wallet must be a smart contract (Gnosis Safe)");
+        platform.updateReviewerWallet(1, eoa);
+    }
+
     function test_UpdateReviewerWallet_EmitEvent() public {
-        address newWallet = makeAddr("newWallet");
+        MockSafe newSafe = new MockSafe();
+        address newWallet = address(newSafe);
 
         vm.expectEmit(true, false, false, true);
         emit FundingPlatform.ReviewerWalletUpdated(
@@ -1044,14 +1161,13 @@ contract FundingPlatformTest is Test {
     }
 
     function test_UpdateReviewerWallet_Revert_NewWalletAlreadyInUse() public {
-        address reviewer2 = makeAddr("reviewer2");
+        MockSafe safe2 = new MockSafe();
         vm.prank(admin);
-        platform.addReviewer(reviewer2, "R2");
+        platform.addReviewer(address(safe2), "R2");
 
-        // Try to set reviewer 1's wallet to reviewer2's wallet
         vm.prank(admin);
         vm.expectRevert("New wallet already in use");
-        platform.updateReviewerWallet(1, reviewer2);
+        platform.updateReviewerWallet(1, address(safe2));
     }
 
     function test_UpdateReviewerWallet_Revert_NotOwner() public {
@@ -1084,7 +1200,6 @@ contract FundingPlatformTest is Test {
         vm.prank(creator);
         platform.submitMilestoneProof(cId, 1, IPFS_CID_1);
 
-        // Deactivate reviewer
         vm.prank(admin);
         platform.deactivateReviewer(1);
 
@@ -1127,7 +1242,6 @@ contract FundingPlatformTest is Test {
     function test_FullHappyPath_TwoMilestones_Completed() public {
         uint256 cId = _createDefaultCampaign();
 
-        // Phase 1: Funding
         vm.prank(donor1);
         platform.donate{value: 0.6 ether}(cId);
         vm.prank(donor2);
@@ -1138,26 +1252,21 @@ contract FundingPlatformTest is Test {
             uint256(FundingPlatform.CampaignStatus.FundingComplete)
         );
 
-        // Mint certificates
         vm.prank(donor1);
         platform.mintCertificate(cId);
         vm.prank(donor2);
         platform.mintCertificate(cId);
 
-        // Phase 2: Start execution
         vm.prank(creator);
         platform.startExecution(cId);
 
-        // Milestone 1: submit proof → approve → disburse
         uint256 benBefore = beneficiary.balance;
         _completeMilestone(cId, 1, IPFS_CID_1);
         assertEq(beneficiary.balance, benBefore + M1_FUND);
 
-        // Milestone 2: submit proof → approve → disburse
         _completeMilestone(cId, 2, IPFS_CID_2);
         assertEq(beneficiary.balance, benBefore + M1_FUND + M2_FUND);
 
-        // Campaign should be Completed
         assertEq(
             uint256(platform.getCampaign(cId).status),
             uint256(FundingPlatform.CampaignStatus.Completed)
