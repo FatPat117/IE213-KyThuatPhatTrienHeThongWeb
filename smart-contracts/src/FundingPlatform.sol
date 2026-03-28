@@ -11,8 +11,8 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         Active, // Accepting donations; milestones pending
         FundingComplete, // Goal reached; construction phase begins
         InProgress, // At least one milestone is being executed
+        PartialFailed, // One or more milestones failed; rest succeeded
         Completed, // All milestones approved & disbursed
-        PartialFailure, // One or more milestones failed; rest succeeded
         Failed // Campaign failed before goal / all milestones failed
     }
 
@@ -727,7 +727,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
             campaign.status == CampaignStatus.FundingComplete ||
                 campaign.status == CampaignStatus.InProgress ||
                 campaign.status == CampaignStatus.Completed ||
-                campaign.status == CampaignStatus.PartialFailure,
+                campaign.status == CampaignStatus.PartialFailed,
             "Certificate not available yet"
         );
         require(
@@ -772,7 +772,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
             campaign.status = CampaignStatus.Failed;
         } else if (disbursed + failed == count) {
             // Some milestones succeeded, some failed
-            campaign.status = CampaignStatus.PartialFailure;
+            campaign.status = CampaignStatus.PartialFailed;
         }
         // Otherwise still InProgress — more milestones remain (shouldn't happen post-FIX #1)
     }
@@ -870,7 +870,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         require(
             campaign.status == CampaignStatus.Completed ||
                 campaign.status == CampaignStatus.Failed ||
-                campaign.status == CampaignStatus.PartialFailure,
+                campaign.status == CampaignStatus.PartialFailed,
             "Campaign not finalized"
         );
         // Chỉ dùng được khi 1 campaign active cùng lúc

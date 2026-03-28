@@ -734,9 +734,9 @@ contract FundingPlatformTest is Test {
         platform.markMilestoneFailed(cId, 2);
     }
 
-    // TEST: PartialFailure campaign status
+    // TEST: PartialFailed campaign status
 
-    function test_PartialFailure_Status_WhenMixedOutcomes() public {
+    function test_PartialFailed_Status_WhenMixedOutcomes() public {
         uint256 cId = _createDefaultCampaign();
         _fundAndStart(cId);
 
@@ -751,7 +751,7 @@ contract FundingPlatformTest is Test {
 
         assertEq(
             uint256(platform.getCampaign(cId).status),
-            uint256(FundingPlatform.CampaignStatus.PartialFailure)
+            uint256(FundingPlatform.CampaignStatus.PartialFailed)
         );
     }
 
