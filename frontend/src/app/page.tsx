@@ -27,6 +27,10 @@ function HomeContent() {
       name: 'Bà Nguyễn Thị Lệ Thu',
       role: 'Chủ tịch',
       org: 'Chủ tịch Quỹ Nâng Bước Tuổi Thơ',
+      bio: 'Dẫn dắt chiến lược gây quỹ và phê duyệt các chiến dịch ưu tiên cho trẻ em có hoàn cảnh khó khăn.',
+      focus: 'Quản trị quỹ và kiểm toán tác động',
+      exp: '18 năm',
+      area: 'HCM',
       image:
         'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=900&q=80',
       board: 'Hội đồng quản lý quỹ',
@@ -36,6 +40,10 @@ function HomeContent() {
       name: 'Bác sĩ Lý Quốc Thịnh',
       role: 'Phó Chủ tịch Quỹ Nâng Bước Tuổi Thơ',
       org: 'Phó Chủ tịch Quỹ Nâng Bước Tuổi Thơ',
+      bio: 'Chịu trách nhiệm đánh giá tính khả thi y tế, mức độ ưu tiên và lộ trình giải ngân cho hồ sơ bệnh nhi.',
+      focus: 'Thẩm định hồ sơ điều trị',
+      exp: '14 năm',
+      area: 'Hà Nội',
       image:
         'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&w=900&q=80',
       board: 'Hội đồng y tế & vận hành',
@@ -45,11 +53,16 @@ function HomeContent() {
       name: 'Bà Lê Thị Lan Khanh',
       role: 'Thành viên Hội đồng Quản lý Quỹ kiêm Giám đốc',
       org: 'Thành viên Hội Đồng Quản Lý Quỹ kiêm Giám đốc Quỹ Nâng Bước Tuổi Thơ',
+      bio: 'Theo dõi minh bạch vận hành, phối hợp kiểm duyệt hồ sơ và công bố báo cáo tiến độ theo từng chiến dịch.',
+      focus: 'Vận hành và công bố thông tin',
+      exp: '12 năm',
+      area: 'Đà Nẵng',
       image:
         'https://images.unsplash.com/photo-1587614382346-4ec70e388b28?auto=format&fit=crop&w=900&q=80',
       board: 'Hội đồng quản lý quỹ',
     },
   ];
+  const reviewerCarousel = [...reviewers, ...reviewers];
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-50 text-slate-900">
@@ -193,35 +206,78 @@ function HomeContent() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {reviewers.map((reviewer) => (
-              <article
-                key={reviewer.id}
-                className="overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-50/40 shadow-sm transition hover:-translate-y-1 hover:shadow-md"
-              >
-                <div className="aspect-[4/3] w-full overflow-hidden bg-slate-100">
-                  <img
-                    src={reviewer.image}
-                    alt={reviewer.name}
-                    className="h-full w-full object-cover object-top"
-                    loading="lazy"
-                  />
-                </div>
-                <div className="space-y-3 p-6 text-center">
-                  <h3 className="text-2xl font-bold uppercase tracking-tight text-slate-900">
-                    {reviewer.name}
-                  </h3>
-                  <div className="mx-auto h-0.5 w-16 rounded-full bg-gradient-to-r from-emerald-400 to-teal-500" />
-                  <p className="text-[1.05rem] font-semibold text-emerald-600">{reviewer.role}</p>
-                  <p className="text-base leading-relaxed text-slate-700">{reviewer.org}</p>
-                  <p className="pt-1 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                    {reviewer.board}
-                  </p>
-                </div>
-              </article>
-            ))}
+          <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-50/30 py-2">
+            <div className="reviewer-marquee-track flex w-max gap-6 px-4 md:px-6">
+              {reviewerCarousel.map((reviewer, index) => (
+                <article
+                  key={`${reviewer.id}-${index}`}
+                  className="group relative w-[280px] flex-shrink-0 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-md"
+                >
+                  <div className="aspect-[4/3] w-full overflow-hidden rounded-t-2xl bg-slate-100">
+                    <img
+                      src={reviewer.image}
+                      alt={reviewer.name}
+                      className="h-full w-full object-cover object-top"
+                      loading="lazy"
+                    />
+                  </div>
+                  <div className="space-y-2.5 p-5 text-center">
+                    <h3 className="text-xl font-bold uppercase tracking-tight text-slate-900">
+                      {reviewer.name}
+                    </h3>
+                    <div className="mx-auto h-0.5 w-14 rounded-full bg-gradient-to-r from-emerald-400 to-teal-500" />
+                    <p className="text-base font-semibold text-emerald-600">{reviewer.role}</p>
+                    <p className="text-sm leading-relaxed text-slate-600 line-clamp-2">{reviewer.org}</p>
+                    <p className="pt-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      {reviewer.board}
+                    </p>
+                  </div>
+
+                  <div className="pointer-events-none absolute inset-3 z-20 rounded-2xl border border-emerald-200/90 bg-white/95 p-4 text-left opacity-0 shadow-xl shadow-emerald-100 backdrop-blur-sm transition duration-300 translate-y-3 group-hover:translate-y-0 group-hover:opacity-100">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600">
+                      Thông tin kiểm duyệt viên
+                    </p>
+                    <h4 className="mt-1 text-lg font-bold text-slate-900">{reviewer.name}</h4>
+                    <p className="mt-0.5 text-sm font-semibold text-teal-600">{reviewer.focus}</p>
+                    <p className="mt-3 text-sm leading-relaxed text-slate-700">{reviewer.bio}</p>
+                    <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                      <div className="rounded-lg bg-slate-100/80 p-2.5">
+                        <p className="font-semibold uppercase tracking-wide text-slate-500">Kinh nghiệm</p>
+                        <p className="mt-1 text-sm font-bold text-slate-900">{reviewer.exp}</p>
+                      </div>
+                      <div className="rounded-lg bg-slate-100/80 p-2.5">
+                        <p className="font-semibold uppercase tracking-wide text-slate-500">Khu vực</p>
+                        <p className="mt-1 text-sm font-bold text-slate-900">{reviewer.area}</p>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="pointer-events-none absolute inset-y-0 left-0 w-14 bg-gradient-to-r from-white to-transparent" />
+            <div className="pointer-events-none absolute inset-y-0 right-0 w-14 bg-gradient-to-l from-white to-transparent" />
           </div>
         </section>
+
+        <style jsx>{`
+          .reviewer-marquee-track {
+            animation: reviewer-scroll 20s linear infinite;
+            will-change: transform;
+          }
+
+          .reviewer-marquee-track:hover {
+            animation-play-state: paused;
+          }
+
+          @keyframes reviewer-scroll {
+            from {
+              transform: translateX(0);
+            }
+            to {
+              transform: translateX(-50%);
+            }
+          }
+        `}</style>
 
         {/* Featured Campaigns Section */}
         <section className="flex flex-col gap-8 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-lg shadow-slate-200/30 ring-1 ring-slate-900/5 md:p-8">
