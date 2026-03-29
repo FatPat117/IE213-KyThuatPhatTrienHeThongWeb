@@ -21,6 +21,35 @@ function HomeContent() {
   const isSepoliaNetwork = chainId === SEPOLIA_CHAIN_ID;
   const safeIsConnected = isHydrated && isConnected;
   const safeIsSepoliaNetwork = isHydrated && isSepoliaNetwork;
+  const reviewers = [
+    {
+      id: 1,
+      name: 'Bà Nguyễn Thị Lệ Thu',
+      role: 'Chủ tịch',
+      org: 'Chủ tịch Quỹ Nâng Bước Tuổi Thơ',
+      image:
+        'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=900&q=80',
+      board: 'Hội đồng quản lý quỹ',
+    },
+    {
+      id: 2,
+      name: 'Bác sĩ Lý Quốc Thịnh',
+      role: 'Phó Chủ tịch Quỹ Nâng Bước Tuổi Thơ',
+      org: 'Phó Chủ tịch Quỹ Nâng Bước Tuổi Thơ',
+      image:
+        'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&w=900&q=80',
+      board: 'Hội đồng y tế & vận hành',
+    },
+    {
+      id: 3,
+      name: 'Bà Lê Thị Lan Khanh',
+      role: 'Thành viên Hội đồng Quản lý Quỹ kiêm Giám đốc',
+      org: 'Thành viên Hội Đồng Quản Lý Quỹ kiêm Giám đốc Quỹ Nâng Bước Tuổi Thơ',
+      image:
+        'https://images.unsplash.com/photo-1587614382346-4ec70e388b28?auto=format&fit=crop&w=900&q=80',
+      board: 'Hội đồng quản lý quỹ',
+    },
+  ];
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-50 text-slate-900">
@@ -142,6 +171,55 @@ function HomeContent() {
                 Không giới hạn địa lý. Ai có ví đều có thể tham gia tài trợ từ bất kỳ đâu.
               </p>
             </div>
+          </div>
+        </section>
+
+        {/* Reviewer Board Section */}
+        <section className="flex flex-col gap-10 rounded-2xl border border-emerald-200/80 bg-white p-6 shadow-lg shadow-slate-200/30 ring-1 ring-slate-900/5 md:p-8">
+          <div className="grid gap-5 md:grid-cols-2 md:items-end">
+            <div>
+              <p className="mb-2 text-sm font-semibold uppercase tracking-wider text-emerald-600">
+                Kiểm duyệt
+              </p>
+              <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+                Bảng danh sách kiểm duyệt viên
+              </h2>
+            </div>
+            <div className="md:text-right">
+              <p className="text-sm font-semibold uppercase tracking-wider text-teal-600">
+                Hội đồng quản lý quỹ
+              </p>
+              <div className="mt-2 h-1 w-44 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 md:ml-auto" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {reviewers.map((reviewer) => (
+              <article
+                key={reviewer.id}
+                className="overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-50/40 shadow-sm transition hover:-translate-y-1 hover:shadow-md"
+              >
+                <div className="aspect-[4/3] w-full overflow-hidden bg-slate-100">
+                  <img
+                    src={reviewer.image}
+                    alt={reviewer.name}
+                    className="h-full w-full object-cover object-top"
+                    loading="lazy"
+                  />
+                </div>
+                <div className="space-y-3 p-6 text-center">
+                  <h3 className="text-2xl font-bold uppercase tracking-tight text-slate-900">
+                    {reviewer.name}
+                  </h3>
+                  <div className="mx-auto h-0.5 w-16 rounded-full bg-gradient-to-r from-emerald-400 to-teal-500" />
+                  <p className="text-[1.05rem] font-semibold text-emerald-600">{reviewer.role}</p>
+                  <p className="text-base leading-relaxed text-slate-700">{reviewer.org}</p>
+                  <p className="pt-1 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    {reviewer.board}
+                  </p>
+                </div>
+              </article>
+            ))}
           </div>
         </section>
 

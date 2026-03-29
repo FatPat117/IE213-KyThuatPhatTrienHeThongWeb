@@ -17,6 +17,7 @@ export function ContractStatsDisplay() {
   const { campaignCount, totalRaised, isLoading, isError, errors, refetch } =
     useContractStats();
   const { isConnected } = useWalletStatus();
+  const disbursedMilestones = Math.floor(campaignCount * 2.3);
 
   if (isLoading) {
     return (
@@ -67,6 +68,13 @@ export function ContractStatsDisplay() {
         <p className="text-sm text-green-600 mb-2 font-medium">💰 Tổng ETH đã gây quỹ</p>
         <p className="text-3xl font-bold text-green-900">{totalRaised.toFixed(4)}</p>
         <p className="text-xs text-green-600 mt-2">Tổng hợp tất cả chiến dịch</p>
+      </div>
+
+      {/* Disbursed Milestones */}
+      <div className="md:col-span-2 rounded-xl border border-cyan-200/80 bg-cyan-50/80 p-6">
+        <p className="text-sm font-medium text-cyan-700 mb-2">🎯 Số mốc đã giải ngân</p>
+        <p className="text-3xl font-bold text-cyan-900">{disbursedMilestones}</p>
+        <p className="text-xs text-cyan-700 mt-2">Dữ liệu tạm hiển thị để demo giao diện</p>
       </div>
     </div>
   );
