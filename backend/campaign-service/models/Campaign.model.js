@@ -59,15 +59,56 @@ const CampaignSchema = new mongoose.Schema(
             enum: ["active", "ended", "failed", "cancelled"],
             default: "active",
         },
+        // Phase 3: Milestone System
+        milestoneIds: {
+            type: [mongoose.Schema.Types.ObjectId],
+            ref: "Milestone",
+            default: [],
+        },
+        reviewCommitteeWallet: {
+            type: String,
+            lowercase: true,
+            trim: true,
+            match: [/^0x[a-fA-F0-9]{40}$/, "Địa chỉ ví committee không hợp lệ"],
+            default: null,
+        },
+        reviewerCode: {
+            type: String,
+            default: null,
+        },
+        lifecycleStatus: {
+            type: String,
+            enum: [
+                "draft",
+                "funding_active",
+                "funding_complete",
+                "in_progress",
+                "completed",
+                "partial_failure",
+                "failed",
+                "cancelled",
+            ],
+            default: "funding_active",
+        },
+        schemaVersion: {
+            type: Number,
+            default: 2,
+        },
         // TODO: Thêm category, tags nếu cần filter nâng cao
     },
     { timestamps: true },
 );
 
+// Existing indexes
 CampaignSchema.index({ onChainId: 1 });
 CampaignSchema.index({ creator: 1 });
 CampaignSchema.index({ beneficiary: 1 });
 CampaignSchema.index({ status: 1 });
+
+// Phase 3 indexes for milestone system
+CampaignSchema.index({ onChainId: 1 }, { unique: true });
+CampaignSchema.index({ creator: 1, lifecycleStatus: 1 });
+CampaignSchema.index({ lifecycleStatus: 1, updatedAt: -1 });
 
 module.exports =
     mongoose.models.Campaign || mongoose.model("Campaign", CampaignSchema);
