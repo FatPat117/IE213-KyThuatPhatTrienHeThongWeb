@@ -10,7 +10,7 @@ const ProgressReport = require("./ProgressReport.model");
 const Reviewer = require("./Reviewer.model");
 const Notification = require("./Notification.model");
 const CampaignDonorShare = require("./CampaignDonorShare.model");
-const MilestoneRefund = require("./MilestoneRefund.model");
+const CampaignRefund = require("./CampaignRefund.model");
 
 module.exports = {
     Campaign,
@@ -19,5 +19,5 @@ module.exports = {
     Reviewer,
     Notification,
     CampaignDonorShare,
-    MilestoneRefund,
+    CampaignRefund,
 };

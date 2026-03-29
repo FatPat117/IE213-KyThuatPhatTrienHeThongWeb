@@ -44,6 +44,10 @@ const MilestoneSchema = new mongoose.Schema(
             enum: [
                 "pending_funding",
                 "pending_verification",
+                "submitted",
+                "resubmittable",
+                "deadline_exceeded",
+                "review_timeout",
                 "approved",
                 "disbursed",
                 "failed",
@@ -67,6 +71,50 @@ const MilestoneSchema = new mongoose.Schema(
         },
         refundedAt: {
             type: Date,
+            default: null,
+        },
+        rejectionCount: {
+            type: Number,
+            default: 0,
+        },
+        maxRetries: {
+            type: Number,
+            default: 3,
+        },
+        lastRejectionReason: {
+            type: String,
+            default: null,
+        },
+        lastRejectionTimestamp: {
+            type: Date,
+            default: null,
+        },
+        rejectionHistory: {
+            type: [
+                {
+                    timestamp: Date,
+                    reason: String,
+                    reviewerWallet: String,
+                    resubmittedAt: Date,
+                    resubmittedEvidenceCid: String,
+                },
+            ],
+            default: [],
+        },
+        submittedAt: {
+            type: Date,
+            default: null,
+        },
+        deadlineExceededAt: {
+            type: Date,
+            default: null,
+        },
+        reviewTimeoutAt: {
+            type: Date,
+            default: null,
+        },
+        failureReason: {
+            type: String,
             default: null,
         },
     },

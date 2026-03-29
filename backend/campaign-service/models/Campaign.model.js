@@ -90,6 +90,10 @@ const CampaignSchema = new mongoose.Schema(
             ],
             default: "funding_active",
         },
+        fundingCompletedAt: {
+            type: Date,
+            default: null,
+        },
         schemaVersion: {
             type: Number,
             default: 2,
