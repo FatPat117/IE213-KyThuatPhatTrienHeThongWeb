@@ -24,6 +24,7 @@ import { useEffect, useMemo, useState } from "react";
 import { formatEther, parseAbiItem } from "viem";
 import { useAccount, usePublicClient, useReadContract, useWaitForTransactionReceipt, useWatchContractEvent } from "wagmi";
 import CampaignInfoPanel from "@/components/campaign-detail/CampaignInfoPanel";
+import { MilestonePreviewCard } from "@/components/campaign-milestones";
 import CreatorActionsPanel from "@/components/campaign-detail/CreatorActionsPanel";
 import DonatePanel from "@/components/campaign-detail/DonatePanel";
 import RefundAndMintPanel from "@/components/campaign-detail/RefundAndMintPanel";
@@ -434,6 +435,13 @@ export default function CampaignDetailPage() {
                     <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
                         {/* Left Column - Main Content */}
                         <div className="space-y-6">
+                            <MilestonePreviewCard
+                                campaignId={campaign.id}
+                                campaignDeadline={campaign.deadline}
+                                campaignCreatedAt={backendCampaign.data?.createdAt}
+                                progressPercent={progress}
+                            />
+
                             <CampaignInfoPanel
                                 campaign={campaign}
                                 backendTitle={
