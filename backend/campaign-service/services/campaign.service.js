@@ -1,5 +1,4 @@
-const Campaign = require("../models/campaign.model");
-
+const Campaign = require("../models/Campaign.model");
 /**
  * Lấy tất cả campaigns, có thể filter theo status.
  * @param {object} filter - { status: 'active' | 'ended' | 'failed' } (optional)
@@ -29,7 +28,7 @@ async function upsertCampaign(data) {
     return Campaign.findOneAndUpdate(
         { onChainId: Number(onChainId) },
         { $set: { onChainId: Number(onChainId), ...rest } },
-        { upsert: true, new: true, runValidators: true }
+        { upsert: true, new: true, runValidators: true },
     );
 }
 
@@ -42,7 +41,7 @@ async function updateCampaignStatus(onChainId, status) {
     return Campaign.findOneAndUpdate(
         { onChainId: Number(onChainId) },
         { $set: { status } },
-        { new: true }
+        { new: true },
     );
 }
 
@@ -56,7 +55,7 @@ async function updateRaised(onChainId, raisedWei) {
     return Campaign.findOneAndUpdate(
         { onChainId: Number(onChainId) },
         { $set: { raised: raisedWei } },
-        { new: true }
+        { new: true },
     );
 }
 
@@ -69,7 +68,7 @@ async function updateMetadata(onChainId, updates = {}) {
     return Campaign.findOneAndUpdate(
         { onChainId: Number(onChainId) },
         { $set: updates },
-        { new: true, runValidators: true }
+        { new: true, runValidators: true },
     );
 }
 
@@ -81,4 +80,3 @@ module.exports = {
     updateRaised,
     updateMetadata,
 };
-

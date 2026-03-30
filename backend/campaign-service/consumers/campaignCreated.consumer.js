@@ -1,8 +1,23 @@
 const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const campaignService = require("../services/campaign.service");
+const { Milestone, Campaign } = require("../models");
 
-const QUEUE = process.env.RABBITMQ_QUEUE_CAMP_CREATED || "campaign.created.queue";
-const ROUTING_KEY = process.env.RABBITMQ_RKEY_CAMP_CREATED || "campaign.created";
+const QUEUE =
+    process.env.RABBITMQ_QUEUE_CAMP_CREATED || "campaign.created.queue";
+const ROUTING_KEY =
+    process.env.RABBITMQ_RKEY_CAMP_CREATED || "campaign.created";
+
+function mapMilestoneStatusFromCode(statusCode) {
+    const statusMap = {
+        0: "pending_funding",
+        1: "pending_verification",
+        2: "approved",
+        3: "disbursed",
+        4: "failed",
+        5: "refunded",
+    };
+    return statusMap[Number(statusCode)] || "pending_funding";
+}
 
 /**
  * Đăng ký consumer lắng nghe queue campaign.created.queue.
@@ -12,7 +27,9 @@ const ROUTING_KEY = process.env.RABBITMQ_RKEY_CAMP_CREATED || "campaign.created"
 async function startCampaignCreatedConsumer() {
     const channel = getChannel();
     if (!channel) {
-        console.warn("[campaign-service] RabbitMQ channel không có – bỏ qua consumer");
+        console.warn(
+            "[campaign-service] RabbitMQ channel không có – bỏ qua consumer",
+        );
         return;
     }
 
@@ -30,7 +47,10 @@ async function startCampaignCreatedConsumer() {
 
         try {
             const payload = JSON.parse(msg.content.toString());
-            console.log("[campaign-service] Nhận event campaign.created:", payload);
+            console.log(
+                "[campaign-service] Nhận event campaign.created:",
+                payload,
+            );
 
             /**
              * Payload từ listener-service:
@@ -40,12 +60,88 @@ async function startCampaignCreatedConsumer() {
                 onChainId: payload.onChainId,
                 creator: payload.creator,
                 beneficiary: payload.beneficiary,
-                goal: payload.goal,           // wei dạng string
+                goal: payload.goal, // wei dạng string
                 deadline: new Date(payload.deadline * 1000), // unix timestamp → Date
                 status: "active",
             });
 
-            console.log(`[campaign-service] Đã lưu campaign onChainId=${payload.onChainId}`);
+            if (
+                Array.isArray(payload.milestones) &&
+                payload.milestones.length
+            ) {
+                const campaign = await Campaign.findOne({
+                    onChainId: Number(payload.onChainId),
+                });
+
+                if (!campaign) {
+                    throw new Error(
+                        `Campaign not found after upsert: onChainId=${payload.onChainId}`,
+                    );
+                }
+
+                const ops = payload.milestones.map((m, idx) => {
+                    const milestoneIndex = Number(m.milestoneIndex || idx + 1);
+                    return {
+                        updateOne: {
+                            filter: {
+                                campaignOnChainId: Number(payload.onChainId),
+                                milestoneIndex,
+                            },
+                            update: {
+                                $set: {
+                                    campaignId: campaign._id,
+                                    campaignOnChainId: Number(
+                                        payload.onChainId,
+                                    ),
+                                    milestoneIndex,
+                                    title:
+                                        m.title ||
+                                        `Milestone ${milestoneIndex}`,
+                                    description: m.description || "",
+                                    financialTargetWei: (
+                                        m.financialTargetWei || "0"
+                                    ).toString(),
+                                    deadline: new Date(
+                                        Number(m.deadline || payload.deadline) *
+                                            1000,
+                                    ),
+                                    status: mapMilestoneStatusFromCode(
+                                        m.statusCode,
+                                    ),
+                                    evidenceCids: m.proofIpfsCid
+                                        ? [m.proofIpfsCid]
+                                        : [],
+                                },
+                            },
+                            upsert: true,
+                        },
+                    };
+                });
+
+                await Milestone.bulkWrite(ops, { ordered: false });
+
+                const syncedMilestones = await Milestone.find({
+                    campaignOnChainId: Number(payload.onChainId),
+                })
+                    .sort({ milestoneIndex: 1 })
+                    .select("_id");
+
+                await Campaign.findByIdAndUpdate(campaign._id, {
+                    $set: { milestoneIds: syncedMilestones.map((x) => x._id) },
+                });
+
+                console.log(
+                    `[campaign-service] Synced milestones: campaignOnChainId=${payload.onChainId}, count=${syncedMilestones.length}`,
+                );
+            } else {
+                console.warn(
+                    `[campaign-service] campaign.created payload không có milestones. campaignOnChainId=${payload.onChainId}`,
+                );
+            }
+
+            console.log(
+                `[campaign-service] Đã lưu campaign onChainId=${payload.onChainId}`,
+            );
             channel.ack(msg);
         } catch (err) {
             console.error("[campaign-service] Consumer error:", err.message);

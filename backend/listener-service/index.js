@@ -1,20 +1,22 @@
 require("dotenv").config();
 const { connectRabbitMQ } = require("./config/rabbitmq");
-const { createContractInstance } = require("./config/contract");
+const { createContractInstance, CONTRACT_ABI } = require("./config/contract");
 const {
     publishCampaignCreated,
 } = require("./publishers/campaignCreated.publisher");
-const { publishDonated } = require("./publishers/donated.publisher");
 const {
     publishCertificateMinted,
 } = require("./publishers/certificateMinted.publisher");
-const {
-    publishFundsWithdrawn,
-} = require("./publishers/fundsWithdrawn.publisher");
-const {
-    publishCampaignCancelled,
-} = require("./publishers/campaignCancelled.publisher");
 const { publishRefundIssued } = require("./publishers/refundIssued.publisher");
+const {
+    publishFundingComplete,
+} = require("./publishers/fundingComplete.publisher");
+const {
+    publishMilestoneRefunded,
+} = require("./publishers/milestoneRefunded.publisher");
+const {
+    publishMilestoneFailed,
+} = require("./publishers/milestoneFailed.publisher");
 const { startMarkFailedDailyJob } = require("./jobs/markFailed.job");
 
 async function startListener() {
@@ -36,93 +38,168 @@ async function startListener() {
         "[listener-service] Contract listener đã sẵn sàng. Đang lắng nghe events...",
     );
 
+    const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+    const abiEventNames = new Set(
+        (Array.isArray(CONTRACT_ABI) ? CONTRACT_ABI : [])
+            .filter((item) => item && item.type === "event" && item.name)
+            .map((item) => item.name),
+    );
+
+    const onIfSupported = (eventName, handler) => {
+        if (!abiEventNames.has(eventName)) {
+            console.log(
+                `[listener-service] Skip event '${eventName}' (không có trong ABI hiện tại).`,
+            );
+            return;
+        }
+        contract.on(eventName, handler);
+        console.log(`[listener-service] Listening event '${eventName}'`);
+    };
+
+    const mapMilestoneForPayload = (milestone, fallbackIndex) => ({
+        milestoneIndex: Number(milestone.id ?? fallbackIndex),
+        title: milestone.title || `Milestone ${fallbackIndex}`,
+        description: milestone.description || "",
+        financialTargetWei: (milestone.fundAmount ?? 0n).toString(),
+        deadline: Number(milestone.deadline ?? 0),
+        statusCode: Number(milestone.status ?? 0),
+        proofIpfsCid: milestone.proofIpfsCid || "",
+    });
+
     // ── Event: CampaignCreated ────────────────────────────────
-    contract.on(
+    onIfSupported(
         "CampaignCreated",
-        async (id, creator, beneficiary, goal, deadline, event) => {
+        async (
+            id,
+            creator,
+            beneficiary,
+            goal,
+            deadline,
+            milestoneCount,
+            event,
+        ) => {
             console.log(
                 `[listener-service] Event CampaignCreated: campaignId=${id}`,
             );
+
+            let milestones = [];
+            try {
+                if (typeof contract.getAllMilestones === "function") {
+                    const onChainMilestones =
+                        await contract.getAllMilestones(id);
+                    milestones = onChainMilestones.map((m, idx) =>
+                        mapMilestoneForPayload(m, idx + 1),
+                    );
+                }
+            } catch (err) {
+                console.error(
+                    `[listener-service] Không thể đọc milestones cho campaignId=${id}: ${err.message}`,
+                );
+            }
+
             await publishCampaignCreated({
                 campaignId: id,
                 creator,
                 beneficiary,
                 goal,
                 deadline,
+                milestoneCount: Number(milestoneCount),
+                milestones,
                 txHash: event.log.transactionHash,
             });
         },
     );
 
-    // ── Event: Donated ────────────────────────────────────────
-    contract.on("Donated", async (campaignId, donor, amount, event) => {
-        console.log(
-            `[listener-service] Event Donated: txHash=${event.log.transactionHash}`,
-        );
-        await publishDonated({
-            campaignId,
-            donor,
-            amount,
-            txHash: event.log.transactionHash,
-        });
-    });
+    // ABI mới không có CertificateMinted custom event, fallback bằng ERC721 Transfer(from=0x0)
+    onIfSupported("Transfer", async (from, to, tokenId, event) => {
+        if ((from || "").toLowerCase() !== ZERO_ADDRESS) return;
 
-    // ── Event: CertificateMinted ──────────────────────────────
-    contract.on(
-        "CertificateMinted",
-        async (campaignId, owner, tokenId, event) => {
-            console.log(
-                `[listener-service] Event CertificateMinted: tokenId=${tokenId}`,
-            );
+        try {
+            let campaignId = 0;
+            if (typeof contract.tokenToCampaign === "function") {
+                campaignId = Number(await contract.tokenToCampaign(tokenId));
+            }
+
             await publishCertificateMinted({
                 tokenId,
                 campaignId,
-                owner,
+                owner: to,
                 txHash: event.log.transactionHash,
+            });
+        } catch (err) {
+            console.error(
+                `[listener-service] Transfer→CertificateMinted mapping failed: ${err.message}`,
+            );
+        }
+    });
+
+    // ── Event: FundingComplete ─────────────────────────────────
+    onIfSupported(
+        "FundingComplete",
+        async (campaignId, totalRaisedWei, event) => {
+            console.log(
+                `[listener-service] Event FundingComplete: campaignId=${campaignId}, ` +
+                    `totalRaisedWei=${totalRaisedWei}`,
+            );
+            await publishFundingComplete({
+                campaignId,
+                totalRaisedWei,
+                txHash: event.log.transactionHash,
+                logIndex: event.log.logIndex,
             });
         },
     );
 
-    // ── Event: FundsWithdrawn ─────────────────────────────────
-    contract.on(
-        "FundsWithdrawn",
-        async (campaignId, beneficiary, amount, event) => {
+    // ── Event: MilestoneRefunded ──────────────────────────────
+    onIfSupported(
+        "MilestoneRefunded",
+        async (campaignId, milestoneId, donor, refundedWei, event) => {
             console.log(
-                `[listener-service] Event FundsWithdrawn: campaignId=${campaignId}`,
+                `[listener-service] Event MilestoneRefunded: campaignId=${campaignId}, ` +
+                    `donor=${donor}, refundedWei=${refundedWei}`,
             );
-            await publishFundsWithdrawn({
+            await publishMilestoneRefunded({
                 campaignId,
-                beneficiary,
+                milestoneId,
+                donorAddress: donor,
+                refundedWei,
+                txHash: event.log.transactionHash,
+                logIndex: event.log.logIndex,
+            });
+
+            // milestoneId = 0 => funding-phase full refund (compatibility with old refund flow)
+            if (Number(milestoneId) === 0) {
+                await publishRefundIssued({
+                    campaignId,
+                    donor,
+                    amount: refundedWei,
+                    txHash: event.log.transactionHash,
+                });
+            }
+        },
+    );
+
+    // ── Event: MilestoneFailed ────────────────────────────────
+    // Trigger: MilestoneRefunded event when a milestone is marked as failed by reviewer
+    // Effect: Cascade failure to campaign level → all donors eligible for refund
+    onIfSupported(
+        "MilestoneFailed",
+        async (campaignId, milestoneId, markedBy, amount, event) => {
+            console.log(
+                `[listener-service] Event MilestoneFailed: campaignId=${campaignId}, ` +
+                    `milestoneId=${milestoneId}, amount=${amount}`,
+            );
+            await publishMilestoneFailed({
+                campaignId,
+                milestoneId,
+                markedBy,
                 amount,
                 txHash: event.log.transactionHash,
+                logIndex: event.log.logIndex,
+                blockNumber: event.log.blockNumber,
             });
         },
     );
-
-    // ── Event: CampaignCancelled ──────────────────────────────
-    contract.on("CampaignCancelled", async (campaignId, cancelledBy, event) => {
-        console.log(
-            `[listener-service] Event CampaignCancelled: campaignId=${campaignId}`,
-        );
-        await publishCampaignCancelled({
-            campaignId,
-            cancelledBy,
-            txHash: event.log.transactionHash,
-        });
-    });
-
-    // ── Event: RefundIssued ──────────────────────────────────────
-    contract.on("RefundIssued", async (campaignId, donor, amount, event) => {
-        console.log(
-            `[listener-service] Event RefundIssued: campaignId=${campaignId}, donor=${donor}`,
-        );
-        await publishRefundIssued({
-            campaignId,
-            donor,
-            amount,
-            txHash: event.log.transactionHash,
-        });
-    });
 
     // Xử lý lỗi provider
     contract.runner.provider.on("error", (err) => {

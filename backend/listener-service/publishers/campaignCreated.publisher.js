@@ -7,8 +7,16 @@ const axios = require("axios");
  *  2. PATCH transaction-service → update tx status = success (HTTP REST sync)
  */
 async function publishCampaignCreated(eventData) {
-    const { campaignId, creator, beneficiary, goal, deadline, txHash } =
-        eventData;
+    const {
+        campaignId,
+        creator,
+        beneficiary,
+        goal,
+        deadline,
+        milestoneCount,
+        milestones,
+        txHash,
+    } = eventData;
 
     const channel = getChannel();
     if (channel) {
@@ -18,6 +26,8 @@ async function publishCampaignCreated(eventData) {
             beneficiary,
             goal: goal.toString(),
             deadline: Number(deadline),
+            milestoneCount: Number(milestoneCount || milestones?.length || 0),
+            milestones: Array.isArray(milestones) ? milestones : [],
             txHash,
         };
         channel.publish(
