@@ -853,6 +853,379 @@ const resubmitMilestone = async (req, res) => {
     }
 };
 
+/**
+ * CRUD-style Milestone Management APIs
+ * These endpoints allow off-chain management of milestones for a campaign.
+ * They operate purely on MongoDB and do NOT interact with the smart contract.
+ */
+
+/**
+ * POST /api/milestones/campaigns/:campaignOnChainId
+ * Create a new milestone for a given on-chain campaign.
+ */
+const createMilestoneForCampaign = async (req, res) => {
+    try {
+        const { campaignOnChainId } = req.params;
+        const {
+            milestoneIndex,
+            title,
+            description = "",
+            financialTargetWei,
+            deadline,
+        } = req.body || {};
+
+        const callerWallet = req.headers["x-wallet-address"];
+        const callerRole = req.headers["x-user-role"];
+
+        if (!campaignOnChainId) {
+            return res.status(400).json({
+                status: "error",
+                code: "INVALID_PARAMS",
+                message: "campaignOnChainId required",
+            });
+        }
+
+        if (!title || !financialTargetWei || !deadline) {
+            return res.status(400).json({
+                status: "error",
+                code: "INVALID_BODY",
+                message:
+                    "title, financialTargetWei and deadline are required fields",
+            });
+        }
+
+        const campaign = await Campaign.findOne({
+            onChainId: Number(campaignOnChainId),
+        });
+
+        if (!campaign) {
+            return res.status(404).json({
+                status: "error",
+                code: "CAMPAIGN_NOT_FOUND",
+                message: `Campaign ${campaignOnChainId} not found`,
+            });
+        }
+
+        if (
+            callerRole !== "admin" &&
+            (!callerWallet ||
+                campaign.creator?.toLowerCase() !==
+                    callerWallet.toLowerCase())
+        ) {
+            return res.status(403).json({
+                status: "error",
+                code: "PERMISSION_DENIED",
+                message:
+                    "Only campaign creator or admin can create milestones",
+            });
+        }
+
+        let indexToUse = Number(milestoneIndex);
+        if (!Number.isInteger(indexToUse) || indexToUse <= 0) {
+            const last = await Milestone.findOne({
+                campaignOnChainId: Number(campaignOnChainId),
+            })
+                .sort({ milestoneIndex: -1 })
+                .select("milestoneIndex");
+            indexToUse = last ? Number(last.milestoneIndex) + 1 : 1;
+        }
+
+        const milestone = await Milestone.create({
+            campaignId: campaign._id,
+            campaignOnChainId: Number(campaignOnChainId),
+            milestoneIndex: indexToUse,
+            title,
+            description,
+            financialTargetWei: String(financialTargetWei),
+            deadline: new Date(deadline),
+        });
+
+        await Campaign.findByIdAndUpdate(campaign._id, {
+            $addToSet: { milestoneIds: milestone._id },
+        });
+
+        return res.status(201).json({
+            status: "success",
+            data: milestone,
+        });
+    } catch (error) {
+        console.error(
+            `[milestoneController.createMilestoneForCampaign] Error: ${error.message}`,
+        );
+        return res.status(500).json({
+            status: "error",
+            code: "INTERNAL_ERROR",
+            message: error.message,
+        });
+    }
+};
+
+/**
+ * GET /api/milestones/campaigns/:campaignOnChainId
+ * List all milestones for a campaign.
+ */
+const getMilestonesForCampaign = async (req, res) => {
+    try {
+        const { campaignOnChainId } = req.params;
+
+        if (!campaignOnChainId) {
+            return res.status(400).json({
+                status: "error",
+                code: "INVALID_PARAMS",
+                message: "campaignOnChainId required",
+            });
+        }
+
+        const campaign = await Campaign.findOne({
+            onChainId: Number(campaignOnChainId),
+        });
+        if (!campaign) {
+            return res.status(404).json({
+                status: "error",
+                code: "CAMPAIGN_NOT_FOUND",
+                message: `Campaign ${campaignOnChainId} not found`,
+            });
+        }
+
+        const milestones = await Milestone.find({
+            campaignOnChainId: Number(campaignOnChainId),
+        }).sort({ milestoneIndex: 1 });
+
+        return res.status(200).json({
+            status: "success",
+            data: milestones,
+        });
+    } catch (error) {
+        console.error(
+            `[milestoneController.getMilestonesForCampaign] Error: ${error.message}`,
+        );
+        return res.status(500).json({
+            status: "error",
+            code: "INTERNAL_ERROR",
+            message: error.message,
+        });
+    }
+};
+
+/**
+ * GET /api/milestones/campaigns/:campaignOnChainId/:milestoneIndex
+ * Get a single milestone detail.
+ */
+const getMilestoneDetail = async (req, res) => {
+    try {
+        const { campaignOnChainId, milestoneIndex } = req.params;
+
+        if (!campaignOnChainId || !milestoneIndex) {
+            return res.status(400).json({
+                status: "error",
+                code: "INVALID_PARAMS",
+                message: "campaignOnChainId and milestoneIndex required",
+            });
+        }
+
+        const milestone = await Milestone.findOne({
+            campaignOnChainId: Number(campaignOnChainId),
+            milestoneIndex: Number(milestoneIndex),
+        });
+
+        if (!milestone) {
+            return res.status(404).json({
+                status: "error",
+                code: "MILESTONE_NOT_FOUND",
+                message: `Milestone ${milestoneIndex} not found in campaign ${campaignOnChainId}`,
+            });
+        }
+
+        return res.status(200).json({
+            status: "success",
+            data: milestone,
+        });
+    } catch (error) {
+        console.error(
+            `[milestoneController.getMilestoneDetail] Error: ${error.message}`,
+        );
+        return res.status(500).json({
+            status: "error",
+            code: "INTERNAL_ERROR",
+            message: error.message,
+        });
+    }
+};
+
+/**
+ * PUT /api/milestones/campaigns/:campaignOnChainId/:milestoneIndex
+ * Update basic fields of a milestone (title, description, financialTargetWei, deadline, status).
+ */
+const updateMilestone = async (req, res) => {
+    try {
+        const { campaignOnChainId, milestoneIndex } = req.params;
+        const {
+            title,
+            description,
+            financialTargetWei,
+            deadline,
+            status,
+        } = req.body || {};
+
+        const callerWallet = req.headers["x-wallet-address"];
+        const callerRole = req.headers["x-user-role"];
+
+        if (!campaignOnChainId || !milestoneIndex) {
+            return res.status(400).json({
+                status: "error",
+                code: "INVALID_PARAMS",
+                message: "campaignOnChainId and milestoneIndex required",
+            });
+        }
+
+        const campaign = await Campaign.findOne({
+            onChainId: Number(campaignOnChainId),
+        });
+        if (!campaign) {
+            return res.status(404).json({
+                status: "error",
+                code: "CAMPAIGN_NOT_FOUND",
+                message: `Campaign ${campaignOnChainId} not found`,
+            });
+        }
+
+        if (
+            callerRole !== "admin" &&
+            (!callerWallet ||
+                campaign.creator?.toLowerCase() !==
+                    callerWallet.toLowerCase())
+        ) {
+            return res.status(403).json({
+                status: "error",
+                code: "PERMISSION_DENIED",
+                message:
+                    "Only campaign creator or admin can update milestones",
+            });
+        }
+
+        const updates = {};
+        if (title !== undefined) updates.title = title;
+        if (description !== undefined) updates.description = description;
+        if (financialTargetWei !== undefined) {
+            updates.financialTargetWei = String(financialTargetWei);
+        }
+        if (deadline !== undefined) updates.deadline = new Date(deadline);
+        if (status !== undefined) updates.status = status;
+
+        const milestone = await Milestone.findOneAndUpdate(
+            {
+                campaignOnChainId: Number(campaignOnChainId),
+                milestoneIndex: Number(milestoneIndex),
+            },
+            { $set: updates },
+            { new: true, runValidators: true },
+        );
+
+        if (!milestone) {
+            return res.status(404).json({
+                status: "error",
+                code: "MILESTONE_NOT_FOUND",
+                message: `Milestone ${milestoneIndex} not found in campaign ${campaignOnChainId}`,
+            });
+        }
+
+        return res.status(200).json({
+            status: "success",
+            data: milestone,
+        });
+    } catch (error) {
+        console.error(
+            `[milestoneController.updateMilestone] Error: ${error.message}`,
+        );
+        return res.status(500).json({
+            status: "error",
+            code: "INTERNAL_ERROR",
+            message: error.message,
+        });
+    }
+};
+
+/**
+ * DELETE /api/milestones/campaigns/:campaignOnChainId/:milestoneIndex
+ * Delete a milestone from a campaign.
+ */
+const deleteMilestone = async (req, res) => {
+    try {
+        const { campaignOnChainId, milestoneIndex } = req.params;
+        const callerWallet = req.headers["x-wallet-address"];
+        const callerRole = req.headers["x-user-role"];
+
+        if (!campaignOnChainId || !milestoneIndex) {
+            return res.status(400).json({
+                status: "error",
+                code: "INVALID_PARAMS",
+                message: "campaignOnChainId and milestoneIndex required",
+            });
+        }
+
+        const campaign = await Campaign.findOne({
+            onChainId: Number(campaignOnChainId),
+        });
+        if (!campaign) {
+            return res.status(404).json({
+                status: "error",
+                code: "CAMPAIGN_NOT_FOUND",
+                message: `Campaign ${campaignOnChainId} not found`,
+            });
+        }
+
+        if (
+            callerRole !== "admin" &&
+            (!callerWallet ||
+                campaign.creator?.toLowerCase() !==
+                    callerWallet.toLowerCase())
+        ) {
+            return res.status(403).json({
+                status: "error",
+                code: "PERMISSION_DENIED",
+                message:
+                    "Only campaign creator or admin can delete milestones",
+            });
+        }
+
+        const milestone = await Milestone.findOneAndDelete({
+            campaignOnChainId: Number(campaignOnChainId),
+            milestoneIndex: Number(milestoneIndex),
+        });
+
+        if (!milestone) {
+            return res.status(404).json({
+                status: "error",
+                code: "MILESTONE_NOT_FOUND",
+                message: `Milestone ${milestoneIndex} not found in campaign ${campaignOnChainId}`,
+            });
+        }
+
+        await Campaign.findByIdAndUpdate(campaign._id, {
+            $pull: { milestoneIds: milestone._id },
+        });
+
+        return res.status(200).json({
+            status: "success",
+            data: {
+                deleted: true,
+                milestoneId: milestone._id,
+                campaignOnChainId: Number(campaignOnChainId),
+                milestoneIndex: Number(milestoneIndex),
+            },
+        });
+    } catch (error) {
+        console.error(
+            `[milestoneController.deleteMilestone] Error: ${error.message}`,
+        );
+        return res.status(500).json({
+            status: "error",
+            code: "INTERNAL_ERROR",
+            message: error.message,
+        });
+    }
+};
+
 module.exports = {
     uploadProgressEvidence,
     getContributionAllocation,
@@ -863,4 +1236,9 @@ module.exports = {
     prepareCampaignRefund,
     rejectMilestone,
     resubmitMilestone,
+    createMilestoneForCampaign,
+    getMilestonesForCampaign,
+    getMilestoneDetail,
+    updateMilestone,
+    deleteMilestone,
 };
