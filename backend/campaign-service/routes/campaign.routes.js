@@ -5,6 +5,10 @@ const {
     updateCampaignStatus,
     updateCampaignMetadata,
 } = require("../controllers/campaign.controller");
+const {
+    getCampaignRefundInfo,
+    prepareCampaignRefund,
+} = require("../controllers/milestone.controller");
 
 const router = express.Router();
 
@@ -113,5 +117,43 @@ router.put("/:id/metadata", updateCampaignMetadata);
  *       403: { description: Không có quyền }
  */
 router.patch("/:id/status", updateCampaignStatus);
+
+/**
+ * @swagger
+ * /{id}/refund-info:
+ *   get:
+ *     summary: Kiểm tra khả năng hoàn tiền toàn campaign cho donor
+ *     tags: [Campaigns]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Thành công }
+ *       403: { description: Không có quyền }
+ */
+router.get("/:id/refund-info", getCampaignRefundInfo);
+
+/**
+ * @swagger
+ * /{id}/refund/prepare:
+ *   post:
+ *     summary: Chuẩn bị payload hoàn tiền toàn campaign (compat mode)
+ *     tags: [Campaigns]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Thành công }
+ *       409: { description: Không đủ điều kiện hoàn tiền }
+ */
+router.post("/:id/refund/prepare", prepareCampaignRefund);
 
 module.exports = router;

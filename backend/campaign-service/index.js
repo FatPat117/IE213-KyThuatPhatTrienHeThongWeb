@@ -19,7 +19,16 @@ const { startDonatedConsumer } = require("./consumers/donated.consumer");
 const {
     startCampaignFailedConsumer,
 } = require("./consumers/campaignFailed.consumer");
+const {
+    startFundingCompleteConsumer,
+} = require("./consumers/fundingCompleteConsumer");
+const {
+    startMilestoneFailedConsumer,
+} = require("./consumers/milestoneFailedCascade.consumer");
+const { startDeadlineCheckerJob } = require("./jobs/deadlineChecker.job");
+const { startReviewTimeoutJob } = require("./jobs/reviewTimeout.job");
 const campaignRoutes = require("./routes/campaign.routes");
+const milestoneRoutes = require("./routes/milestone.routes");
 const notificationRoutes = require("./routes/notification.routes");
 const errorHandler = require("./middlewares/errorHandler");
 
@@ -51,6 +60,7 @@ app.get("/api/campaigns/api-docs.json", (req, res) => {
     res.send(specs);
 });
 app.use("/api/campaigns", campaignRoutes);
+app.use("/api/milestones", milestoneRoutes);
 app.use("/api/notifications", notificationRoutes);
 
 // ── Error Handler ────────────────────────────────────────────
@@ -65,6 +75,10 @@ async function start() {
     await startCampaignCancelledConsumer();
     await startDonatedConsumer();
     await startCampaignFailedConsumer();
+    await startFundingCompleteConsumer();
+    await startMilestoneFailedConsumer();
+    startDeadlineCheckerJob();
+    startReviewTimeoutJob();
 
     app.listen(PORT, () => {
         console.log(`[campaign-service] Running at http://localhost:${PORT}`);
