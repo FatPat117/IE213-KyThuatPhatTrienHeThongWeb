@@ -83,7 +83,8 @@ async function startFundingCompleteConsumer() {
             `[fundingCompleteConsumer.startFundingCompleteConsumer] ` +
                 `Failed to start consumer: ${error.message}`,
         );
-        throw error;
+        // Do not crash the whole campaign-service if RabbitMQ is temporarily unavailable.
+        return;
     }
 }
 
