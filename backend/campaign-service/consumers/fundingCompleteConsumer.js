@@ -83,7 +83,8 @@ async function startFundingCompleteConsumer() {
             `[fundingCompleteConsumer.startFundingCompleteConsumer] ` +
                 `Failed to start consumer: ${error.message}`,
         );
-        throw error;
+        // Do not crash the whole campaign-service if RabbitMQ is temporarily unavailable.
+        return;
     }
 }
 
@@ -143,7 +144,7 @@ async function handleFundingCompleteEvent(msg) {
 
         // 3. Fetch donor contributions from campaign donations
         // Assuming we have donation data stored or referenced in the campaign
-        const donationSnapshots = await getDonationSnapshots(campaign._id);
+        const donationSnapshots = await getDonationSnapshots(campaign.onChainId);
 
         if (!donationSnapshots.length) {
             console.warn(
@@ -199,23 +200,46 @@ async function handleFundingCompleteEvent(msg) {
  * @returns {Promise<Array>} Array of {walletAddress, totalWei}
  */
 async function getDonationSnapshots(campaignId) {
-    // TODO: Implement actual donation fetching logic
-    // Options:
-    // 1. Query from donation-service via HTTP
-    // 2. Fetch from local cache (if donations are cached in campaign-service)
-    // 3. Fetch from blockchain event logs (historical donations)
-    //
-    // Example structure:
-    // [
-    //   {walletAddress: "0xabc...", totalWei: "1000000000000000000"},
-    //   {walletAddress: "0xdef...", totalWei: "500000000000000000"}
-    // ]
+    const donationServiceBase =
+        process.env.DONATION_SERVICE_URL || "http://donation-service:4003";
+    const endpoint = `${donationServiceBase}/api/donations/campaign/${campaignId}`;
 
-    // Placeholder: return empty array (consumer will skip)
-    console.warn(
-        `[getDonationSnapshots] Placeholder implementation - returning empty array`,
-    );
-    return [];
+    try {
+        const response = await fetch(endpoint, {
+            method: "GET",
+            headers: { "Content-Type": "application/json" },
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status} from donation-service`);
+        }
+
+        const body = await response.json();
+        const rows = Array.isArray(body?.data) ? body.data : [];
+
+        const grouped = new Map();
+        for (const row of rows) {
+            const donor = String(row?.donorWallet || row?.donorAddress || "").toLowerCase();
+            const amount = BigInt(row?.amount || row?.totalWei || "0");
+            if (!/^0x[a-f0-9]{40}$/.test(donor) || amount <= 0n) continue;
+            grouped.set(donor, (grouped.get(donor) || 0n) + amount);
+        }
+
+        const snapshots = Array.from(grouped.entries()).map(([walletAddress, totalWei]) => ({
+            walletAddress,
+            totalWei: totalWei.toString(),
+        }));
+
+        console.log(
+            `[getDonationSnapshots] campaign=${campaignId}, rows=${rows.length}, donors=${snapshots.length}`,
+        );
+        return snapshots;
+    } catch (error) {
+        console.error(
+            `[getDonationSnapshots] Failed to fetch donations for campaign=${campaignId}: ${error.message}`,
+        );
+        return [];
+    }
 }
 
 /**

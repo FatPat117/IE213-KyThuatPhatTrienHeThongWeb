@@ -130,6 +130,9 @@ app.use("/api/users", verifyToken, proxy(USER_SERVICE_URL));
 //   PUT  /api/campaigns/:id/metadata → requireAuth            [enforced in service]
 app.use("/api/campaigns", verifyToken, proxy(CAMPAIGN_SERVICE_URL));
 
+// Milestones (served by campaign-service)
+app.use("/api/milestones", verifyToken, proxy(CAMPAIGN_SERVICE_URL));
+
 // Donations
 //   GET /api/donations/campaign/:id  → public
 //   GET /api/donations/donor/:wallet → requireAuth (service kiểm tra ownership)
