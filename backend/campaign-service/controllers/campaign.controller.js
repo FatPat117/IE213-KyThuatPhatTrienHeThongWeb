@@ -472,11 +472,61 @@ async function getMilestoneApprovalStatus(req, res, next) {
     }
 }
 
+// POST /campaigns  — authenticated
+async function createCampaignWithMilestones(req, res, next) {
+    try {
+        const callerWallet = req.headers["x-wallet-address"];
+        if (!callerWallet) return errorRes(res, "Yêu cầu đăng nhập", 401);
+
+        const {
+            onChainId,
+            title = "Untitled Campaign",
+            description = "",
+            beneficiary = null,
+            goal,
+            deadline,
+            milestones = [],
+        } = req.body || {};
+
+        if (!onChainId || !goal || !deadline) {
+            return errorRes(res, "Thiếu trường bắt buộc: onChainId, goal, deadline", 400);
+        }
+
+        if (!Array.isArray(milestones)) {
+            return errorRes(res, "milestones phải là mảng", 400);
+        }
+
+        const created = await campaignService.createCampaignWithMilestones({
+            onChainId,
+            title,
+            description,
+            creator: callerWallet,
+            beneficiary,
+            goal,
+            deadline,
+            milestones,
+        });
+
+        return successRes(res, created, 201);
+    } catch (err) {
+        if (err.statusCode) return errorRes(res, err.message, err.statusCode);
+        return next(err);
+    }
+}
+
 module.exports = {
     getAllCampaigns,
     getCampaignById,
     updateCampaignStatus,
     updateCampaignMetadata,
+    createCampaignWithMilestones,
+};
+module.exports = {
+    getAllCampaigns,
+    getCampaignById,
+    updateCampaignStatus,
+    updateCampaignMetadata,
+    createCampaignWithMilestones,
     getCampaignIndexStatus,
     getPublicStats,
     getPublicCampaigns,

@@ -1,4 +1,4 @@
-const Campaign = require("../models/Campaign.model");
+const { Campaign, Milestone } = require("../models");
 
 async function getAllCampaigns(filter = {}) {
     const query = {};
@@ -70,6 +70,82 @@ async function updateMetadata(onChainId, updates = {}) {
     );
 }
 
+/**
+ * Tạo campaign kèm milestones off-chain trong 1 transaction.
+ * @param {object} payload
+ * @param {number} payload.onChainId
+ * @param {string} payload.title
+ * @param {string} payload.description
+ * @param {string} payload.creator
+ * @param {string} payload.beneficiary
+ * @param {string} payload.goal
+ * @param {Date|string|number} payload.deadline
+ * @param {Array} payload.milestones
+ */
+async function createCampaignWithMilestones(payload) {
+    const {
+        onChainId,
+        title,
+        description = "",
+        creator,
+        beneficiary = null,
+        goal,
+        deadline,
+        milestones = [],
+    } = payload;
+
+    const existed = await Campaign.findOne({ onChainId: Number(onChainId) });
+    if (existed) {
+        const err = new Error("Campaign đã tồn tại");
+        err.statusCode = 409;
+        throw err;
+    }
+
+    const campaign = await Campaign.create({
+        onChainId: Number(onChainId),
+        title,
+        description,
+        creator: creator.toLowerCase(),
+        beneficiary: beneficiary ? beneficiary.toLowerCase() : null,
+        goal: String(goal),
+        deadline: new Date(deadline),
+        status: "active",
+        lifecycleStatus: "draft",
+    });
+
+    const milestoneDocs = milestones.map((m, idx) => ({
+        campaignId: campaign._id,
+        campaignOnChainId: Number(onChainId),
+        milestoneIndex: Number(m.milestoneIndex || idx + 1),
+        title: m.title || `Milestone ${idx + 1}`,
+        description: m.description || "",
+        financialTargetWei: String(m.financialTargetWei || "0"),
+        deadline: new Date(m.deadline || deadline),
+        status: "pending_funding",
+    }));
+
+    let createdMilestones = [];
+    try {
+        if (milestoneDocs.length) {
+            createdMilestones = await Milestone.insertMany(milestoneDocs, {
+                ordered: true,
+            });
+
+            campaign.milestoneIds = createdMilestones.map((x) => x._id);
+            await campaign.save();
+        }
+    } catch (error) {
+        await Milestone.deleteMany({
+            campaignOnChainId: Number(onChainId),
+            campaignId: campaign._id,
+        });
+        await Campaign.deleteOne({ _id: campaign._id });
+        throw error;
+    }
+
+    return { campaign, milestones: createdMilestones };
+}
+
 module.exports = {
     getAllCampaigns,
     getCampaignById,
@@ -77,4 +153,5 @@ module.exports = {
     updateCampaignStatus,
     updateRaised,
     updateMetadata,
+    createCampaignWithMilestones,
 };
