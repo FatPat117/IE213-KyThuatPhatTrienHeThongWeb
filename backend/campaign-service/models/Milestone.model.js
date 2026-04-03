@@ -5,40 +5,44 @@ const MilestoneSchema = new mongoose.Schema(
         campaignId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Campaign",
-            required: [true, "campaignId là bắt buộc"],
+            required: false,
         },
-        // On-chain campaign ID for quick reference
         campaignOnChainId: {
             type: Number,
-            required: [true, "campaignOnChainId là bắt buộc"],
+            required: [true, "campaignOnChainId is required"],
         },
-        // Position in milestone sequence (1, 2, 3...)
+        milestoneId: {
+            type: Number,
+            required: [true, "milestoneId is required"],
+        },
         milestoneIndex: {
             type: Number,
-            required: [true, "milestoneIndex là bắt buộc"],
+            default: null,
+        },
+        allocationBps: {
+            type: Number,
+            required: [true, "allocationBps is required"],
+            min: [0, "allocationBps must be >= 0"],
+            max: [10000, "allocationBps must be <= 10000"],
+        },
+        financialTargetWei: {
+            type: String,
+            default: "0",
         },
         title: {
             type: String,
-            required: [true, "Tiêu đề milestone là bắt buộc"],
+            default: "",
             trim: true,
-            maxlength: [200, "Tiêu đề tối đa 200 ký tự"],
+            maxlength: [200, "Title max length is 200 chars"],
         },
         description: {
             type: String,
             default: "",
         },
-        // Lưu dạng String để tránh mất precision khi xử lý BigInt wei
-        financialTargetWei: {
-            type: String,
-            required: [true, "Mục tiêu tài chính là bắt buộc"],
-            default: "0",
-        },
         deadline: {
             type: Date,
-            required: [true, "Deadline là bắt buộc"],
+            required: [true, "Deadline is required"],
         },
-        // Lifecycle status: pending_funding → pending_verification → approved → disbursed
-        // OR: failed → refunded
         status: {
             type: String,
             enum: [
@@ -55,80 +59,48 @@ const MilestoneSchema = new mongoose.Schema(
             ],
             default: "pending_funding",
         },
-        // Array of IPFS CIDs for evidence
+        reportCids: {
+            type: [
+                {
+                    cid: {
+                        type: String,
+                        required: true,
+                    },
+                    submittedAt: {
+                        type: Date,
+                        default: Date.now,
+                    },
+                },
+            ],
+            default: [],
+        },
         evidenceCids: {
             type: [String],
             default: [],
         },
-        // Audit timestamps
         approvedAt: {
             type: Date,
             default: null,
+        },
+        approvedBy: {
+            type: String,
+            default: "",
         },
         disbursedAt: {
             type: Date,
             default: null,
         },
-        refundedAt: {
+        failedAt: {
             type: Date,
-            default: null,
-        },
-        rejectionCount: {
-            type: Number,
-            default: 0,
-        },
-        maxRetries: {
-            type: Number,
-            default: 3,
-        },
-        lastRejectionReason: {
-            type: String,
-            default: null,
-        },
-        lastRejectionTimestamp: {
-            type: Date,
-            default: null,
-        },
-        rejectionHistory: {
-            type: [
-                {
-                    timestamp: Date,
-                    reason: String,
-                    reviewerWallet: String,
-                    resubmittedAt: Date,
-                    resubmittedEvidenceCid: String,
-                },
-            ],
-            default: [],
-        },
-        submittedAt: {
-            type: Date,
-            default: null,
-        },
-        deadlineExceededAt: {
-            type: Date,
-            default: null,
-        },
-        reviewTimeoutAt: {
-            type: Date,
-            default: null,
-        },
-        failureReason: {
-            type: String,
             default: null,
         },
     },
     { timestamps: true },
 );
 
-// Unique constraint: (campaignId, milestoneIndex)
-MilestoneSchema.index({ campaignId: 1, milestoneIndex: 1 }, { unique: true });
-// Unique constraint: (campaignOnChainId, milestoneIndex)
-MilestoneSchema.index(
-    { campaignOnChainId: 1, milestoneIndex: 1 },
-    { unique: true },
-);
-// Query by status + deadline
+MilestoneSchema.index({ campaignId: 1, milestoneId: 1 }, { unique: true, sparse: true });
+MilestoneSchema.index({ campaignOnChainId: 1, milestoneId: 1 }, { unique: true });
+MilestoneSchema.index({ campaignOnChainId: 1, milestoneIndex: 1 }, { sparse: true });
 MilestoneSchema.index({ status: 1, deadline: 1 });
 
 module.exports =

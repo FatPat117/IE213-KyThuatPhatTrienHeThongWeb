@@ -28,6 +28,11 @@ const CampaignRefundSchema = new mongoose.Schema(
             required: [true, "campaignOnChainId is required"],
             index: true,
         },
+        milestoneId: {
+            type: Number,
+            default: null,
+            index: true,
+        },
         donorAddress: {
             type: String,
             required: [true, "donorAddress is required"],
@@ -47,6 +52,10 @@ const CampaignRefundSchema = new mongoose.Schema(
             type: String,
             default: "0",
         },
+        amountWei: {
+            type: String,
+            default: "0",
+        },
         // Campaign-level refund status
         status: {
             type: String,
@@ -60,6 +69,10 @@ const CampaignRefundSchema = new mongoose.Schema(
             default: null,
         },
         refundedAt: {
+            type: Date,
+            default: null,
+        },
+        claimedAt: {
             type: Date,
             default: null,
         },
@@ -93,6 +106,11 @@ const CampaignRefundSchema = new mongoose.Schema(
 CampaignRefundSchema.index(
     { campaignId: 1, donorAddress: 1 },
     { unique: true },
+);
+
+CampaignRefundSchema.index(
+    { campaignOnChainId: 1, milestoneId: 1, donorAddress: 1 },
+    { unique: true, sparse: true },
 );
 
 // Idempotency: prevent listener duplicate event processing

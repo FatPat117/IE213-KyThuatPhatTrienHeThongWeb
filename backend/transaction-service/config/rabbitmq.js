@@ -1,5 +1,5 @@
 const amqp = require("amqplib");
-const Transaction = require("../models/transaction.model");
+const Transaction = require("../models/Transaction.model");
 const transactionService = require("../services/transaction.service");
 
 const RABBITMQ_URL = process.env.RABBITMQ_URL;

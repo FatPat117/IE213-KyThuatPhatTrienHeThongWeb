@@ -24,7 +24,22 @@ const {
 } = require("./consumers/fundingCompleteConsumer");
 const {
     startMilestoneFailedConsumer,
-} = require("./consumers/milestoneFailedCascade.consumer");
+} = require("./consumers/milestoneFailed.consumer");
+const {
+    startMilestoneDisbursedConsumer,
+} = require("./consumers/milestoneDisbursed.consumer");
+const {
+    startMilestoneApprovedConsumer,
+} = require("./consumers/milestoneApproved.consumer");
+const {
+    startMilestoneReportSubmittedConsumer,
+} = require("./consumers/milestoneReportSubmitted.consumer");
+const {
+    startCampaignStoppedConsumer,
+} = require("./consumers/campaignStopped.consumer");
+const {
+    startMilestoneRefundedConsumer,
+} = require("./consumers/milestoneRefunded.consumer");
 const { startDeadlineCheckerJob } = require("./jobs/deadlineChecker.job");
 const { startReviewTimeoutJob } = require("./jobs/reviewTimeout.job");
 const campaignRoutes = require("./routes/campaign.routes");
@@ -77,6 +92,11 @@ async function start() {
     await startCampaignFailedConsumer();
     await startFundingCompleteConsumer();
     await startMilestoneFailedConsumer();
+    await startMilestoneDisbursedConsumer();
+    await startMilestoneApprovedConsumer();
+    await startMilestoneReportSubmittedConsumer();
+    await startCampaignStoppedConsumer();
+    await startMilestoneRefundedConsumer();
     startDeadlineCheckerJob();
     startReviewTimeoutJob();
 

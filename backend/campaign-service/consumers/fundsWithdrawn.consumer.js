@@ -7,8 +7,7 @@ const QUEUE =
 const ROUTING_KEY = process.env.RABBITMQ_RKEY_WITHDRAWN || "funds.withdrawn";
 
 /**
- * Lắng nghe event FundsWithdrawn từ listener-service.
- * Khi campaign rút quỹ thành công → cập nhật status = "ended".
+ * Listen for FundsWithdrawn and mark campaign as completed.
  */
 async function startFundsWithdrawnConsumer() {
     const channel = getChannel();
@@ -34,13 +33,13 @@ async function startFundsWithdrawnConsumer() {
                 payload,
             );
 
-            // Cập nhật trạng thái camp thành ended sau khi rút quỹ
+            // Keep status aligned with the current enum.
             await campaignService.updateCampaignStatus(
                 payload.campaignOnChainId,
-                "ended",
+                "completed",
             );
             console.log(
-                `[campaign-service] Campaign ${payload.campaignOnChainId} → ended (funds withdrawn)`,
+                `[campaign-service] Campaign ${payload.campaignOnChainId} → completed (funds withdrawn)`,
             );
 
             // Gửi notification cho creator về việc rút quỹ thành công

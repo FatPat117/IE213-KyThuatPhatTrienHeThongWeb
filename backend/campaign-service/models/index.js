@@ -11,6 +11,7 @@ const Reviewer = require("./Reviewer.model");
 const Notification = require("./Notification.model");
 const CampaignDonorShare = require("./CampaignDonorShare.model");
 const CampaignRefund = require("./CampaignRefund.model");
+const Donation = require("./Donation.model");
 
 module.exports = {
     Campaign,
@@ -20,4 +21,5 @@ module.exports = {
     Notification,
     CampaignDonorShare,
     CampaignRefund,
+    Donation,
 };

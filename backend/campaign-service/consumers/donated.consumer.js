@@ -1,70 +1,10 @@
 const { getChannel } = require("../config/rabbitmq");
 const Campaign = require("../models/Campaign.model");
-const notificationService = require("../services/notification.service");
 
 const QUEUE =
     process.env.RABBITMQ_QUEUE_CAMP_DONATED || "campaign.donation.queue";
 const ROUTING_KEY = process.env.RABBITMQ_RKEY_DONATED || "donation.received";
 const DONATION_EXCHANGE = process.env.RABBITMQ_EXCHANGE || "funding.events";
-const MAX_UPDATE_RETRIES = 5;
-
-async function applyDonationAtomically(campaignOnChainId, amount) {
-    const normalizedCampaignId = Number(campaignOnChainId);
-    const donationAmount = BigInt(amount);
-
-    for (let attempt = 1; attempt <= MAX_UPDATE_RETRIES; attempt += 1) {
-        const campaign = await Campaign.findOne({
-            onChainId: normalizedCampaignId,
-        });
-
-        if (!campaign) {
-            return null;
-        }
-
-        // Nếu chiến dịch không còn active (đã ended/failed/cancelled),
-        // bỏ qua – không cập nhật raised hay status nữa.
-        if (campaign.status !== "active") {
-            console.log(
-                `[campaign-service] Campaign ${normalizedCampaignId} is "${campaign.status}" – donation event skipped.`,
-            );
-            return { skipped: true, onChainId: normalizedCampaignId, status: campaign.status };
-        }
-
-        const currentRaised = BigInt(campaign.raised || "0");
-        const goalAmount = BigInt(campaign.goal || "0");
-        const newRaised = (currentRaised + donationAmount).toString();
-        const nextStatus =
-            currentRaised + donationAmount >= goalAmount
-                ? "ended"
-                : campaign.status;
-
-        const updateResult = await Campaign.updateOne(
-            {
-                _id: campaign._id,
-                raised: campaign.raised,
-                status: campaign.status,
-            },
-            {
-                $set: {
-                    raised: newRaised,
-                    status: nextStatus,
-                },
-            },
-        );
-
-        if (updateResult.modifiedCount === 1) {
-            return {
-                onChainId: normalizedCampaignId,
-                raised: newRaised,
-                status: nextStatus,
-            };
-        }
-    }
-
-    throw new Error(
-        `Failed to apply donation for campaign ${normalizedCampaignId} after ${MAX_UPDATE_RETRIES} concurrent update retries`,
-    );
-}
 
 async function startDonatedConsumer() {
     const channel = getChannel();
@@ -89,7 +29,13 @@ async function startDonatedConsumer() {
 
         try {
             const payload = JSON.parse(msg.content.toString());
-            const { campaignOnChainId, donorWallet, amount, txHash } = payload;
+            const campaignOnChainId = Number(
+                payload.campaignOnChainId || payload.campaignId,
+            );
+            const donationAmount = BigInt(payload.amount || "0");
+            const totalRaisedFromEvent = payload.totalRaisedWei
+                ? payload.totalRaisedWei.toString()
+                : null;
 
             if (campaignOnChainId === undefined || campaignOnChainId === null) {
                 throw new Error(
@@ -97,66 +43,29 @@ async function startDonatedConsumer() {
                 );
             }
 
-            if (!amount) {
+            if (donationAmount <= 0n && !totalRaisedFromEvent) {
                 throw new Error("Missing amount in donation payload");
             }
 
-            console.log(
-                "[campaign-service] Received donation.received event:",
-                {
-                    campaignOnChainId,
-                    donorWallet,
-                    amount,
-                    txHash,
-                },
-            );
+            const campaign = await Campaign.findOne({
+                onChainId: campaignOnChainId,
+            });
 
-            const updatedCampaign = await applyDonationAtomically(
-                campaignOnChainId,
-                amount,
-            );
-
-            if (!updatedCampaign) {
+            if (!campaign) {
                 console.warn(
-                    `[campaign-service] Campaign ${campaignOnChainId} was not found. Donation event was acknowledged without a database update.`,
+                    `[campaign-service] Campaign not found for donation event. onChainId=${campaignOnChainId}`,
                 );
                 channel.ack(msg);
                 return;
             }
 
-            // Chiến dịch không còn active → donation bị bỏ qua, ack và thoát
-            if (updatedCampaign.skipped) {
-                channel.ack(msg);
-                return;
-            }
+            const nextRaised = totalRaisedFromEvent
+                ? totalRaisedFromEvent
+                : (BigInt(campaign.totalRaisedWei || "0") + donationAmount).toString();
 
-            console.log(
-                `[campaign-service] Campaign ${updatedCampaign.onChainId} updated successfully. raised=${updatedCampaign.raised}, status=${updatedCampaign.status}`,
-            );
-
-            // Gửi notification cho creator khi chiến dịch đạt mục tiêu
-            if (updatedCampaign.status === "ended") {
-                try {
-                    const campaign = await Campaign.findOne({
-                        onChainId: updatedCampaign.onChainId,
-                    });
-                    if (campaign?.creator) {
-                        await notificationService.createNotification({
-                            recipientWallet: campaign.creator,
-                            type: "campaign_succeeded",
-                            title: "🎉 Chiến dịch đã đạt mục tiêu!",
-                            message: `Chiến dịch "${campaign.title || `#${updatedCampaign.onChainId}`}" đã đạt mục tiêu quyên góp. Bạn có thể rút tiền ngay bây giờ.`,
-                            campaignOnChainId: updatedCampaign.onChainId,
-                            txHash: txHash || "",
-                        });
-                    }
-                } catch (notifErr) {
-                    console.warn(
-                        "[campaign-service] Không thể gửi notification campaign_succeeded:",
-                        notifErr.message,
-                    );
-                }
-            }
+            campaign.totalRaisedWei = nextRaised;
+            campaign.raised = nextRaised;
+            await campaign.save();
 
             channel.ack(msg);
         } catch (err) {
