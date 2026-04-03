@@ -27,6 +27,13 @@ const TransactionSchema = new mongoose.Schema(
                 "claimRefund", // user rút tiền về sau khi campaign thất bại
                 "cancelCampaign", // creator hủy campaign
                 "markAsFailed", // listener/service đánh dấu campaign thất bại nếu deadline trôi qua mà chưa đạt goal
+                "milestoneDisburse",
+                "milestoneApprove",
+                "milestoneFail",
+                "submitReport",
+                "campaignStop",
+                "claimMilestoneRefund",
+                "assignReviewer",
             ],
             required: [true, "action là bắt buộc"],
         },

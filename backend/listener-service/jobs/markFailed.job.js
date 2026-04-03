@@ -1,19 +1,30 @@
 const { ethers } = require("ethers");
-const axios = require("axios");
 const cron = require("node-cron");
 const { CONTRACT_ABI, resolveContractConfig } = require("../config/contract");
-const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 
-const ACTIVE_STATUS = 0;
-const DEFAULT_CRON = "0 0 * * *"; // chạy lúc 00:00 mỗi ngày
+const CAMPAIGN_STATUS_ACTIVE = 0;
+const CAMPAIGN_STATUS_IN_PROGRESS = 1;
+const MILESTONE_STATUS_PENDING_VERIFICATION = 1;
+const MILESTONE_STATUS_FAILED = 4;
+
+const DEFAULT_CRON = "0 0 * * *";
 const DEFAULT_TIMEZONE = "UTC";
 
-function isCampaignFailedByRule(campaign, nowSec) {
+function shouldMarkCampaignFailed(campaign, nowSec) {
     if (!campaign) return false;
     return (
-        Number(campaign.status) === ACTIVE_STATUS &&
+        Number(campaign.status) === CAMPAIGN_STATUS_ACTIVE &&
         BigInt(campaign.totalRaised) < BigInt(campaign.goal) &&
         Number(campaign.deadline) <= nowSec
+    );
+}
+
+function shouldMarkMilestoneFailed(campaign, milestone, nowSec) {
+    if (!campaign || !milestone) return false;
+    return (
+        Number(campaign.status) === CAMPAIGN_STATUS_IN_PROGRESS &&
+        Number(milestone.status) === MILESTONE_STATUS_PENDING_VERIFICATION &&
+        Number(milestone.deadline) < nowSec
     );
 }
 
@@ -26,7 +37,7 @@ async function runMarkFailedSweep() {
 
     if (!resolved || !privateKey) {
         console.warn(
-            "[listener-service] markAsFailed job bị tắt (thiếu contract config hoặc private key).",
+            "[listener-service] mark-failed job disabled (missing contract config or private key).",
         );
         return;
     }
@@ -48,59 +59,66 @@ async function runMarkFailedSweep() {
     const campaignCount = Number(await readContract.campaignCount());
 
     if (!campaignCount) {
-        console.log(
-            "[listener-service] markAsFailed job: không có campaign nào.",
-        );
+        console.log("[listener-service] mark-failed job: no campaigns found.");
         return;
     }
 
-    let updatedCount = 0;
+    let failedCampaignCount = 0;
+    let failedMilestoneCount = 0;
 
     for (let campaignId = 1; campaignId <= campaignCount; campaignId += 1) {
         try {
             const campaign = await readContract.getCampaign(BigInt(campaignId));
-            if (!isCampaignFailedByRule(campaign, nowSec)) continue;
 
-            const tx = await writeContract.markAsFailed(BigInt(campaignId));
-            console.log(
-                `[listener-service] markAsFailed tx sent: campaignId=${campaignId}, tx=${tx.hash}`,
-            );
-            await tx.wait();
-            updatedCount += 1;
-
-            // 1. Publish campaign.failed → campaign-service cập nhật status + gửi notification
-            const mqChannel = getChannel();
-            if (mqChannel) {
-                mqChannel.publish(
-                    EXCHANGE,
-                    process.env.RABBITMQ_RKEY_CAMP_FAILED || "campaign.failed",
-                    Buffer.from(
-                        JSON.stringify({
-                            campaignOnChainId: Number(campaignId),
-                            txHash: tx.hash,
-                        }),
-                    ),
-                    { persistent: true },
+            if (shouldMarkCampaignFailed(campaign, nowSec)) {
+                const tx = await writeContract.markCampaignFailed(
+                    BigInt(campaignId),
                 );
+                console.log(
+                    `[listener-service] markCampaignFailed tx sent: campaignId=${campaignId}, tx=${tx.hash}`,
+                );
+                await tx.wait();
+                failedCampaignCount += 1;
+                continue;
             }
 
-            // 2. Upsert tx markAsFailed vào transaction-service
-            try {
-                const walletAddr = await wallet.getAddress();
-                await axios.post(
-                    `${process.env.TRANSACTION_SERVICE_URL}/api/transactions/internal/upsert`,
-                    {
-                        txHash: tx.hash,
-                        walletAddress: walletAddr,
-                        action: "markAsFailed",
-                        campaignOnChainId: Number(campaignId),
-                    },
+            if (Number(campaign.status) !== CAMPAIGN_STATUS_IN_PROGRESS) {
+                continue;
+            }
+
+            const milestoneCount = Number(campaign.milestoneCount || 0);
+            for (
+                let milestoneId = 0;
+                milestoneId < milestoneCount;
+                milestoneId += 1
+            ) {
+                const milestone = await readContract.getMilestone(
+                    BigInt(campaignId),
+                    BigInt(milestoneId),
                 );
-            } catch (upsertErr) {
-                console.warn(
-                    `[listener-service] markAsFailed: không thể upsert tx campaignId=${campaignId}:`,
-                    upsertErr.message,
+
+                // Idempotent skip when milestone is already failed.
+                if (Number(milestone.status) === MILESTONE_STATUS_FAILED) {
+                    continue;
+                }
+
+                if (!shouldMarkMilestoneFailed(campaign, milestone, nowSec)) {
+                    continue;
+                }
+
+                const tx = await writeContract.markMilestoneFailed(
+                    BigInt(campaignId),
+                    BigInt(milestoneId),
                 );
+                console.log(
+                    `[listener-service] markMilestoneFailed tx sent: campaignId=${campaignId}, milestoneId=${milestoneId}, tx=${tx.hash}`,
+                );
+                await tx.wait();
+                failedMilestoneCount += 1;
+
+                // Contract marks campaign as stopped on first failed current milestone.
+                // No need to process later milestones for this campaign in the same sweep.
+                break;
             }
         } catch (err) {
             const message =
@@ -109,13 +127,13 @@ async function runMarkFailedSweep() {
                 err?.message ||
                 "unknown error";
             console.warn(
-                `[listener-service] markAsFailed bỏ qua campaignId=${campaignId}: ${message}`,
+                `[listener-service] mark-failed skipped campaignId=${campaignId}: ${message}`,
             );
         }
     }
 
     console.log(
-        `[listener-service] markAsFailed job hoàn tất. campaigns updated=${updatedCount}`,
+        `[listener-service] mark-failed job completed. campaignsFailed=${failedCampaignCount}, milestonesFailed=${failedMilestoneCount}`,
     );
 }
 
@@ -123,7 +141,7 @@ function startMarkFailedDailyJob() {
     const enabled = process.env.MARK_FAILED_JOB_ENABLED !== "false";
     if (!enabled) {
         console.log(
-            "[listener-service] markAsFailed job disabled by MARK_FAILED_JOB_ENABLED=false",
+            "[listener-service] mark-failed job disabled by MARK_FAILED_JOB_ENABLED=false",
         );
         return null;
     }
@@ -137,7 +155,7 @@ function startMarkFailedDailyJob() {
 
     if (!cron.validate(cronExpression)) {
         console.error(
-            `[listener-service] MARK_FAILED_JOB_CRON không hợp lệ: "${cronExpression}"`,
+            `[listener-service] MARK_FAILED_JOB_CRON is invalid: "${cronExpression}"`,
         );
         return null;
     }
@@ -145,12 +163,12 @@ function startMarkFailedDailyJob() {
     const safeRun = () =>
         runMarkFailedSweep().catch((err) => {
             console.error(
-                "[listener-service] markAsFailed job failed:",
+                "[listener-service] mark-failed job failed:",
                 err?.message || err,
             );
         });
 
-    // Chạy ngay 1 lần lúc startup (giữ hành vi cũ), sau đó theo cron schedule
+    // Run one sweep at startup, then schedule by cron.
     safeRun();
 
     const task = cron.schedule(cronExpression, safeRun, {
@@ -158,7 +176,7 @@ function startMarkFailedDailyJob() {
     });
 
     console.log(
-        `[listener-service] markAsFailed cron started: expression="${cronExpression}", timezone="${timezone}"`,
+        `[listener-service] mark-failed cron started: expression="${cronExpression}", timezone="${timezone}"`,
     );
 
     return task;

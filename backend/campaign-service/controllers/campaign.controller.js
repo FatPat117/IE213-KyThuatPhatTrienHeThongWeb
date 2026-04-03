@@ -1,69 +1,475 @@
+const axios = require("axios");
 const campaignService = require("../services/campaign.service");
+const { Campaign, Milestone, Donation } = require("../models");
 const { successRes, errorRes } = require("../utils/response");
 
-// GET /campaigns  — public
+function toBigInt(value) {
+    try {
+        return BigInt((value || "0").toString());
+    } catch {
+        return 0n;
+    }
+}
+
+function percentOf(numerator, denominator) {
+    if (denominator <= 0n) {
+        return 0;
+    }
+
+    const scaled = (numerator * 10_000n) / denominator;
+    return Number(scaled) / 100;
+}
+
+function normalizeCampaignItem(campaignDoc) {
+    return {
+        onChainId: campaignDoc.onChainId,
+        title: campaignDoc.title || "",
+        creator: campaignDoc.creator,
+        reviewerSafe: campaignDoc.reviewerSafe || "",
+        goalWei: campaignDoc.goalWei || campaignDoc.goal || "0",
+        totalRaisedWei: campaignDoc.totalRaisedWei || campaignDoc.raised || "0",
+        totalDisbursedWei: campaignDoc.totalDisbursedWei || "0",
+        deadline: campaignDoc.deadline,
+        status: campaignDoc.status,
+        milestoneCount: campaignDoc.milestoneCount || 0,
+        thumbnailUrl: campaignDoc.thumbnailUrl || "",
+        createdAt: campaignDoc.createdAt,
+    };
+}
+
 async function getAllCampaigns(req, res, next) {
     try {
         const filter = {};
         if (req.query.status) filter.status = req.query.status;
         if (req.query.creator) filter.creator = req.query.creator;
+
         const campaigns = await campaignService.getAllCampaigns(filter);
         return successRes(res, campaigns);
-    } catch (err) { next(err); }
+    } catch (err) {
+        return next(err);
+    }
 }
 
-// GET /campaigns/:id  — public
 async function getCampaignById(req, res, next) {
     try {
-        const campaign = await campaignService.getCampaignById(req.params.id);
-        if (!campaign) return errorRes(res, "Campaign không tồn tại", 404);
+        const campaign = await campaignService.getCampaignById(req.params.onChainId || req.params.id);
+        if (!campaign) {
+            return errorRes(res, "Campaign not found", 404);
+        }
+
         return successRes(res, campaign);
-    } catch (err) { next(err); }
+    } catch (err) {
+        return next(err);
+    }
 }
 
-// PATCH /campaigns/:id/status  — admin only
 async function updateCampaignStatus(req, res, next) {
     try {
-        const callerRole = req.headers["x-user-role"];
-        if (callerRole !== "admin") return errorRes(res, "Không có quyền truy cập", 403);
-
-        const { status } = req.body;
-        const allowed = ["active", "ended", "failed", "cancelled"];
-        if (!allowed.includes(status)) {
-            return errorRes(res, `Status không hợp lệ. Chấp nhận: ${allowed.join(", ")}`, 400);
+        const callerRole = (req.userRole || req.headers["x-user-role"] || "").toString().toLowerCase();
+        if (callerRole !== "admin") {
+            return errorRes(res, "Forbidden", 403);
         }
 
-        const campaign = await campaignService.updateCampaignStatus(req.params.id, status);
-        if (!campaign) return errorRes(res, "Campaign không tồn tại", 404);
+        const allowed = [
+            "active",
+            "in_progress",
+            "completed",
+            "partial_failed",
+            "failed",
+            "cancelled",
+        ];
+
+        const status = (req.body?.status || "").toString().trim();
+        if (!allowed.includes(status)) {
+            return errorRes(res, `Invalid status. Allowed: ${allowed.join(", ")}`, 400);
+        }
+
+        const campaign = await campaignService.updateCampaignStatus(
+            req.params.onChainId || req.params.id,
+            status,
+        );
+
+        if (!campaign) {
+            return errorRes(res, "Campaign not found", 404);
+        }
+
         return successRes(res, campaign);
-    } catch (err) { next(err); }
+    } catch (err) {
+        return next(err);
+    }
 }
 
-// PUT /campaigns/:id/metadata  — authenticated (owner hoặc admin)
 async function updateCampaignMetadata(req, res, next) {
     try {
-        const callerWallet = req.headers["x-wallet-address"];
-        const callerRole = req.headers["x-user-role"];
-
-        if (!callerWallet) return errorRes(res, "Yêu cầu đăng nhập", 401);
-
-        const campaign = await campaignService.getCampaignById(req.params.id);
-        if (!campaign) return errorRes(res, "Campaign không tồn tại", 404);
-
-        // Chỉ creator hoặc admin mới được sửa metadata
-        if (callerRole !== "admin" && campaign.creator !== callerWallet.toLowerCase()) {
-            return errorRes(res, "Chỉ người tạo chiến dịch mới có thể sửa thông tin", 403);
+        const walletAddress = (req.walletAddress || req.headers["x-wallet-address"] || "")
+            .toString()
+            .toLowerCase();
+        if (!walletAddress) {
+            return errorRes(res, "Authentication required", 401);
         }
 
-        const { title, description, images } = req.body;
-        const updates = {};
-        if (title !== undefined) updates.title = title;
-        if (description !== undefined) updates.description = description;
-        if (images !== undefined) updates.images = images;
+        const onChainId = Number(req.params.onChainId || req.params.id);
+        if (!Number.isFinite(onChainId)) {
+            return errorRes(res, "Invalid campaign id", 400);
+        }
 
-        const updated = await campaignService.updateMetadata(req.params.id, updates);
-        return successRes(res, updated);
-    } catch (err) { next(err); }
+        const campaign = await Campaign.findOne({ onChainId });
+        if (!campaign) {
+            return res.status(202).json({
+                success: false,
+                message: "Campaign not yet indexed, retry in 3s",
+            });
+        }
+
+        if (campaign.creator !== walletAddress) {
+            return errorRes(res, "Only campaign creator can update metadata", 403);
+        }
+
+        const updates = {};
+        const { title, description, thumbnailUrl, reviewerSafe, milestones } = req.body || {};
+
+        if (typeof title === "string") updates.title = title.trim();
+        if (typeof description === "string") updates.description = description.trim();
+        if (typeof thumbnailUrl === "string") updates.thumbnailUrl = thumbnailUrl.trim();
+
+        if (typeof reviewerSafe === "string") {
+            const normalizedSafe = reviewerSafe.trim().toLowerCase();
+            if (normalizedSafe && !/^0x[a-f0-9]{40}$/.test(normalizedSafe)) {
+                return errorRes(res, "Invalid reviewerSafe address", 400);
+            }
+            updates.reviewerSafe = normalizedSafe;
+        }
+
+        const updatedCampaign = await Campaign.findOneAndUpdate(
+            { onChainId },
+            { $set: updates },
+            { new: true, runValidators: true },
+        );
+
+        if (Array.isArray(milestones)) {
+            for (const item of milestones) {
+                const milestoneId = Number(item?.milestoneId);
+                if (!Number.isFinite(milestoneId)) {
+                    continue;
+                }
+
+                const milestonePatch = {};
+                if (typeof item.title === "string") {
+                    milestonePatch.title = item.title.trim();
+                }
+                if (typeof item.description === "string") {
+                    milestonePatch.description = item.description.trim();
+                }
+
+                if (Object.keys(milestonePatch).length === 0) {
+                    continue;
+                }
+
+                await Milestone.findOneAndUpdate(
+                    { campaignOnChainId: onChainId, milestoneId },
+                    {
+                        $set: {
+                            ...milestonePatch,
+                            milestoneIndex: milestoneId,
+                        },
+                    },
+                    { new: true },
+                );
+            }
+        }
+
+        const updatedMilestones = await Milestone.find({ campaignOnChainId: onChainId }).sort({
+            milestoneId: 1,
+        });
+
+        return successRes(res, {
+            campaign: updatedCampaign,
+            milestones: updatedMilestones,
+        });
+    } catch (err) {
+        return next(err);
+    }
+}
+
+async function getCampaignIndexStatus(req, res, next) {
+    try {
+        const onChainId = Number(req.params.onChainId);
+        if (!Number.isFinite(onChainId)) {
+            return errorRes(res, "Invalid campaign id", 400);
+        }
+
+        const campaign = await Campaign.findOne({ onChainId }).select("_id");
+        return successRes(res, { indexed: Boolean(campaign) });
+    } catch (err) {
+        return next(err);
+    }
+}
+
+async function getPublicStats(req, res, next) {
+    try {
+        const [
+            totalCampaigns,
+            activeCampaigns,
+            inProgressCampaigns,
+            completedCampaigns,
+            partialFailedCampaigns,
+            failedCampaigns,
+            campaigns,
+            distinctDonors,
+        ] = await Promise.all([
+            Campaign.countDocuments({}),
+            Campaign.countDocuments({ status: "active" }),
+            Campaign.countDocuments({ status: "in_progress" }),
+            Campaign.countDocuments({ status: "completed" }),
+            Campaign.countDocuments({ status: "partial_failed" }),
+            Campaign.countDocuments({ status: "failed" }),
+            Campaign.find({}).select("totalRaisedWei totalDisbursedWei").lean(),
+            Donation.distinct("donorWallet"),
+        ]);
+
+        let totalRaised = 0n;
+        let totalDisbursed = 0n;
+
+        for (const campaign of campaigns) {
+            totalRaised += toBigInt(campaign.totalRaisedWei);
+            totalDisbursed += toBigInt(campaign.totalDisbursedWei);
+        }
+
+        return successRes(res, {
+            totalCampaigns,
+            activeCampaigns,
+            inProgressCampaigns,
+            completedCampaigns,
+            partialFailedCampaigns,
+            failedCampaigns,
+            totalRaisedWei: totalRaised.toString(),
+            totalDisbursedWei: totalDisbursed.toString(),
+            uniqueDonors: distinctDonors.length,
+            totalCertificates: 0,
+            updatedAt: new Date().toISOString(),
+        });
+    } catch (err) {
+        return next(err);
+    }
+}
+
+async function getPublicCampaigns(req, res, next) {
+    try {
+        const page = Math.max(Number(req.query.page) || 1, 1);
+        const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 100);
+        const sortField = ["createdAt", "updatedAt", "deadline"].includes(req.query.sort)
+            ? req.query.sort
+            : "createdAt";
+        const order = req.query.order === "asc" ? 1 : -1;
+
+        const query = {};
+        if (req.query.status) {
+            query.status = req.query.status;
+        }
+
+        const totalItems = await Campaign.countDocuments(query);
+        const totalPages = Math.max(Math.ceil(totalItems / limit), 1);
+
+        const campaigns = await Campaign.find(query)
+            .sort({ [sortField]: order })
+            .skip((page - 1) * limit)
+            .limit(limit)
+            .lean();
+
+        return successRes(res, {
+            items: campaigns.map(normalizeCampaignItem),
+            pagination: {
+                page,
+                limit,
+                totalItems,
+                totalPages,
+            },
+        });
+    } catch (err) {
+        return next(err);
+    }
+}
+
+async function getPublicCampaignByOnChainId(req, res, next) {
+    try {
+        const onChainId = Number(req.params.onChainId);
+        if (!Number.isFinite(onChainId)) {
+            return errorRes(res, "Invalid campaign id", 400);
+        }
+
+        const campaign = await Campaign.findOne({ onChainId }).lean();
+        if (!campaign) {
+            return errorRes(res, "Campaign not found", 404);
+        }
+
+        const goal = toBigInt(campaign.goalWei || campaign.goal);
+        const totalRaised = toBigInt(campaign.totalRaisedWei || campaign.raised);
+        const totalDisbursed = toBigInt(campaign.totalDisbursedWei);
+        const remaining = totalRaised > totalDisbursed ? totalRaised - totalDisbursed : 0n;
+
+        return successRes(res, {
+            ...normalizeCampaignItem(campaign),
+            beneficiary: campaign.beneficiary,
+            progress: {
+                raisedPercent: percentOf(totalRaised, goal),
+                disbursedPercent: percentOf(totalDisbursed, goal),
+                remainingWei: remaining.toString(),
+            },
+        });
+    } catch (err) {
+        return next(err);
+    }
+}
+
+async function getPublicCampaignMilestones(req, res, next) {
+    try {
+        const campaignOnChainId = Number(req.params.onChainId);
+        if (!Number.isFinite(campaignOnChainId)) {
+            return errorRes(res, "Invalid campaign id", 400);
+        }
+
+        const campaign = await Campaign.findOne({ onChainId: campaignOnChainId }).lean();
+        if (!campaign) {
+            return errorRes(res, "Campaign not found", 404);
+        }
+
+        const totalRaised = toBigInt(campaign.totalRaisedWei || campaign.raised);
+        const milestones = await Milestone.find({ campaignOnChainId })
+            .sort({ milestoneId: 1 })
+            .lean();
+
+        return successRes(res, {
+            campaignOnChainId,
+            milestones: milestones.map((milestone) => {
+                const allocationBps = Number(milestone.allocationBps || 0);
+                const amountWei = ((totalRaised * BigInt(allocationBps)) / 10_000n).toString();
+
+                return {
+                    milestoneId: milestone.milestoneId,
+                    title: milestone.title || "",
+                    description: milestone.description || "",
+                    allocationBps,
+                    amountWei,
+                    deadline: milestone.deadline,
+                    status: milestone.status,
+                    reportCids: milestone.reportCids || [],
+                    approvedAt: milestone.approvedAt,
+                    approvedBy: milestone.approvedBy || "",
+                    disbursedAt: milestone.disbursedAt,
+                };
+            }),
+        });
+    } catch (err) {
+        return next(err);
+    }
+}
+
+function extractParamValue(dataDecoded, paramName, fallbackIndex) {
+    const parameters = Array.isArray(dataDecoded?.parameters)
+        ? dataDecoded.parameters
+        : [];
+
+    const named = parameters.find((param) => param?.name === paramName);
+    if (named && named.value !== undefined) {
+        return named.value;
+    }
+
+    if (parameters[fallbackIndex] && parameters[fallbackIndex].value !== undefined) {
+        return parameters[fallbackIndex].value;
+    }
+
+    return undefined;
+}
+
+function isMatchingApproveMilestoneTx(tx, campaignOnChainId, milestoneId) {
+    const methodName = tx?.dataDecoded?.method;
+    if (methodName !== "approveMilestone") {
+        return false;
+    }
+
+    const campaignArg = extractParamValue(tx.dataDecoded, "_campaignId", 0);
+    const milestoneArg = extractParamValue(tx.dataDecoded, "_milestoneId", 1);
+
+    return Number(campaignArg) === campaignOnChainId && Number(milestoneArg) === milestoneId;
+}
+
+async function getMilestoneApprovalStatus(req, res, next) {
+    try {
+        const campaignOnChainId = Number(req.params.onChainId);
+        const milestoneId = Number(req.params.milestoneId);
+
+        if (!Number.isFinite(campaignOnChainId) || !Number.isFinite(milestoneId)) {
+            return errorRes(res, "Invalid campaign or milestone id", 400);
+        }
+
+        const campaign = await Campaign.findOne({ onChainId: campaignOnChainId }).lean();
+        if (!campaign) {
+            return errorRes(res, "Campaign not found", 404);
+        }
+
+        const safeAddress = (campaign.reviewerSafe || "").toLowerCase();
+        if (!safeAddress) {
+            return errorRes(res, "Campaign reviewerSafe is not set", 404);
+        }
+
+        const safeApiUrl =
+            `https://safe-transaction-sepolia.safe.global/api/v1/safes/${safeAddress}/multisig-transactions/`;
+
+        const response = await axios.get(safeApiUrl, {
+            timeout: 15_000,
+        });
+
+        const results = Array.isArray(response.data?.results)
+            ? response.data.results
+            : [];
+
+        const pendingTx = results.find((tx) => {
+            const executed = Boolean(tx?.isExecuted ?? tx?.executed);
+            return !executed && isMatchingApproveMilestoneTx(tx, campaignOnChainId, milestoneId);
+        });
+
+        if (!pendingTx) {
+            return successRes(res, {
+                safeAddress,
+                required: 0,
+                confirmed: 0,
+                executed: false,
+                signers: [],
+                pendingTxHash: "",
+            });
+        }
+
+        const confirmations = Array.isArray(pendingTx.confirmations)
+            ? pendingTx.confirmations
+            : [];
+        const signers = confirmations
+            .map((item) => item?.owner)
+            .filter((owner) => typeof owner === "string");
+
+        return successRes(res, {
+            safeAddress,
+            required: Number(
+                pendingTx.confirmationsRequired ||
+                    pendingTx.confirmations_required ||
+                    0,
+            ),
+            confirmed: confirmations.length,
+            executed: Boolean(pendingTx.isExecuted ?? pendingTx.executed),
+            signers,
+            pendingTxHash:
+                pendingTx.safeTxHash || pendingTx.transactionHash || "",
+        });
+    } catch (err) {
+        if (err.response) {
+            return errorRes(
+                res,
+                `Safe API error: ${err.response.status}`,
+                502,
+            );
+        }
+
+        return next(err);
+    }
 }
 
 // POST /campaigns  — authenticated
@@ -114,4 +520,17 @@ module.exports = {
     updateCampaignStatus,
     updateCampaignMetadata,
     createCampaignWithMilestones,
+};
+module.exports = {
+    getAllCampaigns,
+    getCampaignById,
+    updateCampaignStatus,
+    updateCampaignMetadata,
+    createCampaignWithMilestones,
+    getCampaignIndexStatus,
+    getPublicStats,
+    getPublicCampaigns,
+    getPublicCampaignByOnChainId,
+    getPublicCampaignMilestones,
+    getMilestoneApprovalStatus,
 };

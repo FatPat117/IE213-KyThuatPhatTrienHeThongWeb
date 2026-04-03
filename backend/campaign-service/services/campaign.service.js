@@ -1,42 +1,36 @@
 const { Campaign, Milestone } = require("../models");
-/**
- * Lấy tất cả campaigns, có thể filter theo status.
- * @param {object} filter - { status: 'active' | 'ended' | 'failed' } (optional)
- */
+
 async function getAllCampaigns(filter = {}) {
     const query = {};
     if (filter.status) query.status = filter.status;
     if (filter.creator) query.creator = filter.creator.toLowerCase();
+
     return Campaign.find(query).sort({ createdAt: -1 });
 }
 
-/**
- * Lấy 1 campaign theo onChainId.
- * @param {number} onChainId
- */
 async function getCampaignById(onChainId) {
     return Campaign.findOne({ onChainId: Number(onChainId) });
 }
 
-/**
- * Upsert campaign – tạo mới nếu chưa có, cập nhật nếu đã có.
- * Được gọi bởi consumer khi nhận event CampaignCreated từ RabbitMQ.
- * @param {object} data - { onChainId, title, description, creator, goal, deadline }
- */
 async function upsertCampaign(data) {
     const { onChainId, ...rest } = data;
+
+    const normalized = {
+        ...rest,
+        goalWei: (rest.goalWei || rest.goal || "0").toString(),
+        goal: (rest.goalWei || rest.goal || "0").toString(),
+        totalRaisedWei: (rest.totalRaisedWei || rest.raised || "0").toString(),
+        raised: (rest.totalRaisedWei || rest.raised || "0").toString(),
+        totalDisbursedWei: (rest.totalDisbursedWei || "0").toString(),
+    };
+
     return Campaign.findOneAndUpdate(
         { onChainId: Number(onChainId) },
-        { $set: { onChainId: Number(onChainId), ...rest } },
+        { $set: { onChainId: Number(onChainId), ...normalized } },
         { upsert: true, new: true, runValidators: true },
     );
 }
 
-/**
- * Cập nhật trạng thái campaign (active → ended/failed).
- * @param {number} onChainId
- * @param {string} status
- */
 async function updateCampaignStatus(onChainId, status) {
     return Campaign.findOneAndUpdate(
         { onChainId: Number(onChainId) },
@@ -45,29 +39,33 @@ async function updateCampaignStatus(onChainId, status) {
     );
 }
 
-/**
- * Cập nhật số tiền đã raised.
- * Được gọi khi nhận event Donated.
- * @param {number} onChainId
- * @param {string} raisedWei - tổng mới, lấy từ blockchain
- */
 async function updateRaised(onChainId, raisedWei) {
     return Campaign.findOneAndUpdate(
         { onChainId: Number(onChainId) },
-        { $set: { raised: raisedWei } },
+        {
+            $set: {
+                totalRaisedWei: raisedWei.toString(),
+                raised: raisedWei.toString(),
+            },
+        },
         { new: true },
     );
 }
 
-/**
- * Cập nhật metadata off-chain (description, images).
- * @param {number} onChainId
- * @param {object} updates - { description?, images? }
- */
 async function updateMetadata(onChainId, updates = {}) {
+    const payload = { ...updates };
+
+    if (payload.goalWei !== undefined) {
+        payload.goal = payload.goalWei.toString();
+    }
+
+    if (payload.totalRaisedWei !== undefined) {
+        payload.raised = payload.totalRaisedWei.toString();
+    }
+
     return Campaign.findOneAndUpdate(
         { onChainId: Number(onChainId) },
-        { $set: updates },
+        { $set: payload },
         { new: true, runValidators: true },
     );
 }
