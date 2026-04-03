@@ -12,7 +12,8 @@ async function recordTransaction({
     }
 
     const baseUrl =
-        process.env.TRANSACTION_SERVICE_URL || "http://transaction-service:4005";
+        process.env.TRANSACTION_SERVICE_URL ||
+        "http://transaction-service:4005";
 
     try {
         await axios.post(`${baseUrl}/api/transactions/internal/upsert`, {

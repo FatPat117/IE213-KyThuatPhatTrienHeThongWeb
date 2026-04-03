@@ -3,8 +3,7 @@ const { Campaign, CampaignRefund } = require("../models");
 const { recordTransaction } = require("../utils/recordTransaction");
 
 const QUEUE =
-    process.env.RABBITMQ_QUEUE_MILESTONE_REFUNDED ||
-    "milestone.refunded.queue";
+    process.env.RABBITMQ_QUEUE_MILESTONE_REFUNDED || "milestone.refunded.queue";
 const ROUTING_KEY =
     process.env.RABBITMQ_RKEY_MILESTONE_REFUNDED || "milestone.refunded";
 
@@ -21,27 +20,47 @@ async function startMilestoneRefundedConsumer() {
     await channel.bindQueue(QUEUE, EXCHANGE, ROUTING_KEY);
     channel.prefetch(1);
 
-    console.log(`[campaign-service] Listening for ${ROUTING_KEY} on queue: ${QUEUE}`);
+    console.log(
+        `[campaign-service] Listening for ${ROUTING_KEY} on queue: ${QUEUE}`,
+    );
 
     channel.consume(QUEUE, async (msg) => {
         if (!msg) return;
 
         try {
             const payload = JSON.parse(msg.content.toString());
-            const campaignOnChainId = Number(payload.campaignId || payload.campaignOnChainId);
-            const milestoneId = Number(payload.milestoneId);
+            const campaignOnChainId = Number(
+                payload.campaignOnChainId ?? payload.campaignId,
+            );
+            const refundType = (payload.refundType || "milestone")
+                .toString()
+                .toLowerCase();
+            const isFundingRefund = refundType === "funding";
+            const milestoneId = isFundingRefund
+                ? null
+                : Number(payload.milestoneId);
             const donorAddress = (payload.donor || payload.donorAddress || "")
                 .toString()
                 .toLowerCase();
-            const amountWei = (payload.amountWei || payload.refundedWei || "0").toString();
+            const amountWei = (
+                payload.amountWei ||
+                payload.refundedWei ||
+                "0"
+            ).toString();
 
-            if (!campaignOnChainId || Number.isNaN(milestoneId) || !donorAddress) {
+            if (
+                !Number.isFinite(campaignOnChainId) ||
+                (!isFundingRefund && !Number.isFinite(milestoneId)) ||
+                !donorAddress
+            ) {
                 throw new Error(
                     "Missing campaignId/milestoneId/donor in milestone.refunded payload",
                 );
             }
 
-            const campaign = await Campaign.findOne({ onChainId: campaignOnChainId });
+            const campaign = await Campaign.findOne({
+                onChainId: campaignOnChainId,
+            });
 
             await CampaignRefund.findOneAndUpdate(
                 {
@@ -74,7 +93,9 @@ async function startMilestoneRefundedConsumer() {
             await recordTransaction({
                 txHash: payload.txHash,
                 walletAddress: donorAddress,
-                action: "claimMilestoneRefund",
+                action: isFundingRefund
+                    ? "claimFundingRefund"
+                    : "claimMilestoneRefund",
                 campaignOnChainId,
             });
 

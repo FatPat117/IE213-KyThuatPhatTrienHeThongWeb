@@ -3,8 +3,7 @@ const { Campaign, Milestone } = require("../models");
 const { recordTransaction } = require("../utils/recordTransaction");
 
 const QUEUE =
-    process.env.RABBITMQ_QUEUE_MILESTONE_APPROVED ||
-    "milestone.approved.queue";
+    process.env.RABBITMQ_QUEUE_MILESTONE_APPROVED || "milestone.approved.queue";
 const ROUTING_KEY =
     process.env.RABBITMQ_RKEY_MILESTONE_APPROVED || "milestone.approved";
 
@@ -21,18 +20,24 @@ async function startMilestoneApprovedConsumer() {
     await channel.bindQueue(QUEUE, EXCHANGE, ROUTING_KEY);
     channel.prefetch(1);
 
-    console.log(`[campaign-service] Listening for ${ROUTING_KEY} on queue: ${QUEUE}`);
+    console.log(
+        `[campaign-service] Listening for ${ROUTING_KEY} on queue: ${QUEUE}`,
+    );
 
     channel.consume(QUEUE, async (msg) => {
         if (!msg) return;
 
         try {
             const payload = JSON.parse(msg.content.toString());
-            const campaignOnChainId = Number(payload.campaignId || payload.campaignOnChainId);
+            const campaignOnChainId = Number(
+                payload.campaignId || payload.campaignOnChainId,
+            );
             const milestoneId = Number(payload.milestoneId);
 
             if (!campaignOnChainId || Number.isNaN(milestoneId)) {
-                throw new Error("Missing campaignId/milestoneId in milestone.approved payload");
+                throw new Error(
+                    "Missing campaignId/milestoneId in milestone.approved payload",
+                );
             }
 
             await Milestone.updateOne(
@@ -46,8 +51,13 @@ async function startMilestoneApprovedConsumer() {
                 },
             );
 
-            const campaign = await Campaign.findOne({ onChainId: campaignOnChainId });
-            if (campaign && milestoneId === Number(campaign.milestoneCount) - 1) {
+            const campaign = await Campaign.findOne({
+                onChainId: campaignOnChainId,
+            });
+            if (
+                campaign &&
+                milestoneId === Number(campaign.milestoneCount) - 1
+            ) {
                 campaign.status = "completed";
                 await campaign.save();
             }

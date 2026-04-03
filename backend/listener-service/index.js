@@ -6,7 +6,9 @@ const { startMarkFailedDailyJob } = require("./jobs/markFailed.job");
 function normalizeMeta(event) {
     return {
         txHash: event?.log?.transactionHash || event?.transactionHash || "",
-        blockNumber: String(event?.log?.blockNumber ?? event?.blockNumber ?? "0"),
+        blockNumber: String(
+            event?.log?.blockNumber ?? event?.blockNumber ?? "0",
+        ),
         logIndex: Number(event?.log?.logIndex ?? event?.logIndex ?? -1),
     };
 }
@@ -48,6 +50,7 @@ async function startListener() {
     );
 
     const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+    const FUNDING_FAILURE_MILESTONE_SENTINEL = 2n ** 256n - 1n;
     const abiEventNames = new Set(
         (Array.isArray(CONTRACT_ABI) ? CONTRACT_ABI : [])
             .filter((item) => item && item.type === "event" && item.name)
@@ -192,14 +195,36 @@ async function startListener() {
         "CampaignStopped",
         async (campaignId, remainingWei, milestoneId, event) => {
             const meta = normalizeMeta(event);
-            publish("campaign.stopped", {
-                campaignId: campaignId.toString(),
-                remainingWei: remainingWei.toString(),
-                milestoneId: milestoneId.toString(),
+            const campaignIdText = campaignId.toString();
+            const milestoneIdText = milestoneId.toString();
+            const remainingWeiText = remainingWei.toString();
+
+            let parsedMilestoneId = null;
+            try {
+                parsedMilestoneId = BigInt(milestoneIdText);
+            } catch {
+                parsedMilestoneId = null;
+            }
+
+            const payload = {
+                campaignId: campaignIdText,
+                campaignOnChainId: campaignIdText,
+                remainingWei: remainingWeiText,
+                milestoneId: milestoneIdText,
                 txHash: meta.txHash,
                 blockNumber: meta.blockNumber,
                 logIndex: meta.logIndex,
-            });
+            };
+
+            if (parsedMilestoneId === FUNDING_FAILURE_MILESTONE_SENTINEL) {
+                publish("campaign.failed", {
+                    ...payload,
+                    reason: "funding_deadline_not_reached_goal",
+                });
+                return;
+            }
+
+            publish("campaign.stopped", payload);
         },
     );
 
@@ -207,9 +232,23 @@ async function startListener() {
         "MilestoneRefunded",
         async (campaignId, milestoneId, donor, amount, event) => {
             const meta = normalizeMeta(event);
+            const milestoneIdText = milestoneId.toString();
+
+            let parsedMilestoneId = null;
+            try {
+                parsedMilestoneId = BigInt(milestoneIdText);
+            } catch {
+                parsedMilestoneId = null;
+            }
+
+            const isFundingRefund =
+                parsedMilestoneId === FUNDING_FAILURE_MILESTONE_SENTINEL;
+
             publish("milestone.refunded", {
                 campaignId: campaignId.toString(),
-                milestoneId: milestoneId.toString(),
+                campaignOnChainId: campaignId.toString(),
+                milestoneId: isFundingRefund ? null : milestoneIdText,
+                refundType: isFundingRefund ? "funding" : "milestone",
                 donor: donor.toLowerCase(),
                 amountWei: amount.toString(),
                 txHash: meta.txHash,
@@ -224,7 +263,7 @@ async function startListener() {
         async (campaignId, owner, tokenId, event) => {
             const meta = normalizeMeta(event);
             publish("certificate.minted", {
-                campaignId: campaignId.toString(),
+                campaignOnChainId: campaignId.toString(),
                 ownerWallet: owner.toLowerCase(),
                 tokenId: tokenId.toString(),
                 txHash: meta.txHash,
@@ -234,7 +273,10 @@ async function startListener() {
         },
     );
 
-    if (!abiEventNames.has("CertificateMinted") && abiEventNames.has("Transfer")) {
+    if (
+        !abiEventNames.has("CertificateMinted") &&
+        abiEventNames.has("Transfer")
+    ) {
         onIfSupported("Transfer", async (from, to, tokenId, event) => {
             if ((from || "").toLowerCase() !== ZERO_ADDRESS) {
                 return;
@@ -244,7 +286,9 @@ async function startListener() {
 
             try {
                 if (typeof contract.tokenToCampaign === "function") {
-                    campaignId = (await contract.tokenToCampaign(tokenId)).toString();
+                    campaignId = (
+                        await contract.tokenToCampaign(tokenId)
+                    ).toString();
                 }
             } catch (error) {
                 console.warn(
@@ -253,7 +297,7 @@ async function startListener() {
             }
 
             publish("certificate.minted", {
-                campaignId,
+                campaignOnChainId: campaignId,
                 ownerWallet: to.toLowerCase(),
                 tokenId: tokenId.toString(),
                 txHash: meta.txHash,

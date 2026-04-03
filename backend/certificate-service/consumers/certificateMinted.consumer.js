@@ -2,11 +2,20 @@ const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const certificateService = require("../services/certificate.service");
 
 const QUEUE = process.env.RABBITMQ_QUEUE_CERT_MINTED || "cert.minted.queue";
-const ROUTING_KEY = process.env.RABBITMQ_RKEY_CERT_MINTED || "certificate.minted";
-const USER_SERVICE_URL = (process.env.USER_SERVICE_URL || "http://user-service:4001").replace(/\/+$/, "");
-const CAMPAIGN_SERVICE_URL = (process.env.CAMPAIGN_SERVICE_URL || "http://campaign-service:4002").replace(/\/+$/, "");
-const DONATION_SERVICE_URL = (process.env.DONATION_SERVICE_URL || "http://donation-service:4003").replace(/\/+$/, "");
-const FRONTEND_BASE_URL = (process.env.FRONTEND_BASE_URL || "http://localhost:3000").replace(/\/+$/, "");
+const ROUTING_KEY =
+    process.env.RABBITMQ_RKEY_CERT_MINTED || "certificate.minted";
+const USER_SERVICE_URL = (
+    process.env.USER_SERVICE_URL || "http://user-service:4001"
+).replace(/\/+$/, "");
+const CAMPAIGN_SERVICE_URL = (
+    process.env.CAMPAIGN_SERVICE_URL || "http://campaign-service:4002"
+).replace(/\/+$/, "");
+const DONATION_SERVICE_URL = (
+    process.env.DONATION_SERVICE_URL || "http://donation-service:4003"
+).replace(/\/+$/, "");
+const FRONTEND_BASE_URL = (
+    process.env.FRONTEND_BASE_URL || "http://localhost:3000"
+).replace(/\/+$/, "");
 
 function shortWallet(wallet) {
     if (!wallet || wallet.length < 10) return wallet || "Anonymous donor";
@@ -40,19 +49,26 @@ async function fetchServiceData(baseUrl, path) {
 
 async function resolveCertificateDetails(payload) {
     const ownerWallet = String(payload.ownerWallet || "").toLowerCase();
-    const campaignId = Number(payload.campaignOnChainId);
+    const campaignId = Number(payload.campaignOnChainId ?? payload.campaignId);
 
     const [profile, campaign, donations] = await Promise.all([
         fetchServiceData(USER_SERVICE_URL, `/api/users/${ownerWallet}`),
         fetchServiceData(CAMPAIGN_SERVICE_URL, `/api/campaigns/${campaignId}`),
-        fetchServiceData(DONATION_SERVICE_URL, `/api/donations/campaign/${campaignId}`),
+        fetchServiceData(
+            DONATION_SERVICE_URL,
+            `/api/donations/campaign/${campaignId}`,
+        ),
     ]);
 
-    const displayName = (profile?.displayName || "").trim() || shortWallet(ownerWallet);
-    const campaignTitle = (campaign?.title || "").trim() || `Campaign #${campaignId}`;
+    const displayName =
+        (profile?.displayName || "").trim() || shortWallet(ownerWallet);
+    const campaignTitle =
+        (campaign?.title || "").trim() || `Campaign #${campaignId}`;
 
     const rows = Array.isArray(donations) ? donations : [];
-    const donatedRows = rows.filter((row) => String(row?.donorWallet || "").toLowerCase() === ownerWallet);
+    const donatedRows = rows.filter(
+        (row) => String(row?.donorWallet || "").toLowerCase() === ownerWallet,
+    );
     const donatedWei = donatedRows.reduce((sum, row) => {
         try {
             return sum + BigInt(String(row.amount || "0"));
@@ -62,7 +78,11 @@ async function resolveCertificateDetails(payload) {
     }, 0n);
     const donatedAmountEth = formatWeiToEth(donatedWei);
 
-    const certificateMessage = buildCertificateMessage(displayName, donatedAmountEth, campaignTitle);
+    const certificateMessage = buildCertificateMessage(
+        displayName,
+        donatedAmountEth,
+        campaignTitle,
+    );
     const metadata = {
         name: `Certificate #${payload.tokenId} - ${campaignTitle}`,
         description: certificateMessage,
@@ -92,7 +112,9 @@ async function resolveCertificateDetails(payload) {
 async function startCertificateMintedConsumer() {
     const channel = getChannel();
     if (!channel) {
-        console.warn("[certificate-service] RabbitMQ channel không có – bỏ qua consumer");
+        console.warn(
+            "[certificate-service] RabbitMQ channel không có – bỏ qua consumer",
+        );
         return;
     }
 
@@ -100,24 +122,44 @@ async function startCertificateMintedConsumer() {
     await channel.bindQueue(QUEUE, EXCHANGE, ROUTING_KEY);
     channel.prefetch(1);
 
-    console.log(`[certificate-service] Consumer đang lắng nghe queue: ${QUEUE}`);
+    console.log(
+        `[certificate-service] Consumer đang lắng nghe queue: ${QUEUE}`,
+    );
 
     channel.consume(QUEUE, async (msg) => {
         if (!msg) return;
         try {
             const payload = JSON.parse(msg.content.toString());
-            console.log("[certificate-service] Nhận event certificate.minted:", payload);
+            console.log(
+                "[certificate-service] Nhận event certificate.minted:",
+                payload,
+            );
+
+            const campaignOnChainId = Number(
+                payload.campaignOnChainId ?? payload.campaignId,
+            );
+            if (!Number.isFinite(campaignOnChainId)) {
+                throw new Error(
+                    "Missing campaignOnChainId in certificate.minted payload",
+                );
+            }
 
             /**
              * Payload từ listener-service:
              * { tokenId, campaignOnChainId, ownerWallet, txHash }
              */
-            const details = await resolveCertificateDetails(payload);
+            const details = await resolveCertificateDetails({
+                ...payload,
+                campaignOnChainId,
+            });
             await certificateService.createCertificate({
                 tokenId: payload.tokenId,
-                campaignOnChainId: payload.campaignOnChainId,
+                campaignOnChainId,
                 ownerWallet: payload.ownerWallet,
-                metadataUri: payload.metadataUri || details.metadataUri || `ipfs://default-nft-metadata/${payload.tokenId}`,
+                metadataUri:
+                    payload.metadataUri ||
+                    details.metadataUri ||
+                    `ipfs://default-nft-metadata/${payload.tokenId}`,
                 displayName: details.displayName,
                 campaignTitle: details.campaignTitle,
                 donatedAmountEth: details.donatedAmountEth,
@@ -125,7 +167,9 @@ async function startCertificateMintedConsumer() {
                 mintedAt: new Date(),
             });
 
-            console.log(`[certificate-service] Đã lưu certificate tokenId=${payload.tokenId}`);
+            console.log(
+                `[certificate-service] Đã lưu certificate tokenId=${payload.tokenId}`,
+            );
             channel.ack(msg);
         } catch (err) {
             console.error("[certificate-service] Consumer error:", err.message);
