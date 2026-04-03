@@ -33,7 +33,10 @@ const CampaignSchema = new mongoose.Schema(
             required: [true, "Beneficiary wallet is required"],
             lowercase: true,
             trim: true,
-            match: [/^0x[a-fA-F0-9]{40}$/, "Invalid beneficiary wallet address"],
+            match: [
+                /^0x[a-fA-F0-9]{40}$/,
+                "Invalid beneficiary wallet address",
+            ],
         },
         goalWei: {
             type: String,
@@ -59,6 +62,10 @@ const CampaignSchema = new mongoose.Schema(
         remainingWei: {
             type: String,
             default: "0",
+        },
+        fundingCompletedAt: {
+            type: Date,
+            default: null,
         },
         deadline: {
             type: Date,

@@ -9,12 +9,6 @@ const { connectRabbitMQ } = require("./config/rabbitmq");
 const {
     startCampaignCreatedConsumer,
 } = require("./consumers/campaignCreated.consumer");
-const {
-    startFundsWithdrawnConsumer,
-} = require("./consumers/fundsWithdrawn.consumer");
-const {
-    startCampaignCancelledConsumer,
-} = require("./consumers/campaignCancelled.consumer");
 const { startDonatedConsumer } = require("./consumers/donated.consumer");
 const {
     startCampaignFailedConsumer,
@@ -86,8 +80,6 @@ async function start() {
     await connectDB();
     await connectRabbitMQ();
     await startCampaignCreatedConsumer();
-    await startFundsWithdrawnConsumer();
-    await startCampaignCancelledConsumer();
     await startDonatedConsumer();
     await startCampaignFailedConsumer();
     await startFundingCompleteConsumer();

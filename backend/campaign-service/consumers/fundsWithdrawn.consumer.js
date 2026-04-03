@@ -13,7 +13,7 @@ async function startFundsWithdrawnConsumer() {
     const channel = getChannel();
     if (!channel) {
         console.warn(
-            "[campaign-service] RabbitMQ channel không có – bỏ qua funds.withdrawn consumer",
+            "[campaign-service] RabbitMQ channel unavailable. Skip funds.withdrawn consumer.",
         );
         return;
     }
@@ -22,31 +22,35 @@ async function startFundsWithdrawnConsumer() {
     await channel.bindQueue(QUEUE, EXCHANGE, ROUTING_KEY);
     channel.prefetch(1);
 
-    console.log(`[campaign-service] Consumer đang lắng nghe queue: ${QUEUE}`);
+    console.log(
+        `[campaign-service] Listening for ${ROUTING_KEY} on queue: ${QUEUE}`,
+    );
 
     channel.consume(QUEUE, async (msg) => {
         if (!msg) return;
         try {
             const payload = JSON.parse(msg.content.toString());
-            console.log(
-                "[campaign-service] Nhận event funds.withdrawn:",
-                payload,
+            const campaignOnChainId = Number(
+                payload.campaignId || payload.campaignOnChainId,
             );
 
-            // Keep status aligned with the current enum.
+            if (!Number.isFinite(campaignOnChainId)) {
+                throw new Error(
+                    "Missing campaignId in funds.withdrawn payload",
+                );
+            }
+
             await campaignService.updateCampaignStatus(
-                payload.campaignOnChainId,
+                campaignOnChainId,
                 "completed",
             );
             console.log(
-                `[campaign-service] Campaign ${payload.campaignOnChainId} → completed (funds withdrawn)`,
+                `[campaign-service] Campaign ${campaignOnChainId} -> completed (funds withdrawn)`,
             );
 
-            // Gửi notification cho creator về việc rút quỹ thành công
             try {
-                const campaign = await campaignService.getCampaignById(
-                    payload.campaignOnChainId,
-                );
+                const campaign =
+                    await campaignService.getCampaignById(campaignOnChainId);
                 if (campaign?.creator) {
                     const amountDisplay = payload.amountEth
                         ? `${payload.amountEth} ETH`
@@ -54,15 +58,15 @@ async function startFundsWithdrawnConsumer() {
                     await notificationService.createNotification({
                         recipientWallet: campaign.creator,
                         type: "funds_withdrawn",
-                        title: "Rút quỹ thành công",
-                        message: `Chiến dịch "${campaign.title || `#${payload.campaignOnChainId}`}" đã rút ${amountDisplay} thành công.`,
-                        campaignOnChainId: payload.campaignOnChainId,
+                        title: "Funds withdrawn",
+                        message: `Campaign "${campaign.title || `#${campaignOnChainId}`}" withdrew ${amountDisplay}.`,
+                        campaignOnChainId,
                         txHash: payload.txHash || "",
                     });
                 }
             } catch (notifErr) {
                 console.warn(
-                    "[campaign-service] Không thể gửi notification funds_withdrawn:",
+                    "[campaign-service] Failed to create funds_withdrawn notification:",
                     notifErr.message,
                 );
             }

@@ -20,22 +20,32 @@ async function startCampaignStoppedConsumer() {
     await channel.bindQueue(QUEUE, EXCHANGE, ROUTING_KEY);
     channel.prefetch(1);
 
-    console.log(`[campaign-service] Listening for ${ROUTING_KEY} on queue: ${QUEUE}`);
+    console.log(
+        `[campaign-service] Listening for ${ROUTING_KEY} on queue: ${QUEUE}`,
+    );
 
     channel.consume(QUEUE, async (msg) => {
         if (!msg) return;
 
         try {
             const payload = JSON.parse(msg.content.toString());
-            const campaignOnChainId = Number(payload.campaignId || payload.campaignOnChainId);
-            if (!campaignOnChainId) {
-                throw new Error("Missing campaignId in campaign.stopped payload");
+            const campaignOnChainId = Number(
+                payload.campaignOnChainId ?? payload.campaignId,
+            );
+            if (!Number.isFinite(campaignOnChainId)) {
+                throw new Error(
+                    "Missing campaignId in campaign.stopped payload",
+                );
             }
 
-            const campaign = await Campaign.findOne({ onChainId: campaignOnChainId });
+            const campaign = await Campaign.findOne({
+                onChainId: campaignOnChainId,
+            });
             if (campaign) {
                 campaign.status = "partial_failed";
-                campaign.remainingWei = (payload.remainingWei || "0").toString();
+                campaign.remainingWei = (
+                    payload.remainingWei || "0"
+                ).toString();
                 await campaign.save();
 
                 await recordTransaction({

@@ -20,18 +20,24 @@ async function startMilestoneFailedConsumer() {
     await channel.bindQueue(QUEUE, EXCHANGE, ROUTING_KEY);
     channel.prefetch(1);
 
-    console.log(`[campaign-service] Listening for ${ROUTING_KEY} on queue: ${QUEUE}`);
+    console.log(
+        `[campaign-service] Listening for ${ROUTING_KEY} on queue: ${QUEUE}`,
+    );
 
     channel.consume(QUEUE, async (msg) => {
         if (!msg) return;
 
         try {
             const payload = JSON.parse(msg.content.toString());
-            const campaignOnChainId = Number(payload.campaignId || payload.campaignOnChainId);
+            const campaignOnChainId = Number(
+                payload.campaignId || payload.campaignOnChainId,
+            );
             const milestoneId = Number(payload.milestoneId);
 
             if (!campaignOnChainId || Number.isNaN(milestoneId)) {
-                throw new Error("Missing campaignId/milestoneId in milestone.failed payload");
+                throw new Error(
+                    "Missing campaignId/milestoneId in milestone.failed payload",
+                );
             }
 
             await Milestone.updateOne(

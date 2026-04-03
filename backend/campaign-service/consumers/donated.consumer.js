@@ -1,10 +1,59 @@
 const { getChannel } = require("../config/rabbitmq");
-const Campaign = require("../models/Campaign.model");
+const { Campaign, CampaignDonorShare } = require("../models");
 
 const QUEUE =
     process.env.RABBITMQ_QUEUE_CAMP_DONATED || "campaign.donation.queue";
 const ROUTING_KEY = process.env.RABBITMQ_RKEY_DONATED || "donation.received";
 const DONATION_EXCHANGE = process.env.RABBITMQ_EXCHANGE || "funding.events";
+
+function parseWei(value) {
+    try {
+        return BigInt((value || "0").toString());
+    } catch {
+        return 0n;
+    }
+}
+
+async function upsertDonorShare({
+    campaign,
+    campaignOnChainId,
+    donorWallet,
+    donationAmountWei,
+    campaignTotalRaisedWei,
+}) {
+    const existingShare = await CampaignDonorShare.findOne({
+        campaignId: campaign._id,
+        donorAddress: donorWallet,
+    });
+
+    const currentTotalWei = parseWei(existingShare?.donorTotalContributionWei);
+    const nextTotalWei = (currentTotalWei + donationAmountWei).toString();
+
+    await CampaignDonorShare.findOneAndUpdate(
+        {
+            campaignId: campaign._id,
+            donorAddress: donorWallet,
+        },
+        {
+            $set: {
+                campaignId: campaign._id,
+                campaignOnChainId,
+                donorAddress: donorWallet,
+                donorTotalContributionWei: nextTotalWei,
+                campaignTotalRaisedWei: campaignTotalRaisedWei.toString(),
+                computedAt: new Date(),
+            },
+            $setOnInsert: {
+                donorShareInCampaignBps: 0,
+            },
+        },
+        {
+            upsert: true,
+            new: true,
+            setDefaultsOnInsert: true,
+        },
+    );
+}
 
 async function startDonatedConsumer() {
     const channel = getChannel();
@@ -30,9 +79,12 @@ async function startDonatedConsumer() {
         try {
             const payload = JSON.parse(msg.content.toString());
             const campaignOnChainId = Number(
-                payload.campaignOnChainId || payload.campaignId,
+                payload.campaignOnChainId ?? payload.campaignId,
             );
-            const donationAmount = BigInt(payload.amount || "0");
+            const donorWallet = (payload.donorWallet || payload.donor || "")
+                .toString()
+                .toLowerCase();
+            const donationAmount = parseWei(payload.amount);
             const totalRaisedFromEvent = payload.totalRaisedWei
                 ? payload.totalRaisedWei.toString()
                 : null;
@@ -45,6 +97,10 @@ async function startDonatedConsumer() {
 
             if (donationAmount <= 0n && !totalRaisedFromEvent) {
                 throw new Error("Missing amount in donation payload");
+            }
+
+            if (!donorWallet) {
+                throw new Error("Missing donorWallet in donation payload");
             }
 
             const campaign = await Campaign.findOne({
@@ -61,11 +117,23 @@ async function startDonatedConsumer() {
 
             const nextRaised = totalRaisedFromEvent
                 ? totalRaisedFromEvent
-                : (BigInt(campaign.totalRaisedWei || "0") + donationAmount).toString();
+                : (
+                      BigInt(campaign.totalRaisedWei || "0") + donationAmount
+                  ).toString();
 
             campaign.totalRaisedWei = nextRaised;
             campaign.raised = nextRaised;
             await campaign.save();
+
+            if (donationAmount > 0n) {
+                await upsertDonorShare({
+                    campaign,
+                    campaignOnChainId,
+                    donorWallet,
+                    donationAmountWei: donationAmount,
+                    campaignTotalRaisedWei: nextRaised,
+                });
+            }
 
             channel.ack(msg);
         } catch (err) {

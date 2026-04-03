@@ -7,15 +7,11 @@ const QUEUE =
 const ROUTING_KEY =
     process.env.RABBITMQ_RKEY_CAMP_CANCELLED || "campaign.cancelled";
 
-/**
- * Lắng nghe event CampaignCancelled từ listener-service.
- * Khi campaign bị huỷ → cập nhật status = "cancelled".
- */
 async function startCampaignCancelledConsumer() {
     const channel = getChannel();
     if (!channel) {
         console.warn(
-            "[campaign-service] RabbitMQ channel không có – bỏ qua campaign.cancelled consumer",
+            "[campaign-service] RabbitMQ channel unavailable. Skip campaign.cancelled consumer.",
         );
         return;
     }
@@ -24,43 +20,48 @@ async function startCampaignCancelledConsumer() {
     await channel.bindQueue(QUEUE, EXCHANGE, ROUTING_KEY);
     channel.prefetch(1);
 
-    console.log(`[campaign-service] Consumer đang lắng nghe queue: ${QUEUE}`);
+    console.log(
+        `[campaign-service] Listening for ${ROUTING_KEY} on queue: ${QUEUE}`,
+    );
 
     channel.consume(QUEUE, async (msg) => {
         if (!msg) return;
         try {
             const payload = JSON.parse(msg.content.toString());
-            console.log(
-                "[campaign-service] Nhận event campaign.cancelled:",
-                payload,
+            const campaignOnChainId = Number(
+                payload.campaignId || payload.campaignOnChainId,
             );
 
+            if (!Number.isFinite(campaignOnChainId)) {
+                throw new Error(
+                    "Missing campaignId in campaign.cancelled payload",
+                );
+            }
+
             await campaignService.updateCampaignStatus(
-                payload.campaignOnChainId,
+                campaignOnChainId,
                 "cancelled",
             );
             console.log(
-                `[campaign-service] Campaign ${payload.campaignOnChainId} → cancelled`,
+                `[campaign-service] Campaign ${campaignOnChainId} -> cancelled`,
             );
 
-            // Gửi notification cho creator về việc chiến dịch bị hủy
             try {
-                const campaign = await campaignService.getCampaignById(
-                    payload.campaignOnChainId,
-                );
+                const campaign =
+                    await campaignService.getCampaignById(campaignOnChainId);
                 if (campaign?.creator) {
                     await notificationService.createNotification({
                         recipientWallet: campaign.creator,
                         type: "campaign_cancelled",
-                        title: "Chiến dịch đã bị hủy",
-                        message: `Chiến dịch "${campaign.title || `#${payload.campaignOnChainId}`}" đã bị hủy.`,
-                        campaignOnChainId: payload.campaignOnChainId,
+                        title: "Campaign cancelled",
+                        message: `Campaign "${campaign.title || `#${campaignOnChainId}`}" was cancelled.`,
+                        campaignOnChainId,
                         txHash: payload.txHash || "",
                     });
                 }
             } catch (notifErr) {
                 console.warn(
-                    "[campaign-service] Không thể gửi notification campaign_cancelled:",
+                    "[campaign-service] Failed to create campaign_cancelled notification:",
                     notifErr.message,
                 );
             }
