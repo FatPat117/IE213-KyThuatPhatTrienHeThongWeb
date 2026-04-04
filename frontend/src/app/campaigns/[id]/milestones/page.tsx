@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { formatEther } from 'viem';
 import {
@@ -9,6 +9,7 @@ import {
   useBackendCampaign,
   useReadCampaign,
 } from '@/lib';
+import { getPublicCampaignMilestones, type PublicCampaignMilestone } from '@/lib/api/campaigns';
 import { contractConfig } from '@/lib/contracts/config';
 import { buildTimelineMilestones } from '@/lib/utils/milestone-plan';
 import { MilestoneOverviewCard, MilestoneTimeline } from '@/components/campaign-milestones';
@@ -22,6 +23,10 @@ export default function CampaignMilestonesPage() {
     Number.isFinite(id) ? id : null,
   );
   const backendCampaign = useBackendCampaign(Number.isFinite(id) ? id : null);
+  const [milestones, setMilestones] = useState<PublicCampaignMilestone[]>([]);
+  const [isMilestonesLoading, setIsMilestonesLoading] = useState(false);
+  const [milestonesError, setMilestonesError] = useState<string | null>(null);
+  const [milestonesWarning, setMilestonesWarning] = useState<string | null>(null);
 
   const progress = useMemo(() => {
     if (!campaign) return 0;
@@ -30,20 +35,74 @@ export default function CampaignMilestonesPage() {
     return goalEth > 0 ? Math.min((raisedEth / goalEth) * 100, 100) : 0;
   }, [campaign]);
 
-  const milestones = useMemo(() => {
+  const loadMilestones = useCallback(async () => {
+    if (!Number.isFinite(id)) return;
+
+    try {
+      setIsMilestonesLoading(true);
+      setMilestonesError(null);
+      setMilestonesWarning(null);
+      const data = await getPublicCampaignMilestones(id);
+      setMilestones(data.milestones || []);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Không thể tải milestones từ API';
+      // Keep page usable even when campaign-service indexing lags behind on-chain data.
+      if (message.toLowerCase().includes('campaign not found')) {
+        setMilestones([]);
+        setMilestonesWarning('Campaign chưa được index đầy đủ ở backend, đang hiển thị timeline dựa trên dữ liệu on-chain.');
+        return;
+      }
+
+      setMilestonesError(message);
+    } finally {
+      setIsMilestonesLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    loadMilestones();
+  }, [loadMilestones]);
+
+  const title = !isPlaceholderCampaignTitle(backendCampaign.data?.title, id)
+    ? backendCampaign.data?.title
+    : campaign?.title || `Campaign #${Number.isFinite(id) ? id : '-'}`;
+
+  const fallbackMilestones = useMemo<PublicCampaignMilestone[]>(() => {
     if (!campaign) return [];
+
     return buildTimelineMilestones({
       campaignId: campaign.id,
       campaignDeadline: campaign.deadline,
       campaignCreatedAt: backendCampaign.data?.createdAt,
       progressPercent: progress,
       goalWei: campaign.goal,
+    }).map((item, index) => {
+      const mappedStatus: PublicCampaignMilestone['status'] =
+        item.status === 'completed'
+          ? 'disbursed'
+          : item.status === 'in_progress'
+            ? 'submitted'
+            : item.status === 'delayed'
+              ? 'deadline_exceeded'
+              : 'pending_funding';
+
+      return {
+        milestoneId: index + 1,
+        title: item.title,
+        description: item.description,
+        allocationBps: Math.round(item.allocationPercent * 100),
+        amountWei: item.targetAmountWei.toString(),
+        deadline: item.expectedDate.toISOString(),
+        status: mappedStatus,
+        reportCids: [],
+        approvedAt: null,
+        approvedBy: '',
+        disbursedAt: null,
+      };
     });
   }, [backendCampaign.data?.createdAt, campaign, progress]);
 
-  const title = !isPlaceholderCampaignTitle(backendCampaign.data?.title, id)
-    ? backendCampaign.data?.title
-    : campaign?.title || `Campaign #${Number.isFinite(id) ? id : '-'}`;
+  const milestonesToRender = milestones.length > 0 ? milestones : fallbackMilestones;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
@@ -69,7 +128,7 @@ export default function CampaignMilestonesPage() {
           )}
         </header>
 
-        {(isLoading || backendCampaign.isLoading) && (
+        {(isLoading || backendCampaign.isLoading || isMilestonesLoading) && (
           <div className="space-y-4 animate-pulse">
             <div className="h-24 rounded-2xl bg-slate-200" />
             <div className="h-40 rounded-2xl bg-slate-200" />
@@ -77,12 +136,15 @@ export default function CampaignMilestonesPage() {
           </div>
         )}
 
-        {!isLoading && isError && (
+        {!isLoading && (isError || milestonesError) && (
           <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
             <p className="text-lg font-semibold text-red-900">Không thể tải timeline mốc</p>
-            <p className="mt-2 text-sm text-red-700">{error || 'Có lỗi xảy ra.'}</p>
+            <p className="mt-2 text-sm text-red-700">{error || milestonesError || 'Có lỗi xảy ra.'}</p>
             <button
-              onClick={() => refetch()}
+              onClick={() => {
+                refetch();
+                loadMilestones();
+              }}
               className="mt-4 rounded-lg bg-red-600 px-5 py-2 text-sm font-semibold text-white hover:bg-red-700"
             >
               Tải lại
@@ -90,17 +152,22 @@ export default function CampaignMilestonesPage() {
           </div>
         )}
 
-        {!isLoading && !backendCampaign.isLoading && !isError && campaign && (
+        {!isLoading && !backendCampaign.isLoading && !isMilestonesLoading && !isError && !milestonesError && campaign && (
           <div className="space-y-6">
+            {milestonesWarning && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                {milestonesWarning}
+              </div>
+            )}
             <MilestoneOverviewCard
               progressPercent={progress}
-              milestones={milestones}
+              milestones={milestonesToRender}
               goalWei={campaign.goal}
               raisedWei={campaign.raised}
             />
 
             <MilestoneTimeline
-              milestones={milestones}
+              milestones={milestonesToRender}
               campaignId={campaign.id}
               contractAddress={contractConfig.address}
             />

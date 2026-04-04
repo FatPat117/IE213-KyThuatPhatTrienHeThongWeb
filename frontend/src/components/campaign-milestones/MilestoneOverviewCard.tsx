@@ -1,11 +1,11 @@
 'use client';
 
 import { formatEther } from 'viem';
-import type { TimelineMilestone } from '@/lib/utils/milestone-plan';
+import type { PublicCampaignMilestone } from '@/lib/api/campaigns';
 
 interface MilestoneOverviewCardProps {
   progressPercent: number;
-  milestones: TimelineMilestone[];
+  milestones: PublicCampaignMilestone[];
   goalWei: bigint;
   raisedWei: bigint;
 }
@@ -22,9 +22,11 @@ export default function MilestoneOverviewCard({
   goalWei,
   raisedWei,
 }: MilestoneOverviewCardProps) {
-  const completedCount = milestones.filter((item) => item.status === 'completed').length;
-  const delayedCount = milestones.filter((item) => item.status === 'delayed').length;
-  const inProgressCount = milestones.filter((item) => item.status === 'in_progress').length;
+  const completedCount = milestones.filter((item) => item.status === 'disbursed').length;
+  const delayedCount = milestones.filter((item) => item.status === 'deadline_exceeded').length;
+  const inProgressCount = milestones.filter((item) => {
+    return ['pending_verification', 'submitted', 'resubmittable', 'review_timeout', 'approved'].includes(item.status);
+  }).length;
 
   const goalEth = formatEthAmount(Number(formatEther(goalWei)));
   const raisedEth = formatEthAmount(Number(formatEther(raisedWei)));
