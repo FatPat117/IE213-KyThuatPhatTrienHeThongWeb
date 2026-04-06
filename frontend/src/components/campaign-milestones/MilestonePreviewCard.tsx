@@ -63,19 +63,16 @@ export default function MilestonePreviewCard({
 }: MilestonePreviewCardProps) {
   const [apiMilestones, setApiMilestones] = useState<PublicCampaignMilestone[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // Fetch real milestones from API
   useEffect(() => {
     const fetchMilestones = async () => {
       try {
         setIsLoading(true);
-        setError(null);
         const data = await getPublicCampaignMilestones(campaignId);
-        setApiMilestones(data);
+        setApiMilestones(data.milestones || []);
       } catch (err) {
         // Silently fail - we'll use fallback
-        setError(null);
         setApiMilestones([]);
       } finally {
         setIsLoading(false);
@@ -158,7 +155,6 @@ export default function MilestonePreviewCard({
                 const amountText = isApiMilestone
                   ? `${Number(formatEther(milestone.amountWei)).toFixed(2)} ETH`
                   : '';
-                const isReached = status === 'completed' || status === 'disbursed';
 
                 return (
                   <article
@@ -191,7 +187,7 @@ export default function MilestonePreviewCard({
                       <p className="text-xs font-medium text-slate-500">
                         Hạn chót dự kiến:{' '}
                         <span className="text-slate-700">
-                          {formatDate(new Date(milestone.deadline * 1000))}
+                          {formatDate(new Date(milestone.deadline))}
                         </span>
                       </p>
                     )}
