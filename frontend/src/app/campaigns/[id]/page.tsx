@@ -440,6 +440,7 @@ export default function CampaignDetailPage() {
                                 campaignDeadline={campaign.deadline}
                                 campaignCreatedAt={backendCampaign.data?.createdAt}
                                 progressPercent={progress}
+                                goalWei={campaign.goal}
                             />
 
                             <CampaignInfoPanel

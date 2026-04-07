@@ -1,7 +1,9 @@
 'use client';
 
 import Link from 'next/link';
+import { useCallback, useEffect, useState } from 'react';
 import {
+  getDisbursedMilestoneCount,
   getCampaignMetadataFromCache,
   isPlaceholderCampaignTitle,
   useContractStats,
@@ -17,7 +19,33 @@ export function ContractStatsDisplay() {
   const { campaignCount, totalRaised, isLoading, isError, errors, refetch } =
     useContractStats();
   const { isConnected } = useWalletStatus();
-  const disbursedMilestones = Math.floor(campaignCount * 2.3);
+  const [disbursedMilestones, setDisbursedMilestones] = useState(0);
+  const [isRefreshingMilestones, setIsRefreshingMilestones] = useState(false);
+  const [milestoneError, setMilestoneError] = useState<string | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
+
+  const refreshMilestones = useCallback(async () => {
+    try {
+      setIsRefreshingMilestones(true);
+      setMilestoneError(null);
+      const disbursedCount = await getDisbursedMilestoneCount();
+      setDisbursedMilestones(disbursedCount);
+      setLastUpdatedAt(new Date().toLocaleTimeString('vi-VN'));
+    } catch (error) {
+      setMilestoneError(error instanceof Error ? error.message : 'Không thể tải số mốc đã giải ngân');
+    } finally {
+      setIsRefreshingMilestones(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshMilestones();
+    const interval = setInterval(() => {
+      refreshMilestones();
+    }, 60_000);
+
+    return () => clearInterval(interval);
+  }, [refreshMilestones]);
 
   if (isLoading) {
     return (
@@ -72,9 +100,23 @@ export function ContractStatsDisplay() {
 
       {/* Disbursed Milestones */}
       <div className="md:col-span-2 rounded-xl border border-cyan-200/80 bg-cyan-50/80 p-6">
-        <p className="text-sm font-medium text-cyan-700 mb-2">🎯 Số mốc đã giải ngân</p>
+        <div className="mb-2 flex items-start justify-between gap-3">
+          <p className="text-sm font-medium text-cyan-700">🎯 Số mốc đã giải ngân</p>
+          <button
+            type="button"
+            onClick={refreshMilestones}
+            disabled={isRefreshingMilestones}
+            className="rounded-md border border-cyan-300 bg-white px-3 py-1 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isRefreshingMilestones ? 'Đang làm mới...' : 'Làm mới'}
+          </button>
+        </div>
         <p className="text-3xl font-bold text-cyan-900">{disbursedMilestones}</p>
-        <p className="text-xs text-cyan-700 mt-2">Dữ liệu tạm hiển thị để demo giao diện</p>
+        <p className="mt-2 text-xs text-cyan-700">
+          Dữ liệu thật từ API milestones
+          {lastUpdatedAt ? ` • Cập nhật lúc ${lastUpdatedAt}` : ''}
+        </p>
+        {milestoneError && <p className="mt-1 text-xs text-red-600">{milestoneError}</p>}
       </div>
     </div>
   );
@@ -85,7 +127,6 @@ export function ContractStatsDisplay() {
  */
 export function CampaignListDisplay() {
   const { campaigns, isLoading, isError, error, refetch } = useReadAllCampaigns();
-  const { isConnected } = useWalletStatus();
 
   if (isLoading) {
     return (

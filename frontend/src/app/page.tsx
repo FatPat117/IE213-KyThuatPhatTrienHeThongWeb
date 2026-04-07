@@ -2,13 +2,42 @@
 
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { formatEther } from 'viem';
 import { useAccount, useChainId } from 'wagmi';
 import WalletStatus from '@/components/wallet/WalletStatus';
 import { ContractStatsDisplay, CampaignListDisplay } from '@/components/contract/ContractReadComponent';
+import { getReviewerAggregates, getUserProfile } from '@/lib';
 
 const SEPOLIA_CHAIN_ID = 11155111;
 const EMPTY_SUBSCRIBE = () => () => {};
+
+type ReviewerCard = {
+  id: string;
+  name: string;
+  role: string;
+  org: string;
+  image: string;
+  board: string;
+  safeAddress: string;
+  campaignCount: number;
+  totalDisbursedEth: string;
+};
+
+function shortenAddress(address: string) {
+  if (!address) return '';
+  if (address.length <= 12) return address;
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+function weiToEthText(wei: string) {
+  try {
+    const value = Number(formatEther(BigInt(wei || '0')));
+    return value.toFixed(4);
+  } catch {
+    return '0.0000';
+  }
+}
 
 function useIsHydrated() {
   return useSyncExternalStore(EMPTY_SUBSCRIBE, () => true, () => false);
@@ -21,48 +50,64 @@ function HomeContent() {
   const isSepoliaNetwork = chainId === SEPOLIA_CHAIN_ID;
   const safeIsConnected = isHydrated && isConnected;
   const safeIsSepoliaNetwork = isHydrated && isSepoliaNetwork;
-  const reviewers = [
-    {
-      id: 1,
-      name: 'Bà Nguyễn Thị Lệ Thu',
-      role: 'Chủ tịch',
-      org: 'Chủ tịch Quỹ Nâng Bước Tuổi Thơ',
-      bio: 'Dẫn dắt chiến lược gây quỹ và phê duyệt các chiến dịch ưu tiên cho trẻ em có hoàn cảnh khó khăn.',
-      focus: 'Quản trị quỹ và kiểm toán tác động',
-      exp: '18 năm',
-      area: 'HCM',
-      image:
-        'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=900&q=80',
-      board: 'Hội đồng quản lý quỹ',
-    },
-    {
-      id: 2,
-      name: 'Bác sĩ Lý Quốc Thịnh',
-      role: 'Phó Chủ tịch Quỹ Nâng Bước Tuổi Thơ',
-      org: 'Phó Chủ tịch Quỹ Nâng Bước Tuổi Thơ',
-      bio: 'Chịu trách nhiệm đánh giá tính khả thi y tế, mức độ ưu tiên và lộ trình giải ngân cho hồ sơ bệnh nhi.',
-      focus: 'Thẩm định hồ sơ điều trị',
-      exp: '14 năm',
-      area: 'Hà Nội',
-      image:
-        'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&w=900&q=80',
-      board: 'Hội đồng y tế & vận hành',
-    },
-    {
-      id: 3,
-      name: 'Bà Lê Thị Lan Khanh',
-      role: 'Thành viên Hội đồng Quản lý Quỹ kiêm Giám đốc',
-      org: 'Thành viên Hội Đồng Quản Lý Quỹ kiêm Giám đốc Quỹ Nâng Bước Tuổi Thơ',
-      bio: 'Theo dõi minh bạch vận hành, phối hợp kiểm duyệt hồ sơ và công bố báo cáo tiến độ theo từng chiến dịch.',
-      focus: 'Vận hành và công bố thông tin',
-      exp: '12 năm',
-      area: 'Đà Nẵng',
-      image:
-        'https://images.unsplash.com/photo-1587614382346-4ec70e388b28?auto=format&fit=crop&w=900&q=80',
-      board: 'Hội đồng quản lý quỹ',
-    },
-  ];
-  const reviewerCarousel = [...reviewers, ...reviewers];
+  const [reviewers, setReviewers] = useState<ReviewerCard[]>([]);
+  const [isLoadingReviewers, setIsLoadingReviewers] = useState(true);
+  const [reviewerError, setReviewerError] = useState<string | null>(null);
+  const [isRefreshingReviewers, setIsRefreshingReviewers] = useState(false);
+  const [reviewerUpdatedAt, setReviewerUpdatedAt] = useState<string | null>(null);
+
+  const refreshReviewers = useCallback(async () => {
+    try {
+      setIsRefreshingReviewers(true);
+      setReviewerError(null);
+
+      const aggregates = await getReviewerAggregates();
+      const reviewerCards = await Promise.all(
+        aggregates.map(async (aggregate) => {
+          let profile: Awaited<ReturnType<typeof getUserProfile>> | null = null;
+          try {
+            profile = await getUserProfile(aggregate.reviewerSafe);
+          } catch {
+            profile = null;
+          }
+
+          return {
+            id: aggregate.reviewerSafe,
+            name: profile?.displayName?.trim() || shortenAddress(aggregate.reviewerSafe),
+            role: 'Kiểm duyệt viên đa chữ ký',
+            org: `${aggregate.campaignCount} chiến dịch đang dùng ví kiểm duyệt này`,
+            image: profile?.avatarUrl?.trim() || '',
+            board: 'Hội đồng kiểm duyệt on-chain',
+            safeAddress: aggregate.reviewerSafe,
+            campaignCount: aggregate.campaignCount,
+            totalDisbursedEth: weiToEthText(aggregate.totalDisbursedWei),
+          } as ReviewerCard;
+        })
+      );
+
+      setReviewers(reviewerCards);
+      setReviewerUpdatedAt(new Date().toLocaleTimeString('vi-VN'));
+    } catch (error) {
+      setReviewerError(error instanceof Error ? error.message : 'Không thể tải danh sách kiểm duyệt viên');
+    } finally {
+      setIsLoadingReviewers(false);
+      setIsRefreshingReviewers(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshReviewers();
+    const interval = setInterval(() => {
+      refreshReviewers();
+    }, 60_000);
+
+    return () => clearInterval(interval);
+  }, [refreshReviewers]);
+
+  const reviewerCarousel = useMemo(() => {
+    if (reviewers.length <= 1) return reviewers;
+    return [...reviewers, ...reviewers];
+  }, [reviewers]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-50 text-slate-900">
@@ -198,28 +243,71 @@ function HomeContent() {
                 Bảng danh sách kiểm duyệt viên
               </h2>
             </div>
-            <div className="md:text-right">
+            <div className="flex flex-col items-start gap-2 md:items-end md:text-right">
               <p className="text-sm font-semibold uppercase tracking-wider text-teal-600">
                 Hội đồng quản lý quỹ
               </p>
+              <button
+                type="button"
+                onClick={refreshReviewers}
+                disabled={isRefreshingReviewers}
+                className="rounded-md border border-teal-300 bg-white px-3 py-1.5 text-xs font-semibold text-teal-700 transition hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isRefreshingReviewers ? 'Đang làm mới...' : 'Làm mới'}
+              </button>
+              {reviewerUpdatedAt && (
+                <p className="text-xs text-slate-500">Cập nhật lúc {reviewerUpdatedAt}</p>
+              )}
               <div className="mt-2 h-1 w-44 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 md:ml-auto" />
             </div>
           </div>
 
-          <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-50/30 py-2">
-            <div className="reviewer-marquee-track flex w-max gap-6 px-4 md:px-6">
+          {reviewerError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {reviewerError}
+            </div>
+          )}
+
+          {isLoadingReviewers && (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {[1, 2, 3].map((idx) => (
+                <div
+                  key={idx}
+                  className="h-[360px] animate-pulse rounded-2xl border border-slate-200/80 bg-slate-100"
+                />
+              ))}
+            </div>
+          )}
+
+          {!isLoadingReviewers && reviewers.length === 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-sm text-amber-700">
+              Chưa có dữ liệu reviewerSafe từ hệ thống campaign để hiển thị kiểm duyệt viên.
+            </div>
+          )}
+
+          {!isLoadingReviewers && reviewers.length > 0 && (
+            <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-50/30 py-2">
+            <div
+              className={`${reviewers.length > 1 ? 'reviewer-marquee-track' : ''} flex w-max gap-6 px-4 md:px-6`}
+            >
               {reviewerCarousel.map((reviewer, index) => (
                 <article
-                  key={`${reviewer.id}-${index}`}
+                  key={`${reviewer.safeAddress}-${index}`}
                   className="group relative w-[280px] flex-shrink-0 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-md"
                 >
                   <div className="aspect-[4/3] w-full overflow-hidden rounded-t-2xl bg-slate-100">
-                    <img
-                      src={reviewer.image}
-                      alt={reviewer.name}
-                      className="h-full w-full object-cover object-top"
-                      loading="lazy"
-                    />
+                    {reviewer.image ? (
+                      <img
+                        src={reviewer.image}
+                        alt={reviewer.name}
+                        className="h-full w-full object-cover object-top"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-emerald-100 via-teal-100 to-cyan-100 text-4xl font-bold text-teal-700">
+                        {reviewer.name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-2.5 p-5 text-center">
                     <h3 className="text-xl font-bold uppercase tracking-tight text-slate-900">
@@ -234,20 +322,16 @@ function HomeContent() {
                   </div>
 
                   <div className="pointer-events-none absolute inset-3 z-20 rounded-2xl border border-emerald-200/90 bg-white/95 p-4 text-left opacity-0 shadow-xl shadow-emerald-100 backdrop-blur-sm transition duration-300 translate-y-3 group-hover:translate-y-0 group-hover:opacity-100">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600">
-                      Thông tin kiểm duyệt viên
-                    </p>
-                    <h4 className="mt-1 text-lg font-bold text-slate-900">{reviewer.name}</h4>
-                    <p className="mt-0.5 text-sm font-semibold text-teal-600">{reviewer.focus}</p>
-                    <p className="mt-3 text-sm leading-relaxed text-slate-700">{reviewer.bio}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600">Safe kiểm duyệt</p>
+                    <h4 className="mt-1 break-all text-sm font-bold text-slate-900">{reviewer.safeAddress}</h4>
                     <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
                       <div className="rounded-lg bg-slate-100/80 p-2.5">
-                        <p className="font-semibold uppercase tracking-wide text-slate-500">Kinh nghiệm</p>
-                        <p className="mt-1 text-sm font-bold text-slate-900">{reviewer.exp}</p>
+                        <p className="font-semibold uppercase tracking-wide text-slate-500">Chiến dịch</p>
+                        <p className="mt-1 text-sm font-bold text-slate-900">{reviewer.campaignCount}</p>
                       </div>
                       <div className="rounded-lg bg-slate-100/80 p-2.5">
-                        <p className="font-semibold uppercase tracking-wide text-slate-500">Khu vực</p>
-                        <p className="mt-1 text-sm font-bold text-slate-900">{reviewer.area}</p>
+                        <p className="font-semibold uppercase tracking-wide text-slate-500">Đã giải ngân</p>
+                        <p className="mt-1 text-sm font-bold text-slate-900">{reviewer.totalDisbursedEth} ETH</p>
                       </div>
                     </div>
                   </div>
@@ -257,6 +341,7 @@ function HomeContent() {
             <div className="pointer-events-none absolute inset-y-0 left-0 w-14 bg-gradient-to-r from-white to-transparent" />
             <div className="pointer-events-none absolute inset-y-0 right-0 w-14 bg-gradient-to-l from-white to-transparent" />
           </div>
+          )}
         </section>
 
         <style jsx>{`

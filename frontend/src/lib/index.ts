@@ -31,7 +31,15 @@ export {
 } from './utils/campaign-metadata-cache';
 
 // API
-export { getCampaignById, getCampaigns, updateCampaignMetadata } from './api/campaigns';
+export {
+    getCampaignById,
+    getCampaigns,
+    getDisbursedMilestoneCount,
+    getPublicCampaignMilestones,
+    getPublicCampaigns,
+    getReviewerAggregates,
+    updateCampaignMetadata
+} from './api/campaigns';
 export { getDonationsByCampaign, getDonationsByWallet } from './api/donations';
 export { createTransaction, getTransactionsByWallet } from './api/transactions';
 export { requestNonce, refreshAuthToken, verifyWalletSignature } from './api/auth';

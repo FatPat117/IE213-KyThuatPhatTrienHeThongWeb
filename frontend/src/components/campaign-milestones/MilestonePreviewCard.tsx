@@ -1,13 +1,17 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { getPublicCampaignMilestones, PublicCampaignMilestone } from '@/lib/api/campaigns';
 import { buildTimelineMilestones } from '@/lib/utils/milestone-plan';
+import { formatEther } from 'viem';
 
 interface MilestonePreviewCardProps {
   campaignId: number;
   campaignDeadline: number;
   campaignCreatedAt?: string;
   progressPercent: number;
+  goalWei?: bigint;
 }
 
 function formatDate(value: Date) {
@@ -18,18 +22,83 @@ function formatDate(value: Date) {
   }).format(value);
 }
 
+function getStatusBadgeColor(status: string): string {
+  switch (status) {
+    case 'disbursed':
+      return 'bg-emerald-100 text-emerald-700';
+    case 'submitted':
+    case 'pending_verification':
+      return 'bg-blue-100 text-blue-700';
+    case 'deadline_exceeded':
+    case 'verification_failed':
+      return 'bg-red-100 text-red-700';
+    default:
+      return 'bg-slate-200 text-slate-600';
+  }
+}
+
+function getStatusLabel(status: string): string {
+  switch (status) {
+    case 'disbursed':
+      return 'Đã giải ngân';
+    case 'submitted':
+      return 'Đã báo cáo';
+    case 'pending_verification':
+      return 'Chờ duyệt';
+    case 'deadline_exceeded':
+      return 'Quá hạn';
+    case 'verification_failed':
+      return 'Duyệt không đạt';
+    default:
+      return 'Chưa báo cáo';
+  }
+}
+
 export default function MilestonePreviewCard({
   campaignId,
   campaignDeadline,
   campaignCreatedAt,
   progressPercent,
+  goalWei = 0n,
 }: MilestonePreviewCardProps) {
-  const milestones = buildTimelineMilestones({
+  const [apiMilestones, setApiMilestones] = useState<PublicCampaignMilestone[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Fetch real milestones from API
+  useEffect(() => {
+    const fetchMilestones = async () => {
+      try {
+        setIsLoading(true);
+        const data = await getPublicCampaignMilestones(campaignId);
+        setApiMilestones(data.milestones || []);
+      } catch (err) {
+        // Silently fail - we'll use fallback
+        setApiMilestones([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (campaignId > 0) {
+      fetchMilestones();
+    }
+  }, [campaignId]);
+
+  // Use API milestones if available, otherwise use mock data
+  const fallbackMilestones = buildTimelineMilestones({
     campaignId,
     campaignDeadline,
     campaignCreatedAt,
     progressPercent,
+    goalWei,
   });
+
+  const hasMilestones = apiMilestones.length > 0 || fallbackMilestones.length > 0;
+
+  // If no milestones at all, hide the section
+  if (!hasMilestones) {
+    return null;
+  }
 
   return (
     <Link href={`/campaigns/${campaignId}/milestones`} className="group block">
@@ -61,39 +130,79 @@ export default function MilestonePreviewCard({
             />
           </div>
 
-          <div className="space-y-3">
-            {milestones.map((milestone) => {
-              const isReached = milestone.status === 'completed';
+          {isLoading && (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="rounded-xl border border-slate-200 bg-slate-50 p-4 animate-pulse">
+                  <div className="h-4 w-2/3 bg-slate-200 rounded mb-2" />
+                  <div className="h-3 w-full bg-slate-200 rounded mb-2" />
+                  <div className="h-3 w-1/3 bg-slate-200 rounded" />
+                </div>
+              ))}
+            </div>
+          )}
 
-              return (
-                <article
-                  key={milestone.id}
-                  className="rounded-xl border border-slate-200 bg-slate-50 p-4"
-                >
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <p className="font-semibold text-slate-900">{milestone.title}</p>
-                    <div className="flex items-center gap-2 text-xs font-semibold">
-                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700">
-                        {milestone.allocationPercent}% ngân sách
-                      </span>
-                      <span
-                        className={`rounded-full px-2.5 py-1 ${
-                          isReached ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'
-                        }`}
-                      >
-                        {isReached ? 'Đã đạt ngưỡng' : `Ngưỡng ${milestone.cumulativePercent}%`}
-                      </span>
+          {!isLoading && (
+            <div className="space-y-3">
+              {(apiMilestones.length > 0 ? apiMilestones : fallbackMilestones).map((milestone) => {
+                // Handle both API and mock milestone types
+                const isApiMilestone = 'milestoneId' in milestone;
+                const title = isApiMilestone ? milestone.title : milestone.title;
+                const allocationPercent = isApiMilestone
+                  ? Math.floor((Number(milestone.allocationBps) / 10000) * 100)
+                  : milestone.allocationPercent;
+                const status = isApiMilestone ? milestone.status : milestone.status;
+                const amountText = isApiMilestone
+                  ? `${Number(formatEther(milestone.amountWei)).toFixed(2)} ETH`
+                  : '';
+
+                return (
+                  <article
+                    key={isApiMilestone ? milestone.milestoneId : milestone.id}
+                    className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                  >
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-semibold text-slate-900">{title}</p>
+                      <div className="flex items-center gap-2 text-xs font-semibold">
+                        <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700">
+                          {allocationPercent}% ngân sách
+                        </span>
+                        <span className={`rounded-full px-2.5 py-1 ${getStatusBadgeColor(status)}`}>
+                          {getStatusLabel(status)}
+                        </span>
+                      </div>
                     </div>
-                  </div>
 
-                  <p className="mb-2 text-sm leading-relaxed text-slate-600">{milestone.description}</p>
-                  <p className="text-xs font-medium text-slate-500">
-                    Hạn chót dự kiến: <span className="text-slate-700">{formatDate(milestone.expectedDate)}</span>
-                  </p>
-                </article>
-              );
-            })}
-          </div>
+                    <p className="mb-2 text-sm leading-relaxed text-slate-600">
+                      {isApiMilestone ? milestone.description : milestone.description}
+                    </p>
+
+                    {amountText && (
+                      <p className="mb-2 text-xs font-medium text-slate-500">
+                        Số tiền: <span className="text-slate-700">{amountText}</span>
+                      </p>
+                    )}
+
+                    {isApiMilestone && milestone.deadline && (
+                      <p className="text-xs font-medium text-slate-500">
+                        Hạn chót dự kiến:{' '}
+                        <span className="text-slate-700">
+                          {formatDate(new Date(milestone.deadline))}
+                        </span>
+                      </p>
+                    )}
+
+                    {!isApiMilestone && (
+                      <p className="text-xs font-medium text-slate-500">
+                        Hạn chót dự kiến:{' '}
+                        <span className="text-slate-700">{formatDate(milestone.expectedDate)}</span>
+                      </p>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
 
           <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
             <p className="text-sm font-semibold text-amber-900">Chú thích về giải ngân theo giai đoạn</p>
