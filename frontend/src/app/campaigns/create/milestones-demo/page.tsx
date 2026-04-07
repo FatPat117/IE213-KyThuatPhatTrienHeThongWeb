@@ -1,6 +1,11 @@
 "use client";
 
-import MilestoneBuilder from "@/components/campaign-create/MilestoneBuilder";
+import dynamic from "next/dynamic";
+
+const MilestoneBuilder = dynamic(
+    () => import("@/components/campaign-create/MilestoneBuilder"),
+    { ssr: false },
+);
 
 const mockCampaignInfo = {
     title: "Dự án nước sạch vùng cao",

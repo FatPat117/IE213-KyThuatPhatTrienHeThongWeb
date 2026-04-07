@@ -153,7 +153,14 @@ export default function MilestonePreviewCard({
                   : milestone.allocationPercent;
                 const status = isApiMilestone ? milestone.status : milestone.status;
                 const amountText = isApiMilestone
-                  ? `${Number(formatEther(milestone.amountWei)).toFixed(2)} ETH`
+                  ? (() => {
+                      try {
+                        const wei = BigInt(milestone.amountWei || '0');
+                        return `${Number(formatEther(wei)).toFixed(2)} ETH`;
+                      } catch {
+                        return '';
+                      }
+                    })()
                   : '';
 
                 return (

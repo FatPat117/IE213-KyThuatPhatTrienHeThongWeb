@@ -14,6 +14,7 @@ type CampaignTuple = {
     deadline: bigint;
     withdrawn: boolean;
     status: number;
+    milestoneCount: bigint;
 };
 
 const ZERO = BigInt(0);
@@ -32,9 +33,12 @@ function normalizeCampaign(raw: Partial<CampaignTuple> | null | undefined) {
         goal: raw?.goal ?? ZERO,
         raised: raw?.totalRaised ?? ZERO,
         totalRaised: raw?.totalRaised ?? ZERO,
+        totalDisbursed: ZERO,
         deadline: Number(raw?.deadline ?? 0),
         withdrawn: Boolean(raw?.withdrawn),
         status,
+        milestoneCount: Number(raw?.milestoneCount ?? 0n),
+        currentMilestoneId: 0,
         completed: status !== ACTIVE_STATUS,
     };
 }
@@ -251,13 +255,31 @@ export function useDonateToCampaign() {
  * @returns write function và transaction state
  */
 export function useCreateCampaign() {
-    const { writeContract, data, isPending, error } = useWriteContract();
+    const { writeContractAsync, data, isPending, error } = useWriteContract();
 
-    const createCampaign = (beneficiary: Address, goalEth: string, durationDays: number) => {
-        return writeContract({
+    const createCampaign = (payload: {
+      beneficiary: Address;
+      durationDays: number;
+      milestones: Array<{
+        title: string;
+        description: string;
+        fundAmountEth: string;
+        durationDays: number;
+      }>;
+    }) => {
+        return writeContractAsync({
             ...contractConfig,
             functionName: 'createCampaign',
-            args: [beneficiary, parseEther(goalEth), BigInt(durationDays)],
+            args: [
+              payload.beneficiary,
+              BigInt(Math.max(1, payload.durationDays)),
+              payload.milestones.map((milestone) => ({
+                title: milestone.title,
+                description: milestone.description,
+                fundAmount: parseEther(milestone.fundAmountEth),
+                durationDays: BigInt(Math.max(1, milestone.durationDays)),
+              })),
+            ],
         });
     };
 
@@ -274,18 +296,18 @@ export function useCreateCampaign() {
  * @returns write function và transaction state
  */
 export function useWithdrawFunds() {
-    const { writeContract, data, isPending, error } = useWriteContract();
+    const { writeContractAsync, data, isPending, error } = useWriteContract();
 
-    const withdrawFunds = (campaignId: number) => {
-        return writeContract({
+    const markCampaignFailed = (campaignId: number) => {
+        return writeContractAsync({
             ...contractConfig,
-            functionName: 'withdrawFunds',
+            functionName: 'markCampaignFailed',
             args: [BigInt(campaignId)],
         });
     };
 
     return {
-        withdrawFunds,
+        withdrawFunds: markCampaignFailed,
         hash: data,
         isPending,
         error,
@@ -297,12 +319,12 @@ export function useWithdrawFunds() {
  * @returns write function và transaction state
  */
 export function useRefundDonation() {
-    const { writeContract, data, isPending, error } = useWriteContract();
+    const { writeContractAsync, data, isPending, error } = useWriteContract();
 
     const refund = (campaignId: number) => {
-        return writeContract({
+        return writeContractAsync({
             ...contractConfig,
-            functionName: 'claimRefund',
+            functionName: 'claimFundingRefund',
             args: [BigInt(campaignId)],
         });
     };
@@ -319,12 +341,12 @@ export function useRefundDonation() {
  * Hook để cập nhật campaign thành Failed sau deadline (nếu chưa đạt goal).
  */
 export function useMarkAsFailed() {
-    const { writeContract, data, isPending, error } = useWriteContract();
+    const { writeContractAsync, data, isPending, error } = useWriteContract();
 
     const markAsFailed = (campaignId: number) => {
-        return writeContract({
+        return writeContractAsync({
             ...contractConfig,
-            functionName: 'markAsFailed',
+            functionName: 'markCampaignFailed',
             args: [BigInt(campaignId)],
         });
     };

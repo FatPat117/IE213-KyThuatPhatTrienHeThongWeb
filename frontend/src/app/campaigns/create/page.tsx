@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { decodeEventLog } from 'viem';
 import { useAccount, useChainId, useWaitForTransactionReceipt } from 'wagmi';
 import {
   contractConfig,
   createTransaction,
+  getCampaignIndexStatus,
   saveCampaignMetadataToCache,
   updateCampaignMetadata,
   useAuth,
@@ -17,6 +18,7 @@ import CreateCampaignForm from '@/components/campaign-create/CreateCampaignForm'
 import CreateCampaignGuardCard from '@/components/campaign-create/CreateCampaignGuardCard';
 import CreateCampaignHeader from '@/components/campaign-create/CreateCampaignHeader';
 import CreateCampaignSuccessCard from '@/components/campaign-create/CreateCampaignSuccessCard';
+import MilestoneBuilder from '@/components/campaign-create/MilestoneBuilder';
 
 const SEPOLIA_CHAIN_ID = 11155111;
 
@@ -26,16 +28,26 @@ export default function CreateCampaignPage() {
   const { token } = useAuth();
   const chainId = useChainId();
   const isSepoliaNetwork = chainId === SEPOLIA_CHAIN_ID;
+  const isClient = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
 
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     goalEth: '1.0',
     deadline: '',
+    reviewerSafe: '',
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [manualError, setManualError] = useState<string | null>(null);
   const [metadataSynced, setMetadataSynced] = useState(false);
+  const [step, setStep] = useState<'basic' | 'milestones'>('basic');
+  const [milestoneMetadata, setMilestoneMetadata] = useState<
+    Array<{ name: string; description: string }>
+  >([]);
 
   const { createCampaign, hash, isPending, error: createError } = useCreateCampaign();
   const { data: receipt, isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
@@ -62,7 +74,7 @@ export default function CreateCampaignPage() {
             topics: log.topics,
           });
           if (decoded.eventName === 'CampaignCreated') {
-            const campaignId = Number(decoded.args.id);
+            const campaignId = Number((decoded.args as { campaignId?: bigint }).campaignId);
             if (!Number.isNaN(campaignId)) return campaignId;
           }
         } catch {
@@ -128,15 +140,54 @@ export default function CreateCampaignPage() {
 
   useEffect(() => {
     if (!isConfirmed || !createdCampaignId || metadataSynced || !token) return;
-    updateCampaignMetadata(createdCampaignId, token, {
-      title: formData.title.trim(),
-      description: formData.description,
-    })
-      .then(() => setMetadataSynced(true))
-      .catch(() => {
+    let cancelled = false;
+
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    const run = async () => {
+      // Wait for backend to index the campaign event, then patch metadata.
+      // This avoids the frequent 202 "not yet indexed" response.
+      for (let attempt = 0; attempt < 12; attempt += 1) {
+        if (cancelled) return;
+        try {
+          const status = await getCampaignIndexStatus(createdCampaignId);
+          if (status.indexed) break;
+        } catch {
+          // ignore and retry
+        }
+        await sleep(2500);
+      }
+
+      if (cancelled) return;
+      try {
+        await updateCampaignMetadata(createdCampaignId, token, {
+          title: formData.title.trim(),
+          description: formData.description,
+          milestones: milestoneMetadata.map((milestone, index) => ({
+            milestoneId: index,
+            title: milestone.name.trim(),
+            description: milestone.description.trim(),
+          })),
+        });
+        if (!cancelled) setMetadataSynced(true);
+      } catch {
         // Metadata sync is best-effort. User can retry from edit page later.
-      });
-  }, [createdCampaignId, formData.description, formData.title, isConfirmed, metadataSynced, token]);
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    createdCampaignId,
+    formData.description,
+    formData.title,
+    isConfirmed,
+    metadataSynced,
+    milestoneMetadata,
+    token,
+  ]);
 
   useEffect(() => {
     if (transactionStatus !== 'success') return;
@@ -166,6 +217,10 @@ export default function CreateCampaignPage() {
       if (deadline <= now) errors.deadline = 'Thời hạn phải ở tương lai';
       if (deadline > now + 365 * 24 * 60 * 60 * 1000) errors.deadline = 'Thời hạn không vượt quá 1 năm';
     }
+
+    const reviewerSafe = formData.reviewerSafe.trim().toLowerCase();
+    if (!reviewerSafe) errors.reviewerSafe = 'Vui lòng nhập địa chỉ reviewerSafe';
+    else if (!/^0x[a-f0-9]{40}$/.test(reviewerSafe)) errors.reviewerSafe = 'Địa chỉ reviewerSafe không hợp lệ';
 
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -205,30 +260,26 @@ export default function CreateCampaignPage() {
     }
     if (!validateForm()) return;
 
-    try {
-      setManualError(null);
-      const deadlineTs = Math.floor(new Date(formData.deadline).getTime() / 1000);
-      const nowTs = Math.floor(Date.now() / 1000);
-      const durationDays = Math.ceil((deadlineTs - nowTs) / (24 * 60 * 60));
-      await createCampaign(address as `0x${string}`, formData.goalEth, Math.max(durationDays, 1));
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Có lỗi xảy ra';
-      const normalized = message.toLowerCase();
-      if (
-        normalized.includes('does not match the target chain') ||
-        normalized.includes('expected chain id') ||
-        normalized.includes('wrong network') ||
-        normalized.includes('chain id')
-      ) {
-        const msg = 'Sai mạng. Vui lòng chuyển ví sang Sepolia trước khi tạo chiến dịch.';
-        setManualError(msg);
-        showErrorToast(msg);
-        return;
-      }
-      setManualError(message);
-      showErrorToast(message);
-    }
+    setStep('milestones');
   };
+
+  if (!isClient) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl mx-auto">
+          <CreateCampaignHeader />
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-8">
+            <div className="space-y-4 animate-pulse">
+              <div className="h-8 w-2/3 bg-slate-200 rounded" />
+              <div className="h-24 bg-slate-100 rounded-xl" />
+              <div className="h-24 bg-slate-100 rounded-xl" />
+              <div className="h-12 bg-slate-200 rounded-xl" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isConnected) {
     return (
@@ -255,6 +306,68 @@ export default function CreateCampaignPage() {
         primaryActionLabel="Hướng dẫn đổi mạng"
         onPrimaryAction={() => window.open('https://chainlist.org/?search=sepolia', '_blank')}
       />
+    );
+  }
+
+  if (step === 'milestones' && transactionStatus !== 'success') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-5xl mx-auto">
+          <CreateCampaignHeader />
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-8">
+            <MilestoneBuilder
+              campaignInfo={{
+                title: formData.title.trim() || 'Chiến dịch mới',
+                totalGoal: Number.parseFloat(formData.goalEth || '0') || 0,
+                campaignDeadline: formData.deadline,
+              }}
+              onBack={() => setStep('basic')}
+              onSubmit={async (nextMilestones) => {
+                try {
+                  setMilestoneMetadata(
+                    nextMilestones.map((milestone) => ({
+                      name: milestone.name,
+                      description: milestone.description,
+                    }))
+                  );
+                  setManualError(null);
+
+                  const fundingDeadline = Math.floor(new Date(formData.deadline).getTime() / 1000);
+                  const nowTs = Math.floor(Date.now() / 1000);
+                  const campaignDurationDays = Math.max(
+                    1,
+                    Math.ceil((fundingDeadline - nowTs) / (24 * 60 * 60))
+                  );
+
+                  const milestonesPayload = nextMilestones.map((milestone) => {
+                    const milestoneTs = Math.floor(new Date(milestone.deadline).getTime() / 1000);
+                    const milestoneDurationDays = Math.max(
+                      1,
+                      Math.ceil((milestoneTs - fundingDeadline) / (24 * 60 * 60))
+                    );
+                    return {
+                      title: milestone.name.trim(),
+                      description: milestone.description.trim(),
+                      fundAmountEth: String(milestone.goal),
+                      durationDays: milestoneDurationDays,
+                    };
+                  });
+
+                  await createCampaign({
+                    beneficiary: address as `0x${string}`,
+                    durationDays: campaignDurationDays,
+                    milestones: milestonesPayload,
+                  });
+                } catch (err) {
+                  const message = err instanceof Error ? err.message : 'Có lỗi xảy ra';
+                  setManualError(message);
+                  showErrorToast(message);
+                }
+              }}
+            />
+          </div>
+        </div>
+      </div>
     );
   }
 

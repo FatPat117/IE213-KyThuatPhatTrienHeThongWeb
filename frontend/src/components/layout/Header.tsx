@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useAuth } from "@/lib";
 
 function isLinkActive(href: string, pathname: string): boolean {
@@ -29,19 +29,23 @@ const WalletConnectButton = dynamic(
 
 export default function Header() {
     const pathname = usePathname();
-    const [isMounted, setIsMounted] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const { token, user } = useAuth();
 
-    // Avoid hydration mismatch: first render must match SSR output.
-    useEffect(() => {
-        setIsMounted(true);
-    }, []);
+    // Stable SSR/CSR hydration gate:
+    // - server snapshot: false
+    // - first client hydration snapshot: false
+    // - then flips to true after hydration without mismatch.
+    const isClient = useSyncExternalStore(
+        () => () => {},
+        () => true,
+        () => false,
+    );
 
-    const hasProvider = !isMounted
+    const hasProvider = !isClient
         ? true
         : Boolean((window as Window & { ethereum?: unknown }).ethereum);
-    const isSignedIn = isMounted ? Boolean(token && user?.wallet) : false;
+    const isSignedIn = isClient ? Boolean(token && user?.wallet) : false;
 
     // Public navigation always hiển thị trên header
     const publicLinks = [

@@ -80,13 +80,22 @@ export async function getCampaignById(id: number) {
 export async function updateCampaignMetadata(
   id: number,
   token: string,
-  updates: { title?: string; description?: string; images?: string[] }
+  updates: {
+    title?: string;
+    description?: string;
+    images?: string[];
+    milestones?: Array<{ milestoneId: number; title?: string; description?: string }>;
+  }
 ) {
   return apiRequest<CampaignRecord>(`/campaigns/${id}/metadata`, {
     method: 'PUT',
     token,
     body: JSON.stringify(updates),
   });
+}
+
+export async function getCampaignIndexStatus(id: number) {
+  return apiRequest<{ indexed: boolean }>(`/campaigns/${id}/status`);
 }
 
 export async function getPublicCampaigns(params?: {

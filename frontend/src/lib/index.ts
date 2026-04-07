@@ -33,6 +33,7 @@ export {
 // API
 export {
     getCampaignById,
+    getCampaignIndexStatus,
     getCampaigns,
     getDisbursedMilestoneCount,
     getPublicCampaignMilestones,

@@ -2,6 +2,7 @@ require("dotenv").config();
 const { connectRabbitMQ, getChannel, EXCHANGE } = require("./config/rabbitmq");
 const { createContractInstance, CONTRACT_ABI } = require("./config/contract");
 const { startMarkFailedDailyJob } = require("./jobs/markFailed.job");
+const axios = require("axios");
 
 function normalizeMeta(event) {
     return {
@@ -29,6 +30,34 @@ function publish(routingKey, payload) {
         { persistent: true },
     );
     console.log(`[listener-service] Published ${routingKey}`);
+}
+
+async function upsertTransactionFromEvent(payload, retries = 3) {
+    const baseUrl = process.env.TRANSACTION_SERVICE_URL;
+    if (!baseUrl || !payload?.txHash || !payload?.walletAddress) {
+        return;
+    }
+
+    let lastError = null;
+    for (let attempt = 1; attempt <= retries; attempt += 1) {
+        try {
+            await axios.post(
+                `${baseUrl}/api/transactions/internal/upsert`,
+                payload,
+                { timeout: 10_000 },
+            );
+            return;
+        } catch (error) {
+            lastError = error;
+            await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+        }
+    }
+
+    console.error(
+        `[listener-service] Could not upsert transaction after ${retries} retries: ${
+            lastError?.message || "unknown error"
+        }`,
+    );
 }
 
 async function startListener() {
@@ -89,6 +118,15 @@ async function startListener() {
                 milestoneCount: milestoneCount.toString(),
                 txHash: meta.txHash,
                 blockNumber: meta.blockNumber,
+            });
+
+            // Avoid race where frontend tx pending arrives slightly later.
+            // Upsert guarantees create-or-update to status=success by txHash.
+            await upsertTransactionFromEvent({
+                txHash: meta.txHash,
+                walletAddress: (creator || "").toLowerCase(),
+                action: "createCampaign",
+                campaignOnChainId: Number(campaignId),
             });
         },
     );

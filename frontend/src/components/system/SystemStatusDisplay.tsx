@@ -1,25 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { useSystemStatus } from '@/lib';
 
 export function SystemStatusDisplay() {
   const { status, clearStatus } = useSystemStatus();
-  const [isVisible, setIsVisible] = useState(false);
 
-  useEffect(() => {
-    if (status) {
-      setIsVisible(true);
-    }
-  }, [status]);
-
-  if (!status || !isVisible) {
+  if (!status) {
     return null;
   }
 
   const handleDismiss = () => {
-    setIsVisible(false);
-    setTimeout(() => clearStatus(), 200);
+    clearStatus();
   };
 
   // Banner styles based on status type

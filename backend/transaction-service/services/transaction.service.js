@@ -187,13 +187,51 @@ async function upsertTransactionSuccess({
     const existing = await Transaction.findOne({ txHash: normalizedHash });
 
     if (existing) {
+        const normalizedCampaignId =
+            campaignOnChainId != null ? Number(campaignOnChainId) : null;
+        const resolvedTitle =
+            (typeof campaignTitle === "string" ? campaignTitle.trim() : "") ||
+            existing.campaignTitle ||
+            (normalizedCampaignId
+                ? await fetchCampaignTitle(normalizedCampaignId)
+                : "");
+
         if (existing.status === "pending") {
             return Transaction.findOneAndUpdate(
                 { txHash: normalizedHash },
-                { $set: { status: "success" } },
+                {
+                    $set: {
+                        status: "success",
+                        ...(normalizedCampaignId != null
+                            ? { campaignOnChainId: normalizedCampaignId }
+                            : {}),
+                        ...(resolvedTitle ? { campaignTitle: resolvedTitle } : {}),
+                    },
+                },
                 { new: true },
             );
         }
+
+        // Keep successful transaction enriched with campaign linkage/title
+        // when listener receives late details.
+        if (
+            (existing.campaignOnChainId == null && normalizedCampaignId != null) ||
+            (!existing.campaignTitle && resolvedTitle)
+        ) {
+            return Transaction.findOneAndUpdate(
+                { txHash: normalizedHash },
+                {
+                    $set: {
+                        ...(normalizedCampaignId != null
+                            ? { campaignOnChainId: normalizedCampaignId }
+                            : {}),
+                        ...(resolvedTitle ? { campaignTitle: resolvedTitle } : {}),
+                    },
+                },
+                { new: true },
+            );
+        }
+
         return existing;
     }
 
