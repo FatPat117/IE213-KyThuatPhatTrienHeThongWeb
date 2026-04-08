@@ -93,7 +93,7 @@ async function attachCampaignTitles(transactions) {
 }
 
 async function createTransaction(data) {
-    const { txHash, walletAddress, action, campaignOnChainId, campaignTitle } =
+    const { txHash, walletAddress, action, status, campaignOnChainId, campaignTitle } =
         data;
     if (!txHash || !walletAddress || !action) {
         throw Object.assign(
@@ -115,6 +115,9 @@ async function createTransaction(data) {
         (normalizedCampaignId
             ? await fetchCampaignTitle(normalizedCampaignId)
             : "");
+    const normalizedStatus = ["pending", "success", "failed"].includes(status)
+        ? status
+        : "pending";
 
     return Transaction.create({
         txHash,
@@ -122,7 +125,7 @@ async function createTransaction(data) {
         action,
         campaignOnChainId: normalizedCampaignId,
         campaignTitle: derivedCampaignTitle,
-        status: "pending",
+        status: normalizedStatus,
     });
 }
 

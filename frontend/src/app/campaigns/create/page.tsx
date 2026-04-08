@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
-import { decodeEventLog } from 'viem';
+import { decodeEventLog, parseEther } from 'viem';
 import { useAccount, useChainId, useWaitForTransactionReceipt } from 'wagmi';
 import {
   contractConfig,
@@ -21,6 +21,54 @@ import CreateCampaignSuccessCard from '@/components/campaign-create/CreateCampai
 import MilestoneBuilder from '@/components/campaign-create/MilestoneBuilder';
 
 const SEPOLIA_CHAIN_ID = 11155111;
+const BPS_DENOMINATOR = 10_000;
+
+function mapGoalsToAllocationBps(goalWeiItems: bigint[]) {
+  const totalGoalWei = goalWeiItems.reduce((sum, item) => sum + item, 0n);
+  if (totalGoalWei <= 0n) {
+    throw new Error('Tổng mục tiêu milestones phải lớn hơn 0.');
+  }
+
+  const baseBps: number[] = [];
+  const remainders: Array<{ index: number; remainder: bigint }> = [];
+
+  let assigned = 0;
+  goalWeiItems.forEach((goalWei, index) => {
+    if (goalWei <= 0n) {
+      throw new Error(`Milestone ${index + 1} phải có mục tiêu > 0.`);
+    }
+    const numerator = goalWei * BigInt(BPS_DENOMINATOR);
+    const floorBps = Number(numerator / totalGoalWei);
+    const remainder = numerator % totalGoalWei;
+    baseBps.push(floorBps);
+    remainders.push({ index, remainder });
+    assigned += floorBps;
+  });
+
+  let remaining = BPS_DENOMINATOR - assigned;
+  remainders.sort((a, b) => {
+    if (a.remainder === b.remainder) return a.index - b.index;
+    return a.remainder > b.remainder ? -1 : 1;
+  });
+
+  let pointer = 0;
+  while (remaining > 0 && remainders.length > 0) {
+    const target = remainders[pointer % remainders.length];
+    baseBps[target.index] += 1;
+    pointer += 1;
+    remaining -= 1;
+  }
+
+  if (baseBps.some((item) => item <= 0)) {
+    throw new Error('Có milestone quá nhỏ, allocationBps bị 0. Vui lòng tăng giá trị milestone.');
+  }
+  const totalBps = baseBps.reduce((sum, item) => sum + item, 0);
+  if (totalBps !== BPS_DENOMINATOR) {
+    throw new Error('Tổng allocationBps phải bằng 10,000.');
+  }
+
+  return baseBps;
+}
 
 export default function CreateCampaignPage() {
   const router = useRouter();
@@ -44,6 +92,8 @@ export default function CreateCampaignPage() {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [manualError, setManualError] = useState<string | null>(null);
   const [metadataSynced, setMetadataSynced] = useState(false);
+  const [metadataSyncError, setMetadataSyncError] = useState<string | null>(null);
+  const [isMetadataSyncing, setIsMetadataSyncing] = useState(false);
   const [step, setStep] = useState<'basic' | 'milestones'>('basic');
   const [milestoneMetadata, setMilestoneMetadata] = useState<
     Array<{ name: string; description: string }>
@@ -124,9 +174,10 @@ export default function CreateCampaignPage() {
       txHash: hash,
       walletAddress: address,
       action: 'createCampaign',
+      status: 'pending',
       campaignOnChainId: createdCampaignId ?? undefined,
     }).catch(() => {
-      // Keep UI flow unaffected if transaction indexing fails.
+      showErrorToast('Khong the ghi nhan transaction vao he thong theo doi.');
     });
   }, [address, createdCampaignId, hash, token]);
 
@@ -145,13 +196,19 @@ export default function CreateCampaignPage() {
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
     const run = async () => {
+      setIsMetadataSyncing(true);
+      setMetadataSyncError(null);
       // Wait for backend to index the campaign event, then patch metadata.
       // This avoids the frequent 202 "not yet indexed" response.
+      let indexed = false;
       for (let attempt = 0; attempt < 12; attempt += 1) {
         if (cancelled) return;
         try {
           const status = await getCampaignIndexStatus(createdCampaignId);
-          if (status.indexed) break;
+          if (status.indexed) {
+            indexed = true;
+            break;
+          }
         } catch {
           // ignore and retry
         }
@@ -159,6 +216,15 @@ export default function CreateCampaignPage() {
       }
 
       if (cancelled) return;
+      if (!indexed) {
+        const errorMessage =
+          'Campaign đã lên chain nhưng backend chưa index kịp để cập nhật metadata. Vui lòng thử lại sau.';
+        setMetadataSyncError(errorMessage);
+        setIsMetadataSyncing(false);
+        showErrorToast(errorMessage);
+        return;
+      }
+
       try {
         await updateCampaignMetadata(createdCampaignId, token, {
           title: formData.title.trim(),
@@ -169,9 +235,20 @@ export default function CreateCampaignPage() {
             description: milestone.description.trim(),
           })),
         });
-        if (!cancelled) setMetadataSynced(true);
-      } catch {
-        // Metadata sync is best-effort. User can retry from edit page later.
+        if (!cancelled) {
+          setMetadataSynced(true);
+          setIsMetadataSyncing(false);
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Không thể cập nhật metadata campaign sau khi tạo.';
+        if (!cancelled) {
+          setMetadataSyncError(message);
+          setIsMetadataSyncing(false);
+          showErrorToast(message);
+        }
       }
     };
 
@@ -190,12 +267,12 @@ export default function CreateCampaignPage() {
   ]);
 
   useEffect(() => {
-    if (transactionStatus !== 'success') return;
+    if (transactionStatus !== 'success' || !metadataSynced) return;
     showSuccessToast('Tạo chiến dịch thành công! Đang chuyển tới trang chi tiết...');
     const target = createdCampaignId !== null ? `/campaigns/${createdCampaignId}` : '/campaigns';
     const timer = setTimeout(() => router.push(target), 3000);
     return () => clearTimeout(timer);
-  }, [createdCampaignId, router, transactionStatus]);
+  }, [createdCampaignId, metadataSynced, router, transactionStatus]);
 
   const validateForm = () => {
     const errors: Record<string, string> = {};
@@ -259,7 +336,9 @@ export default function CreateCampaignPage() {
       return;
     }
     if (!validateForm()) return;
-
+    setMetadataSynced(false);
+    setMetadataSyncError(null);
+    setIsMetadataSyncing(false);
     setStep('milestones');
   };
 
@@ -333,30 +412,29 @@ export default function CreateCampaignPage() {
                   setManualError(null);
 
                   const fundingDeadline = Math.floor(new Date(formData.deadline).getTime() / 1000);
-                  const nowTs = Math.floor(Date.now() / 1000);
-                  const campaignDurationDays = Math.max(
-                    1,
-                    Math.ceil((fundingDeadline - nowTs) / (24 * 60 * 60))
+                  const reviewerSafe = formData.reviewerSafe.trim().toLowerCase();
+                  const milestoneDeadlines = nextMilestones.map((milestone) =>
+                    Math.floor(new Date(milestone.deadline).getTime() / 1000)
                   );
+                  if (milestoneDeadlines.some((deadline) => deadline <= fundingDeadline)) {
+                    throw new Error('Mọi deadline milestone phải sau funding deadline.');
+                  }
 
-                  const milestonesPayload = nextMilestones.map((milestone) => {
-                    const milestoneTs = Math.floor(new Date(milestone.deadline).getTime() / 1000);
-                    const milestoneDurationDays = Math.max(
-                      1,
-                      Math.ceil((milestoneTs - fundingDeadline) / (24 * 60 * 60))
-                    );
-                    return {
-                      title: milestone.name.trim(),
-                      description: milestone.description.trim(),
-                      fundAmountEth: String(milestone.goal),
-                      durationDays: milestoneDurationDays,
-                    };
-                  });
+                  const milestoneGoalWei = nextMilestones.map((milestone) =>
+                    parseEther(String(milestone.goal))
+                  );
+                  const allocationBps = mapGoalsToAllocationBps(milestoneGoalWei);
+                  const totalBps = allocationBps.reduce((sum, item) => sum + item, 0);
+                  if (totalBps !== BPS_DENOMINATOR) {
+                    throw new Error('Tổng allocationBps phải bằng 10,000.');
+                  }
 
                   await createCampaign({
-                    beneficiary: address as `0x${string}`,
-                    durationDays: campaignDurationDays,
-                    milestones: milestonesPayload,
+                    goalEth: formData.goalEth,
+                    reviewerSafe: reviewerSafe as `0x${string}`,
+                    fundingDeadline,
+                    allocationBps,
+                    deadlines: milestoneDeadlines,
                   });
                 } catch (err) {
                   const message = err instanceof Error ? err.message : 'Có lỗi xảy ra';
@@ -395,6 +473,16 @@ export default function CreateCampaignPage() {
               onFieldChange={handleFieldChange}
               onSubmit={handleSubmit}
             />
+          )}
+          {isMetadataSyncing && (
+            <p className="mt-4 text-sm text-slate-600">
+              Dang dong bo metadata campaign voi backend...
+            </p>
+          )}
+          {metadataSyncError && (
+            <p className="mt-4 text-sm text-red-600">
+              {metadataSyncError}
+            </p>
           )}
         </div>
       </div>

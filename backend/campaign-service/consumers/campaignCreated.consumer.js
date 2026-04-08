@@ -27,13 +27,14 @@ const MILESTONE_READER_ABI = [
                 type: "tuple",
                 components: [
                     { name: "id", type: "uint256" },
-                    { name: "campaignId", type: "uint256" },
-                    { name: "title", type: "string" },
-                    { name: "description", type: "string" },
-                    { name: "fundAmount", type: "uint256" },
+                    { name: "allocationBps", type: "uint16" },
                     { name: "deadline", type: "uint256" },
                     { name: "proofIpfsCid", type: "string" },
                     { name: "status", type: "uint8" },
+                    { name: "approvedBy", type: "address" },
+                    { name: "approvedAt", type: "uint256" },
+                    { name: "disbursedAt", type: "uint256" },
+                    { name: "failedAt", type: "uint256" },
                 ],
             },
         ],
@@ -107,11 +108,9 @@ async function loadMilestoneSeedData(
                     BigInt(onChainId),
                     BigInt(milestoneId),
                 );
-                financialTargetWei = (rawMilestone.fundAmount || 0n).toString();
-                if (goal > 0n) {
-                    allocationBps = Number(
-                        (BigInt(financialTargetWei) * 10_000n) / goal,
-                    );
+                allocationBps = Number(rawMilestone.allocationBps || 0);
+                if (goal > 0n && allocationBps > 0) {
+                    financialTargetWei = ((goal * BigInt(allocationBps)) / 10_000n).toString();
                 }
                 deadline = new Date(Number(rawMilestone.deadline || fallbackDeadline) * 1000);
             } catch (error) {

@@ -8,6 +8,7 @@ async function createTransaction(req, res, next) {
             txHash,
             walletAddress,
             action,
+            status,
             campaignOnChainId,
             campaignTitle,
         } = req.body;
@@ -22,6 +23,7 @@ async function createTransaction(req, res, next) {
             txHash,
             walletAddress,
             action,
+            status,
             campaignOnChainId,
             campaignTitle,
         });

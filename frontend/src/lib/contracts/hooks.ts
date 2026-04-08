@@ -94,23 +94,57 @@ export function useReadTotalRaised() {
  * @param campaignId - ID của chiến dịch cần đọc
  */
 export function useReadCampaign(campaignId: number | null | undefined) {
-    const { data: campaign, isLoading, isError, error, refetch } = useReadContract({
-        ...contractConfig,
-        functionName: 'getCampaign',
-        args:
-            campaignId !== null && campaignId !== undefined && campaignId > 0
-                ? [BigInt(campaignId)]
-                : undefined,
+    const enabled = campaignId !== null && campaignId !== undefined && campaignId > 0;
+    const campaignIdArg = enabled ? BigInt(campaignId) : undefined;
+    const {
+        data: campaignData,
+        isLoading,
+        isError,
+        error,
+        refetch,
+    } = useReadContracts({
+        contracts: enabled
+            ? [
+                  {
+                      ...contractConfig,
+                      functionName: 'getCampaign' as const,
+                      args: [campaignIdArg as bigint] as const,
+                  },
+                  {
+                      ...contractConfig,
+                      functionName: 'campaignReviewerSafe' as const,
+                      args: [campaignIdArg as bigint] as const,
+                  },
+              ]
+            : [],
         query: {
             staleTime: 30000,
             refetchOnWindowFocus: true,
             refetchOnMount: true,
-            enabled: campaignId !== null && campaignId !== undefined && campaignId > 0,
+            enabled,
         },
     });
 
+    const campaign = useMemo(() => {
+        if (!campaignData || campaignData.length < 1) return null;
+        const rawCampaign =
+            (campaignData[0] as { result?: CampaignTuple } | undefined)?.result ??
+            null;
+        if (!rawCampaign) return null;
+
+        const reviewerSafe =
+            ((campaignData[1] as { result?: Address } | undefined)?.result as
+                | Address
+                | undefined) ?? ('0x0000000000000000000000000000000000000000' as Address);
+
+        return {
+            ...normalizeCampaign(rawCampaign as CampaignTuple),
+            reviewerSafe,
+        };
+    }, [campaignData]);
+
     return {
-        campaign: campaign ? normalizeCampaign(campaign as CampaignTuple) : null,
+        campaign,
         isLoading,
         isError,
         error: error?.message || null,
@@ -258,27 +292,21 @@ export function useCreateCampaign() {
     const { writeContractAsync, data, isPending, error } = useWriteContract();
 
     const createCampaign = (payload: {
-      beneficiary: Address;
-      durationDays: number;
-      milestones: Array<{
-        title: string;
-        description: string;
-        fundAmountEth: string;
-        durationDays: number;
-      }>;
+      goalEth: string;
+      reviewerSafe: Address;
+      fundingDeadline: number;
+      allocationBps: number[];
+      deadlines: number[];
     }) => {
         return writeContractAsync({
             ...contractConfig,
-            functionName: 'createCampaign',
+            functionName: 'createCampaignWithGoal',
             args: [
-              payload.beneficiary,
-              BigInt(Math.max(1, payload.durationDays)),
-              payload.milestones.map((milestone) => ({
-                title: milestone.title,
-                description: milestone.description,
-                fundAmount: parseEther(milestone.fundAmountEth),
-                durationDays: BigInt(Math.max(1, milestone.durationDays)),
-              })),
+              parseEther(payload.goalEth),
+              payload.allocationBps,
+              payload.deadlines.map((item) => BigInt(item)),
+              BigInt(payload.fundingDeadline),
+              payload.reviewerSafe,
             ],
         });
     };
