@@ -226,9 +226,16 @@ export default function CreateCampaignPage() {
       }
 
       try {
+        const normalizedTitle = formData.title.trim();
+        const normalizedReviewerSafe = formData.reviewerSafe.trim().toLowerCase();
+        const fallbackThumbnailUrl =
+          `https://placehold.co/1200x630/png?text=${encodeURIComponent(normalizedTitle || `Campaign-${createdCampaignId}`)}`;
+
         await updateCampaignMetadata(createdCampaignId, token, {
-          title: formData.title.trim(),
+          title: normalizedTitle,
           description: formData.description,
+          thumbnailUrl: fallbackThumbnailUrl,
+          reviewerSafe: normalizedReviewerSafe,
           milestones: milestoneMetadata.map((milestone, index) => ({
             milestoneId: index,
             title: milestone.name.trim(),
@@ -259,6 +266,7 @@ export default function CreateCampaignPage() {
   }, [
     createdCampaignId,
     formData.description,
+    formData.reviewerSafe,
     formData.title,
     isConfirmed,
     metadataSynced,

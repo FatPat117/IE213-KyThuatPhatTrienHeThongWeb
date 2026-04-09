@@ -83,6 +83,8 @@ export async function updateCampaignMetadata(
   updates: {
     title?: string;
     description?: string;
+    thumbnailUrl?: string;
+    reviewerSafe?: string;
     images?: string[];
     milestones?: Array<{ milestoneId: number; title?: string; description?: string }>;
   }
