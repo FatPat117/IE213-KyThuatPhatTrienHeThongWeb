@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
-import { decodeEventLog } from 'viem';
+import { decodeEventLog, parseEther } from 'viem';
 import { useAccount, useChainId, useWaitForTransactionReceipt } from 'wagmi';
 import {
   contractConfig,
   createTransaction,
+  getCampaignIndexStatus,
   saveCampaignMetadataToCache,
   updateCampaignMetadata,
   useAuth,
@@ -17,8 +18,57 @@ import CreateCampaignForm from '@/components/campaign-create/CreateCampaignForm'
 import CreateCampaignGuardCard from '@/components/campaign-create/CreateCampaignGuardCard';
 import CreateCampaignHeader from '@/components/campaign-create/CreateCampaignHeader';
 import CreateCampaignSuccessCard from '@/components/campaign-create/CreateCampaignSuccessCard';
+import MilestoneBuilder from '@/components/campaign-create/MilestoneBuilder';
 
 const SEPOLIA_CHAIN_ID = 11155111;
+const BPS_DENOMINATOR = 10_000;
+
+function mapGoalsToAllocationBps(goalWeiItems: bigint[]) {
+  const totalGoalWei = goalWeiItems.reduce((sum, item) => sum + item, 0n);
+  if (totalGoalWei <= 0n) {
+    throw new Error('Tổng mục tiêu milestones phải lớn hơn 0.');
+  }
+
+  const baseBps: number[] = [];
+  const remainders: Array<{ index: number; remainder: bigint }> = [];
+
+  let assigned = 0;
+  goalWeiItems.forEach((goalWei, index) => {
+    if (goalWei <= 0n) {
+      throw new Error(`Milestone ${index + 1} phải có mục tiêu > 0.`);
+    }
+    const numerator = goalWei * BigInt(BPS_DENOMINATOR);
+    const floorBps = Number(numerator / totalGoalWei);
+    const remainder = numerator % totalGoalWei;
+    baseBps.push(floorBps);
+    remainders.push({ index, remainder });
+    assigned += floorBps;
+  });
+
+  let remaining = BPS_DENOMINATOR - assigned;
+  remainders.sort((a, b) => {
+    if (a.remainder === b.remainder) return a.index - b.index;
+    return a.remainder > b.remainder ? -1 : 1;
+  });
+
+  let pointer = 0;
+  while (remaining > 0 && remainders.length > 0) {
+    const target = remainders[pointer % remainders.length];
+    baseBps[target.index] += 1;
+    pointer += 1;
+    remaining -= 1;
+  }
+
+  if (baseBps.some((item) => item <= 0)) {
+    throw new Error('Có milestone quá nhỏ, allocationBps bị 0. Vui lòng tăng giá trị milestone.');
+  }
+  const totalBps = baseBps.reduce((sum, item) => sum + item, 0);
+  if (totalBps !== BPS_DENOMINATOR) {
+    throw new Error('Tổng allocationBps phải bằng 10,000.');
+  }
+
+  return baseBps;
+}
 
 export default function CreateCampaignPage() {
   const router = useRouter();
@@ -26,16 +76,28 @@ export default function CreateCampaignPage() {
   const { token } = useAuth();
   const chainId = useChainId();
   const isSepoliaNetwork = chainId === SEPOLIA_CHAIN_ID;
+  const isClient = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
 
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     goalEth: '1.0',
     deadline: '',
+    reviewerSafe: '',
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [manualError, setManualError] = useState<string | null>(null);
   const [metadataSynced, setMetadataSynced] = useState(false);
+  const [metadataSyncError, setMetadataSyncError] = useState<string | null>(null);
+  const [isMetadataSyncing, setIsMetadataSyncing] = useState(false);
+  const [step, setStep] = useState<'basic' | 'milestones'>('basic');
+  const [milestoneMetadata, setMilestoneMetadata] = useState<
+    Array<{ name: string; description: string }>
+  >([]);
 
   const { createCampaign, hash, isPending, error: createError } = useCreateCampaign();
   const { data: receipt, isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
@@ -62,7 +124,7 @@ export default function CreateCampaignPage() {
             topics: log.topics,
           });
           if (decoded.eventName === 'CampaignCreated') {
-            const campaignId = Number(decoded.args.id);
+            const campaignId = Number((decoded.args as { campaignId?: bigint }).campaignId);
             if (!Number.isNaN(campaignId)) return campaignId;
           }
         } catch {
@@ -112,9 +174,10 @@ export default function CreateCampaignPage() {
       txHash: hash,
       walletAddress: address,
       action: 'createCampaign',
+      status: 'pending',
       campaignOnChainId: createdCampaignId ?? undefined,
     }).catch(() => {
-      // Keep UI flow unaffected if transaction indexing fails.
+      showErrorToast('Khong the ghi nhan transaction vao he thong theo doi.');
     });
   }, [address, createdCampaignId, hash, token]);
 
@@ -128,23 +191,96 @@ export default function CreateCampaignPage() {
 
   useEffect(() => {
     if (!isConfirmed || !createdCampaignId || metadataSynced || !token) return;
-    updateCampaignMetadata(createdCampaignId, token, {
-      title: formData.title.trim(),
-      description: formData.description,
-    })
-      .then(() => setMetadataSynced(true))
-      .catch(() => {
-        // Metadata sync is best-effort. User can retry from edit page later.
-      });
-  }, [createdCampaignId, formData.description, formData.title, isConfirmed, metadataSynced, token]);
+    let cancelled = false;
+
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    const run = async () => {
+      setIsMetadataSyncing(true);
+      setMetadataSyncError(null);
+      // Wait for backend to index the campaign event, then patch metadata.
+      // This avoids the frequent 202 "not yet indexed" response.
+      let indexed = false;
+      for (let attempt = 0; attempt < 12; attempt += 1) {
+        if (cancelled) return;
+        try {
+          const status = await getCampaignIndexStatus(createdCampaignId);
+          if (status.indexed) {
+            indexed = true;
+            break;
+          }
+        } catch {
+          // ignore and retry
+        }
+        await sleep(2500);
+      }
+
+      if (cancelled) return;
+      if (!indexed) {
+        const errorMessage =
+          'Campaign đã lên chain nhưng backend chưa index kịp để cập nhật metadata. Vui lòng thử lại sau.';
+        setMetadataSyncError(errorMessage);
+        setIsMetadataSyncing(false);
+        showErrorToast(errorMessage);
+        return;
+      }
+
+      try {
+        const normalizedTitle = formData.title.trim();
+        const normalizedReviewerSafe = formData.reviewerSafe.trim().toLowerCase();
+        const fallbackThumbnailUrl =
+          `https://placehold.co/1200x630/png?text=${encodeURIComponent(normalizedTitle || `Campaign-${createdCampaignId}`)}`;
+
+        await updateCampaignMetadata(createdCampaignId, token, {
+          title: normalizedTitle,
+          description: formData.description,
+          thumbnailUrl: fallbackThumbnailUrl,
+          reviewerSafe: normalizedReviewerSafe,
+          milestones: milestoneMetadata.map((milestone, index) => ({
+            milestoneId: index,
+            title: milestone.name.trim(),
+            description: milestone.description.trim(),
+          })),
+        });
+        if (!cancelled) {
+          setMetadataSynced(true);
+          setIsMetadataSyncing(false);
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Không thể cập nhật metadata campaign sau khi tạo.';
+        if (!cancelled) {
+          setMetadataSyncError(message);
+          setIsMetadataSyncing(false);
+          showErrorToast(message);
+        }
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    createdCampaignId,
+    formData.description,
+    formData.reviewerSafe,
+    formData.title,
+    isConfirmed,
+    metadataSynced,
+    milestoneMetadata,
+    token,
+  ]);
 
   useEffect(() => {
-    if (transactionStatus !== 'success') return;
+    if (transactionStatus !== 'success' || !metadataSynced) return;
     showSuccessToast('Tạo chiến dịch thành công! Đang chuyển tới trang chi tiết...');
     const target = createdCampaignId !== null ? `/campaigns/${createdCampaignId}` : '/campaigns';
     const timer = setTimeout(() => router.push(target), 3000);
     return () => clearTimeout(timer);
-  }, [createdCampaignId, router, transactionStatus]);
+  }, [createdCampaignId, metadataSynced, router, transactionStatus]);
 
   const validateForm = () => {
     const errors: Record<string, string> = {};
@@ -166,6 +302,10 @@ export default function CreateCampaignPage() {
       if (deadline <= now) errors.deadline = 'Thời hạn phải ở tương lai';
       if (deadline > now + 365 * 24 * 60 * 60 * 1000) errors.deadline = 'Thời hạn không vượt quá 1 năm';
     }
+
+    const reviewerSafe = formData.reviewerSafe.trim().toLowerCase();
+    if (!reviewerSafe) errors.reviewerSafe = 'Vui lòng nhập địa chỉ reviewerSafe';
+    else if (!/^0x[a-f0-9]{40}$/.test(reviewerSafe)) errors.reviewerSafe = 'Địa chỉ reviewerSafe không hợp lệ';
 
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -204,31 +344,29 @@ export default function CreateCampaignPage() {
       return;
     }
     if (!validateForm()) return;
-
-    try {
-      setManualError(null);
-      const deadlineTs = Math.floor(new Date(formData.deadline).getTime() / 1000);
-      const nowTs = Math.floor(Date.now() / 1000);
-      const durationDays = Math.ceil((deadlineTs - nowTs) / (24 * 60 * 60));
-      await createCampaign(address as `0x${string}`, formData.goalEth, Math.max(durationDays, 1));
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Có lỗi xảy ra';
-      const normalized = message.toLowerCase();
-      if (
-        normalized.includes('does not match the target chain') ||
-        normalized.includes('expected chain id') ||
-        normalized.includes('wrong network') ||
-        normalized.includes('chain id')
-      ) {
-        const msg = 'Sai mạng. Vui lòng chuyển ví sang Sepolia trước khi tạo chiến dịch.';
-        setManualError(msg);
-        showErrorToast(msg);
-        return;
-      }
-      setManualError(message);
-      showErrorToast(message);
-    }
+    setMetadataSynced(false);
+    setMetadataSyncError(null);
+    setIsMetadataSyncing(false);
+    setStep('milestones');
   };
+
+  if (!isClient) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl mx-auto">
+          <CreateCampaignHeader />
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-8">
+            <div className="space-y-4 animate-pulse">
+              <div className="h-8 w-2/3 bg-slate-200 rounded" />
+              <div className="h-24 bg-slate-100 rounded-xl" />
+              <div className="h-24 bg-slate-100 rounded-xl" />
+              <div className="h-12 bg-slate-200 rounded-xl" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isConnected) {
     return (
@@ -258,6 +396,67 @@ export default function CreateCampaignPage() {
     );
   }
 
+  if (step === 'milestones' && transactionStatus !== 'success') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-5xl mx-auto">
+          <CreateCampaignHeader />
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-8">
+            <MilestoneBuilder
+              campaignInfo={{
+                title: formData.title.trim() || 'Chiến dịch mới',
+                totalGoal: Number.parseFloat(formData.goalEth || '0') || 0,
+                campaignDeadline: formData.deadline,
+              }}
+              onBack={() => setStep('basic')}
+              onSubmit={async (nextMilestones) => {
+                try {
+                  setMilestoneMetadata(
+                    nextMilestones.map((milestone) => ({
+                      name: milestone.name,
+                      description: milestone.description,
+                    }))
+                  );
+                  setManualError(null);
+
+                  const fundingDeadline = Math.floor(new Date(formData.deadline).getTime() / 1000);
+                  const reviewerSafe = formData.reviewerSafe.trim().toLowerCase();
+                  const milestoneDeadlines = nextMilestones.map((milestone) =>
+                    Math.floor(new Date(milestone.deadline).getTime() / 1000)
+                  );
+                  if (milestoneDeadlines.some((deadline) => deadline <= fundingDeadline)) {
+                    throw new Error('Mọi deadline milestone phải sau funding deadline.');
+                  }
+
+                  const milestoneGoalWei = nextMilestones.map((milestone) =>
+                    parseEther(String(milestone.goal))
+                  );
+                  const allocationBps = mapGoalsToAllocationBps(milestoneGoalWei);
+                  const totalBps = allocationBps.reduce((sum, item) => sum + item, 0);
+                  if (totalBps !== BPS_DENOMINATOR) {
+                    throw new Error('Tổng allocationBps phải bằng 10,000.');
+                  }
+
+                  await createCampaign({
+                    goalEth: formData.goalEth,
+                    reviewerSafe: reviewerSafe as `0x${string}`,
+                    fundingDeadline,
+                    allocationBps,
+                    deadlines: milestoneDeadlines,
+                  });
+                } catch (err) {
+                  const message = err instanceof Error ? err.message : 'Có lỗi xảy ra';
+                  setManualError(message);
+                  showErrorToast(message);
+                }
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto">
@@ -282,6 +481,16 @@ export default function CreateCampaignPage() {
               onFieldChange={handleFieldChange}
               onSubmit={handleSubmit}
             />
+          )}
+          {isMetadataSyncing && (
+            <p className="mt-4 text-sm text-slate-600">
+              Dang dong bo metadata campaign voi backend...
+            </p>
+          )}
+          {metadataSyncError && (
+            <p className="mt-4 text-sm text-red-600">
+              {metadataSyncError}
+            </p>
           )}
         </div>
       </div>

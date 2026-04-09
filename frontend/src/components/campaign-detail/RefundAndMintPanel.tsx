@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 interface RefundAndMintPanelProps {
   showRefund: boolean;
@@ -46,12 +46,6 @@ export default function RefundAndMintPanel({
   const [showMintPrompt, setShowMintPrompt] = useState(false);
   const [displayNameInput, setDisplayNameInput] = useState(defaultDisplayName);
 
-  useEffect(() => {
-    if (!showMintPrompt) {
-      setDisplayNameInput(defaultDisplayName);
-    }
-  }, [defaultDisplayName, showMintPrompt]);
-
   const handleConfirmMint = () => {
     const normalized = displayNameInput.trim();
     if (!normalized) return;
@@ -88,7 +82,10 @@ export default function RefundAndMintPanel({
           <h3 className="text-2xl font-bold mb-2">NFT chứng nhận quyên góp</h3>
           <p className="text-emerald-100 mb-6 text-sm">Bạn có thể mint certificate NFT on-chain.</p>
           <button
-            onClick={() => setShowMintPrompt(true)}
+            onClick={() => {
+              setDisplayNameInput(defaultDisplayName);
+              setShowMintPrompt(true);
+            }}
             disabled={mintPending || mintConfirming || mintProfileSaving}
             className="w-full rounded-lg bg-white text-emerald-700 px-6 py-4 text-lg font-bold shadow-lg hover:bg-emerald-50 transition disabled:cursor-not-allowed disabled:opacity-50"
           >

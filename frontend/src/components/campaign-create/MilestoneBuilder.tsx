@@ -2,12 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { FormItem } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -21,7 +19,7 @@ import { cn } from "@/lib/utils";
 interface CampaignBasicInfo {
     title: string;
     totalGoal: number;
-    campaignDeadline: string;
+    campaignDeadline: string; // funding deadline (ISO or date)
 }
 
 interface Milestone {
@@ -67,7 +65,13 @@ const formatDateInput = (value: string): string => {
     if (!value) return "";
     const timestamp = normalizeDateValue(value);
     if (!timestamp) return "";
-    return new Date(timestamp).toISOString().split("T")[0];
+    const date = new Date(timestamp);
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    const hh = String(date.getHours()).padStart(2, "0");
+    const min = String(date.getMinutes()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
 };
 
 const toFormMilestone = (milestone: Milestone): MilestoneForm => ({
@@ -93,22 +97,6 @@ const normalizeDateValue = (value: string): number | null => {
     if (!value) return null;
     const timestamp = new Date(value).getTime();
     return Number.isNaN(timestamp) ? null : timestamp;
-};
-
-const parseDateOnly = (value: string): Date | undefined => {
-    if (!value) return undefined;
-    const parts = value.split("-").map((part) => Number(part));
-    if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) {
-        return undefined;
-    }
-    return new Date(parts[0], parts[1] - 1, parts[2]);
-};
-
-const toDateOnlyString = (date: Date): string => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
 };
 
 export default function MilestoneBuilder({
@@ -174,6 +162,7 @@ export default function MilestoneBuilder({
             : allocationStatus === "over"
               ? "border-rose-200"
               : "border-amber-200";
+    const [nowTs] = useState(() => Date.now());
 
     const validateField = (
         field: MilestoneField,
@@ -196,13 +185,12 @@ export default function MilestoneBuilder({
             if (!value.trim()) return "Vui lòng chọn hạn chót cho mốc";
             const milestoneTime = normalizeDateValue(value);
             if (milestoneTime === null) return "Hạn chót không hợp lệ";
-            const now = Date.now();
-            if (milestoneTime <= now) return "Hạn chót mốc phải ở tương lai";
+            if (milestoneTime <= nowTs) return "Hạn chót mốc phải ở tương lai";
             const campaignTime = normalizeDateValue(
                 campaignInfo.campaignDeadline,
             );
-            if (campaignTime !== null && milestoneTime >= campaignTime) {
-                return "Hạn chót mốc phải trước hạn chót chiến dịch";
+            if (campaignTime !== null && milestoneTime <= campaignTime) {
+                return "Hạn chót mốc phải sau hạn chót gây quỹ";
             }
             return null;
         }
@@ -348,12 +336,10 @@ export default function MilestoneBuilder({
         onSubmit(payload);
     };
 
-    const allFieldsValid = useMemo(() => {
-        return milestones.every((milestone) => {
-            const milestoneErrors = validateMilestone(milestone);
-            return Object.keys(milestoneErrors).length === 0;
-        });
-    }, [milestones]);
+    const allFieldsValid = milestones.every((milestone) => {
+        const milestoneErrors = validateMilestone(milestone);
+        return Object.keys(milestoneErrors).length === 0;
+    });
 
     const canSubmit = allFieldsValid && totalMatches;
 
@@ -373,15 +359,17 @@ export default function MilestoneBuilder({
     }, [campaignInfo.campaignDeadline]);
 
     const remainingGoal = totalGoal - totalAllocated;
-    const campaignDeadlineDate = useMemo(() => {
-        const dateOnly = campaignInfo.campaignDeadline.split("T")[0];
-        return parseDateOnly(dateOnly);
-    }, [campaignInfo.campaignDeadline]);
-    const today = useMemo(() => {
-        const date = new Date();
-        date.setHours(0, 0, 0, 0);
-        return date;
-    }, []);
+    const deadlineMinDateTime = (() => {
+        const campaignTime = normalizeDateValue(campaignInfo.campaignDeadline);
+        const minBase = campaignTime ? campaignTime + 60_000 : nowTs + 60_000;
+        const minDate = new Date(minBase);
+        const yyyy = minDate.getFullYear();
+        const mm = String(minDate.getMonth() + 1).padStart(2, "0");
+        const dd = String(minDate.getDate()).padStart(2, "0");
+        const hh = String(minDate.getHours()).padStart(2, "0");
+        const min = String(minDate.getMinutes()).padStart(2, "0");
+        return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+    })();
 
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -420,11 +408,6 @@ export default function MilestoneBuilder({
                             const isActive = activeMilestoneId === milestone.id;
                             const canMoveUp = index > 0;
                             const canMoveDown = index < milestones.length - 1;
-                            const selectedDate = parseDateOnly(
-                                milestone.deadline,
-                            );
-                            const campaignLimit = campaignDeadlineDate;
-
                             return (
                                 <Card
                                     key={milestone.id}
@@ -587,79 +570,42 @@ export default function MilestoneBuilder({
                                                     *
                                                 </span>
                                             </Label>
-                                            <Popover
-                                                onOpenChange={(open) => {
-                                                    if (!open) {
-                                                        handleBlur(
-                                                            milestone.id,
-                                                            "deadline",
-                                                            milestone.deadline,
-                                                        );
-                                                    }
-                                                }}
-                                            >
-                                                <PopoverTrigger asChild>
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        className={cn(
-                                                            "w-full justify-between text-left font-normal",
-                                                            !milestone.deadline &&
-                                                                "text-slate-500",
-                                                            milestoneErrors.deadline &&
-                                                                "border-rose-400",
-                                                        )}
-                                                        onClick={() =>
-                                                            setActiveMilestoneId(
-                                                                milestone.id,
-                                                            )
-                                                        }
-                                                    >
-                                                        {selectedDate
-                                                            ? selectedDate.toLocaleDateString(
-                                                                  "vi-VN",
-                                                              )
-                                                            : "Chọn ngày"}
-                                                    </Button>
-                                                </PopoverTrigger>
-                                                <PopoverContent
-                                                    className="w-auto p-0"
-                                                    align="start"
-                                                >
-                                                    <Calendar
-                                                        mode="single"
-                                                        selected={selectedDate}
-                                                        onSelect={(date) => {
-                                                            if (!date) return;
-                                                            handleFieldChange(
-                                                                milestone.id,
-                                                                "deadline",
-                                                                toDateOnlyString(
-                                                                    date,
-                                                                ),
-                                                            );
-                                                        }}
-                                                        disabled={(date) => {
-                                                            if (date <= today) return true;
-                                                            if (
-                                                                campaignLimit &&
-                                                                date >= campaignLimit
-                                                            ) {
-                                                                return true;
-                                                            }
-                                                            return false;
-                                                        }}
-                                                        initialFocus
-                                                    />
-                                                </PopoverContent>
-                                            </Popover>
+                                            <Input
+                                                type="datetime-local"
+                                                value={milestone.deadline}
+                                                onChange={(event) =>
+                                                    handleFieldChange(
+                                                        milestone.id,
+                                                        "deadline",
+                                                        event.target.value,
+                                                    )
+                                                }
+                                                onFocus={() =>
+                                                    setActiveMilestoneId(
+                                                        milestone.id,
+                                                    )
+                                                }
+                                                onBlur={(event) =>
+                                                    handleBlur(
+                                                        milestone.id,
+                                                        "deadline",
+                                                        event.target.value,
+                                                    )
+                                                }
+                                                min={deadlineMinDateTime}
+                                                className={cn(
+                                                    milestoneErrors.deadline
+                                                        ? "border-rose-400 focus-visible:ring-rose-200"
+                                                        : "border-slate-200",
+                                                )}
+                                            />
                                             {milestoneErrors.deadline && (
                                                 <p className="text-destructive text-sm">
                                                     {milestoneErrors.deadline}
                                                 </p>
                                             )}
                                             <p className="text-xs text-slate-500">
-                                                Hạn chót chiến dịch: {campaignDeadlineLabel}
+                                                Hạn chót gây quỹ: {campaignDeadlineLabel}
                                             </p>
                                         </FormItem>
 

@@ -14,6 +14,7 @@ type CampaignTuple = {
     deadline: bigint;
     withdrawn: boolean;
     status: number;
+    milestoneCount: bigint;
 };
 
 const ZERO = BigInt(0);
@@ -32,9 +33,12 @@ function normalizeCampaign(raw: Partial<CampaignTuple> | null | undefined) {
         goal: raw?.goal ?? ZERO,
         raised: raw?.totalRaised ?? ZERO,
         totalRaised: raw?.totalRaised ?? ZERO,
+        totalDisbursed: ZERO,
         deadline: Number(raw?.deadline ?? 0),
         withdrawn: Boolean(raw?.withdrawn),
         status,
+        milestoneCount: Number(raw?.milestoneCount ?? 0n),
+        currentMilestoneId: 0,
         completed: status !== ACTIVE_STATUS,
     };
 }
@@ -90,23 +94,57 @@ export function useReadTotalRaised() {
  * @param campaignId - ID của chiến dịch cần đọc
  */
 export function useReadCampaign(campaignId: number | null | undefined) {
-    const { data: campaign, isLoading, isError, error, refetch } = useReadContract({
-        ...contractConfig,
-        functionName: 'getCampaign',
-        args:
-            campaignId !== null && campaignId !== undefined && campaignId > 0
-                ? [BigInt(campaignId)]
-                : undefined,
+    const enabled = campaignId !== null && campaignId !== undefined && campaignId > 0;
+    const campaignIdArg = enabled ? BigInt(campaignId) : undefined;
+    const {
+        data: campaignData,
+        isLoading,
+        isError,
+        error,
+        refetch,
+    } = useReadContracts({
+        contracts: enabled
+            ? [
+                  {
+                      ...contractConfig,
+                      functionName: 'getCampaign' as const,
+                      args: [campaignIdArg as bigint] as const,
+                  },
+                  {
+                      ...contractConfig,
+                      functionName: 'campaignReviewerSafe' as const,
+                      args: [campaignIdArg as bigint] as const,
+                  },
+              ]
+            : [],
         query: {
             staleTime: 30000,
             refetchOnWindowFocus: true,
             refetchOnMount: true,
-            enabled: campaignId !== null && campaignId !== undefined && campaignId > 0,
+            enabled,
         },
     });
 
+    const campaign = useMemo(() => {
+        if (!campaignData || campaignData.length < 1) return null;
+        const rawCampaign =
+            (campaignData[0] as { result?: CampaignTuple } | undefined)?.result ??
+            null;
+        if (!rawCampaign) return null;
+
+        const reviewerSafe =
+            ((campaignData[1] as { result?: Address } | undefined)?.result as
+                | Address
+                | undefined) ?? ('0x0000000000000000000000000000000000000000' as Address);
+
+        return {
+            ...normalizeCampaign(rawCampaign as CampaignTuple),
+            reviewerSafe,
+        };
+    }, [campaignData]);
+
     return {
-        campaign: campaign ? normalizeCampaign(campaign as CampaignTuple) : null,
+        campaign,
         isLoading,
         isError,
         error: error?.message || null,
@@ -251,13 +289,25 @@ export function useDonateToCampaign() {
  * @returns write function và transaction state
  */
 export function useCreateCampaign() {
-    const { writeContract, data, isPending, error } = useWriteContract();
+    const { writeContractAsync, data, isPending, error } = useWriteContract();
 
-    const createCampaign = (beneficiary: Address, goalEth: string, durationDays: number) => {
-        return writeContract({
+    const createCampaign = (payload: {
+      goalEth: string;
+      reviewerSafe: Address;
+      fundingDeadline: number;
+      allocationBps: number[];
+      deadlines: number[];
+    }) => {
+        return writeContractAsync({
             ...contractConfig,
-            functionName: 'createCampaign',
-            args: [beneficiary, parseEther(goalEth), BigInt(durationDays)],
+            functionName: 'createCampaignWithGoal',
+            args: [
+              parseEther(payload.goalEth),
+              payload.allocationBps,
+              payload.deadlines.map((item) => BigInt(item)),
+              BigInt(payload.fundingDeadline),
+              payload.reviewerSafe,
+            ],
         });
     };
 
@@ -274,18 +324,18 @@ export function useCreateCampaign() {
  * @returns write function và transaction state
  */
 export function useWithdrawFunds() {
-    const { writeContract, data, isPending, error } = useWriteContract();
+    const { writeContractAsync, data, isPending, error } = useWriteContract();
 
-    const withdrawFunds = (campaignId: number) => {
-        return writeContract({
+    const markCampaignFailed = (campaignId: number) => {
+        return writeContractAsync({
             ...contractConfig,
-            functionName: 'withdrawFunds',
+            functionName: 'markCampaignFailed',
             args: [BigInt(campaignId)],
         });
     };
 
     return {
-        withdrawFunds,
+        withdrawFunds: markCampaignFailed,
         hash: data,
         isPending,
         error,
@@ -297,12 +347,12 @@ export function useWithdrawFunds() {
  * @returns write function và transaction state
  */
 export function useRefundDonation() {
-    const { writeContract, data, isPending, error } = useWriteContract();
+    const { writeContractAsync, data, isPending, error } = useWriteContract();
 
     const refund = (campaignId: number) => {
-        return writeContract({
+        return writeContractAsync({
             ...contractConfig,
-            functionName: 'claimRefund',
+            functionName: 'claimFundingRefund',
             args: [BigInt(campaignId)],
         });
     };
@@ -319,12 +369,12 @@ export function useRefundDonation() {
  * Hook để cập nhật campaign thành Failed sau deadline (nếu chưa đạt goal).
  */
 export function useMarkAsFailed() {
-    const { writeContract, data, isPending, error } = useWriteContract();
+    const { writeContractAsync, data, isPending, error } = useWriteContract();
 
     const markAsFailed = (campaignId: number) => {
-        return writeContract({
+        return writeContractAsync({
             ...contractConfig,
-            functionName: 'markAsFailed',
+            functionName: 'markCampaignFailed',
             args: [BigInt(campaignId)],
         });
     };

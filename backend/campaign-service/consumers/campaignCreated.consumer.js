@@ -8,6 +8,13 @@ const ROUTING_KEY = process.env.RABBITMQ_RKEY_CAMP_CREATED || "campaign.created"
 const MILESTONE_READER_ABI = [
     {
         type: "function",
+        name: "campaignReviewerSafe",
+        stateMutability: "view",
+        inputs: [{ name: "campaignId", type: "uint256" }],
+        outputs: [{ name: "", type: "address" }],
+    },
+    {
+        type: "function",
         name: "getMilestone",
         stateMutability: "view",
         inputs: [
@@ -58,13 +65,41 @@ function getMilestoneReader() {
     return milestoneReader;
 }
 
-async function loadMilestoneSeedData(onChainId, milestoneCount, fallbackDeadline) {
+async function loadReviewerSafe(onChainId) {
+    const reader = getMilestoneReader();
+    if (!reader) return "";
+
+    try {
+        const safe = await reader.campaignReviewerSafe(BigInt(onChainId));
+        return (safe || "").toString().toLowerCase();
+    } catch (error) {
+        console.warn(
+            `[campaign-service] Unable to read reviewerSafe for campaign=${onChainId}: ${error.message}`,
+        );
+        return "";
+    }
+}
+
+async function loadMilestoneSeedData(
+    onChainId,
+    milestoneCount,
+    fallbackDeadline,
+    goalWei,
+) {
     const reader = getMilestoneReader();
     const fallbackDate = new Date(Number(fallbackDeadline) * 1000);
     const results = [];
+    const goal = (() => {
+        try {
+            return BigInt(goalWei || "0");
+        } catch {
+            return 0n;
+        }
+    })();
 
     for (let milestoneId = 0; milestoneId < milestoneCount; milestoneId += 1) {
         let allocationBps = 0;
+        let financialTargetWei = "0";
         let deadline = fallbackDate;
 
         if (reader) {
@@ -74,6 +109,9 @@ async function loadMilestoneSeedData(onChainId, milestoneCount, fallbackDeadline
                     BigInt(milestoneId),
                 );
                 allocationBps = Number(rawMilestone.allocationBps || 0);
+                if (goal > 0n && allocationBps > 0) {
+                    financialTargetWei = ((goal * BigInt(allocationBps)) / 10_000n).toString();
+                }
                 deadline = new Date(Number(rawMilestone.deadline || fallbackDeadline) * 1000);
             } catch (error) {
                 console.warn(
@@ -85,6 +123,7 @@ async function loadMilestoneSeedData(onChainId, milestoneCount, fallbackDeadline
         results.push({
             milestoneId,
             allocationBps,
+            financialTargetWei,
             deadline,
         });
     }
@@ -112,6 +151,7 @@ async function startCampaignCreatedConsumer() {
             const payload = JSON.parse(msg.content.toString());
             const onChainId = Number(payload.onChainId);
             const milestoneCount = Number(payload.milestoneCount || 0);
+            const reviewerSafe = await loadReviewerSafe(onChainId);
 
             const campaign = await Campaign.findOneAndUpdate(
                 { onChainId },
@@ -123,13 +163,13 @@ async function startCampaignCreatedConsumer() {
                         goal: (payload.goalWei || "0").toString(),
                         deadline: new Date(Number(payload.deadline) * 1000),
                         milestoneCount,
+                        reviewerSafe: reviewerSafe || "",
                     },
                     $setOnInsert: {
                         status: "active",
                         title: "",
                         description: "",
                         thumbnailUrl: "",
-                        reviewerSafe: "",
                         currentMilestoneId: 0,
                         totalRaisedWei: "0",
                         raised: "0",
@@ -152,6 +192,7 @@ async function startCampaignCreatedConsumer() {
                 onChainId,
                 milestoneCount,
                 payload.deadline,
+                payload.goalWei,
             );
 
             if (milestoneSeeds.length > 0) {
@@ -170,7 +211,8 @@ async function startCampaignCreatedConsumer() {
                                     milestoneIndex: milestone.milestoneId,
                                     allocationBps: milestone.allocationBps,
                                     deadline: milestone.deadline,
-                                    financialTargetWei: "0",
+                                    financialTargetWei:
+                                        milestone.financialTargetWei || "0",
                                 },
                                 $setOnInsert: {
                                     status: "pending_funding",

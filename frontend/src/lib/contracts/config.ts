@@ -24,15 +24,25 @@ export const CROWDFUNDING_ABI = [
                     { internalType: 'address', name: 'beneficiary', type: 'address' },
                     { internalType: 'uint256', name: 'goal', type: 'uint256' },
                     { internalType: 'uint256', name: 'totalRaised', type: 'uint256' },
+                    { internalType: 'uint256', name: 'totalDisbursed', type: 'uint256' },
                     { internalType: 'uint256', name: 'deadline', type: 'uint256' },
                     { internalType: 'bool', name: 'withdrawn', type: 'bool' },
                     { internalType: 'uint8', name: 'status', type: 'uint8' },
+                    { internalType: 'uint256', name: 'milestoneCount', type: 'uint256' },
+                    { internalType: 'uint256', name: 'currentMilestoneId', type: 'uint256' },
                 ],
                 internalType: 'struct FundingPlatform.Campaign',
                 name: '',
                 type: 'tuple',
             },
         ],
+    },
+    {
+        inputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+        name: 'campaignReviewerSafe',
+        outputs: [{ internalType: 'address', name: '', type: 'address' }],
+        stateMutability: 'view',
+        type: 'function',
     },
     {
         inputs: [{ internalType: 'uint256', name: '_campaignId', type: 'uint256' }],
@@ -53,32 +63,49 @@ export const CROWDFUNDING_ABI = [
     },
     {
         inputs: [
-            { internalType: 'address', name: '_beneficiary', type: 'address' },
-            { internalType: 'uint256', name: '_goal', type: 'uint256' },
-            { internalType: 'uint256', name: '_durationDays', type: 'uint256' },
+            { internalType: 'uint16[]', name: 'allocationBps', type: 'uint16[]' },
+            { internalType: 'uint256[]', name: 'deadlines', type: 'uint256[]' },
+            { internalType: 'uint256', name: 'fundingDeadline', type: 'uint256' },
+            { internalType: 'address', name: 'reviewerSafe', type: 'address' },
         ],
-        name: 'createCampaign',
+        name: 'createCampaignWithMilestones',
         outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
         stateMutability: 'nonpayable',
         type: 'function',
     },
     {
-        inputs: [{ internalType: 'uint256', name: '_campaignId', type: 'uint256' }],
-        name: 'withdrawFunds',
+        inputs: [
+            { internalType: 'uint256', name: 'goalWei', type: 'uint256' },
+            { internalType: 'uint16[]', name: 'allocationBps', type: 'uint16[]' },
+            { internalType: 'uint256[]', name: 'deadlines', type: 'uint256[]' },
+            { internalType: 'uint256', name: 'fundingDeadline', type: 'uint256' },
+            { internalType: 'address', name: 'reviewerSafe', type: 'address' },
+        ],
+        name: 'createCampaignWithGoal',
+        outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+        stateMutability: 'nonpayable',
+        type: 'function',
+    },
+    {
+        inputs: [{ internalType: 'uint256', name: 'campaignId', type: 'uint256' }],
+        name: 'markCampaignFailed',
         outputs: [],
         stateMutability: 'nonpayable',
         type: 'function',
     },
     {
-        inputs: [{ internalType: 'uint256', name: '_campaignId', type: 'uint256' }],
-        name: 'claimRefund',
+        inputs: [{ internalType: 'uint256', name: 'campaignId', type: 'uint256' }],
+        name: 'claimFundingRefund',
         outputs: [],
         stateMutability: 'nonpayable',
         type: 'function',
     },
     {
-        inputs: [{ internalType: 'uint256', name: '_campaignId', type: 'uint256' }],
-        name: 'markAsFailed',
+        inputs: [
+          { internalType: 'uint256', name: 'campaignId', type: 'uint256' },
+          { internalType: 'uint256', name: 'milestoneId', type: 'uint256' },
+        ],
+        name: 'claimMilestoneRefund',
         outputs: [],
         stateMutability: 'nonpayable',
         type: 'function',
@@ -113,19 +140,21 @@ export const CROWDFUNDING_ABI = [
     {
         anonymous: false,
         inputs: [
-            { indexed: true, internalType: 'uint256', name: 'id', type: 'uint256' },
-            { indexed: true, internalType: 'address', name: 'creator', type: 'address' },
+            { indexed: true, internalType: 'uint256', name: 'campaignId', type: 'uint256' },
+            { indexed: false, internalType: 'address', name: 'creator', type: 'address' },
             { indexed: false, internalType: 'address', name: 'beneficiary', type: 'address' },
             { indexed: false, internalType: 'uint256', name: 'goal', type: 'uint256' },
-            { indexed: false, internalType: 'uint256', name: 'deadline', type: 'uint256' },
+            { indexed: false, internalType: 'uint256', name: 'fundingDeadline', type: 'uint256' },
+            { indexed: false, internalType: 'uint256', name: 'milestoneCount', type: 'uint256' },
         ],
         name: 'CampaignCreated',
         type: 'event',
     },
 ] as const;
 
+// Default contract address from smart-contracts/deployments/sepolia-latest.json
 const DEFAULT_CROWDFUNDING_CONTRACT_ADDRESS =
-    '0xCF6eBe1D6aD4d7d097B1cfB8d1eBB195b5710F78';
+    '0x543c9f923caceaf5d2799b0dc84e9d8e440df6f9';
 
 const envContractAddress = process.env.NEXT_PUBLIC_CROWDFUNDING_CONTRACT_ADDRESS?.trim();
 const isValidAddress = !!envContractAddress && /^0x[a-fA-F0-9]{40}$/.test(envContractAddress);
