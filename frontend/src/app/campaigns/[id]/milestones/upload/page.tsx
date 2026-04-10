@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useMemo, useState, type FormEvent } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib';
+import { useWriteContract } from 'wagmi';
+import { contractConfig } from '@/lib/contracts/config';
 
 const DEFAULT_API_BASE_URL = 'http://localhost:4000/api';
 
@@ -26,6 +28,7 @@ export default function MilestoneEvidenceUploadPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const { token } = useAuth();
+  const { writeContractAsync } = useWriteContract();
 
   const idParam = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const campaignId = toSafeInteger(typeof idParam === 'string' ? idParam : undefined, NaN);
@@ -89,12 +92,34 @@ export default function MilestoneEvidenceUploadPage() {
         throw new Error(payload?.error || payload?.message || 'Upload thất bại');
       }
 
-      const cid = payload?.data?.evidenceCid || payload?.data?.cid || payload?.data?.ipfsCid || '';
-      if (typeof cid === 'string' && cid.trim()) {
-        setResultMessage(`Upload thành công. CID: ${cid}`);
-      } else {
-        setResultMessage('Upload thành công.');
+      const cidRaw =
+        payload?.data?.contentHash ||
+        payload?.data?.evidenceCid ||
+        payload?.data?.cid ||
+        payload?.data?.ipfsCid ||
+        '';
+      const cid = typeof cidRaw === 'string' ? cidRaw.trim() : '';
+
+      if (!cid) {
+        setResultMessage('Upload thành công nhưng không đọc được CID để ghi blockchain.');
+        setFile(null);
+        return;
       }
+
+      try {
+        const txHash = await writeContractAsync({
+          ...contractConfig,
+          functionName: 'submitMilestoneProof',
+          args: [BigInt(campaignId), BigInt(milestoneId), cid],
+        });
+
+        setResultMessage(`Upload và ghi blockchain thành công. CID: ${cid}. Tx: ${txHash}`);
+      } catch (chainError) {
+        const chainMessage = chainError instanceof Error ? chainError.message : 'Không thể ghi CID lên blockchain';
+        setErrorMessage(`Upload IPFS thành công (CID: ${cid}) nhưng ghi blockchain thất bại: ${chainMessage}`);
+        return;
+      }
+
       setFile(null);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Không thể upload minh chứng');

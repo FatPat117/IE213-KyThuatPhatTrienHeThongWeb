@@ -110,6 +110,17 @@ export const CROWDFUNDING_ABI = [
         stateMutability: 'nonpayable',
         type: 'function',
     },
+    {
+        inputs: [
+            { internalType: 'uint256', name: 'campaignId', type: 'uint256' },
+            { internalType: 'uint256', name: 'milestoneId', type: 'uint256' },
+            { internalType: 'string', name: 'ipfsCid', type: 'string' },
+        ],
+        name: 'submitMilestoneProof',
+        outputs: [],
+        stateMutability: 'nonpayable',
+        type: 'function',
+    },
   {
     inputs: [{ internalType: 'uint256', name: '_campaignId', type: 'uint256' }],
     name: 'mintCertificate',
