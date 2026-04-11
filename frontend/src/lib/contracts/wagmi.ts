@@ -1,15 +1,16 @@
-import { createConfig, http } from 'wagmi';
+import { fallback, http } from 'viem';
+import { createConfig } from 'wagmi';
 import { sepolia } from 'wagmi/chains';
 
 const sepoliaRpcUrl = process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL;
-
-if (!sepoliaRpcUrl) {
-    throw new Error('NEXT_PUBLIC_SEPOLIA_RPC_URL is not defined in environment variables');
-}
+const defaultSepoliaRpcUrl = sepolia.rpcUrls.default.http[0];
+const rpcCandidates = [sepoliaRpcUrl, defaultSepoliaRpcUrl].filter(
+    (url): url is string => Boolean(url)
+);
 
 export const config = createConfig({
     chains: [sepolia],
     transports: {
-        [sepolia.id]: http(sepoliaRpcUrl),
+        [sepolia.id]: fallback(rpcCandidates.map((url) => http(url))),
     },
 });

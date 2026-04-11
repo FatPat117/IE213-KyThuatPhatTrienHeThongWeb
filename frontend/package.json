@@ -3,6 +3,9 @@
     "version": "0.1.0",
     "private": true,
     "scripts": {
+        "sync:contract-artifacts": "node scripts/sync-contract-artifacts.mjs",
+        "predev": "npm run sync:contract-artifacts",
+        "prebuild": "npm run sync:contract-artifacts",
         "dev": "next dev --webpack",
         "build": "next build",
         "start": "next start",

@@ -21,53 +21,17 @@ import CreateCampaignSuccessCard from '@/components/campaign-create/CreateCampai
 import MilestoneBuilder from '@/components/campaign-create/MilestoneBuilder';
 
 const SEPOLIA_CHAIN_ID = 11155111;
-const BPS_DENOMINATOR = 10_000;
+const SECONDS_PER_DAY = 24 * 60 * 60;
 
-function mapGoalsToAllocationBps(goalWeiItems: bigint[]) {
-  const totalGoalWei = goalWeiItems.reduce((sum, item) => sum + item, 0n);
-  if (totalGoalWei <= 0n) {
-    throw new Error('Tổng mục tiêu milestones phải lớn hơn 0.');
-  }
+function shortenHash(hash: string) {
+  if (!hash || hash.length < 14) return hash;
+  return `${hash.slice(0, 10)}...${hash.slice(-6)}`;
+}
 
-  const baseBps: number[] = [];
-  const remainders: Array<{ index: number; remainder: bigint }> = [];
-
-  let assigned = 0;
-  goalWeiItems.forEach((goalWei, index) => {
-    if (goalWei <= 0n) {
-      throw new Error(`Milestone ${index + 1} phải có mục tiêu > 0.`);
-    }
-    const numerator = goalWei * BigInt(BPS_DENOMINATOR);
-    const floorBps = Number(numerator / totalGoalWei);
-    const remainder = numerator % totalGoalWei;
-    baseBps.push(floorBps);
-    remainders.push({ index, remainder });
-    assigned += floorBps;
-  });
-
-  let remaining = BPS_DENOMINATOR - assigned;
-  remainders.sort((a, b) => {
-    if (a.remainder === b.remainder) return a.index - b.index;
-    return a.remainder > b.remainder ? -1 : 1;
-  });
-
-  let pointer = 0;
-  while (remaining > 0 && remainders.length > 0) {
-    const target = remainders[pointer % remainders.length];
-    baseBps[target.index] += 1;
-    pointer += 1;
-    remaining -= 1;
-  }
-
-  if (baseBps.some((item) => item <= 0)) {
-    throw new Error('Có milestone quá nhỏ, allocationBps bị 0. Vui lòng tăng giá trị milestone.');
-  }
-  const totalBps = baseBps.reduce((sum, item) => sum + item, 0);
-  if (totalBps !== BPS_DENOMINATOR) {
-    throw new Error('Tổng allocationBps phải bằng 10,000.');
-  }
-
-  return baseBps;
+function toDurationDays(startTimestamp: number, endTimestamp: number) {
+  const diffSeconds = endTimestamp - startTimestamp;
+  if (diffSeconds <= 0) return 0;
+  return Math.max(1, Math.ceil(diffSeconds / SECONDS_PER_DAY));
 }
 
 export default function CreateCampaignPage() {
@@ -95,19 +59,21 @@ export default function CreateCampaignPage() {
   const [metadataSyncError, setMetadataSyncError] = useState<string | null>(null);
   const [isMetadataSyncing, setIsMetadataSyncing] = useState(false);
   const [step, setStep] = useState<'basic' | 'milestones'>('basic');
+  const [submittedTxHash, setSubmittedTxHash] = useState<`0x${string}` | undefined>(undefined);
   const [milestoneMetadata, setMilestoneMetadata] = useState<
     Array<{ name: string; description: string }>
   >([]);
 
-  const { createCampaign, hash, isPending, error: createError } = useCreateCampaign();
+  const { createCampaign, isPending, error: createError } = useCreateCampaign();
   const { data: receipt, isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
-    hash,
+    hash: submittedTxHash,
   });
+  const isTxReverted = receipt?.status === 'reverted';
 
   const etherscanLink = useMemo(() => {
-    if (!hash) return null;
-    return `https://sepolia.etherscan.io/tx/${hash}`;
-  }, [hash]);
+    if (!submittedTxHash) return null;
+    return `https://sepolia.etherscan.io/tx/${submittedTxHash}`;
+  }, [submittedTxHash]);
 
   // Decode created campaign id from on-chain event logs.
   const createdCampaignId = useMemo(() => {
@@ -152,6 +118,9 @@ export default function CreateCampaignPage() {
     if (msg.includes('insufficient funds')) {
       return 'Không đủ ETH để trả phí gas. Vui lòng kiểm tra số dư.';
     }
+    if (msg.includes('gas limit too high')) {
+      return 'Ước lượng gas vượt giới hạn block. Vui lòng thử lại, hệ thống sẽ dùng gas an toàn.';
+    }
     if (msg.includes('network') || msg.includes('rpc')) return 'Lỗi mạng/RPC. Vui lòng kiểm tra kết nối.';
     return createError.message;
   }, [createError]);
@@ -159,6 +128,8 @@ export default function CreateCampaignPage() {
   const transactionError = manualError || parsedCreateError;
   const transactionStatus: 'idle' | 'pending' | 'confirming' | 'success' | 'error' = transactionError
     ? 'error'
+    : isTxReverted
+      ? 'error'
     : isConfirmed
       ? 'success'
       : isConfirming
@@ -169,9 +140,9 @@ export default function CreateCampaignPage() {
   const isFormBusy = isPending || isConfirming;
 
   useEffect(() => {
-    if (!hash || !address) return;
+    if (!submittedTxHash || !address) return;
     createTransaction(token, {
-      txHash: hash,
+      txHash: submittedTxHash,
       walletAddress: address,
       action: 'createCampaign',
       status: 'pending',
@@ -179,7 +150,15 @@ export default function CreateCampaignPage() {
     }).catch(() => {
       showErrorToast('Khong the ghi nhan transaction vao he thong theo doi.');
     });
-  }, [address, createdCampaignId, hash, token]);
+  }, [address, createdCampaignId, submittedTxHash, token]);
+
+  useEffect(() => {
+    if (!submittedTxHash || !receipt || receipt.status !== 'reverted') return;
+    const message =
+      'Giao dịch đã được đưa vào block nhưng bị revert (status=0). Có thể do sai địa chỉ contract hoặc ABI không khớp phiên bản đang chạy.';
+    setManualError(message);
+    showErrorToast(message);
+  }, [receipt, submittedTxHash]);
 
   useEffect(() => {
     if (!isConfirmed || !createdCampaignId) return;
@@ -304,8 +283,9 @@ export default function CreateCampaignPage() {
     }
 
     const reviewerSafe = formData.reviewerSafe.trim().toLowerCase();
-    if (!reviewerSafe) errors.reviewerSafe = 'Vui lòng nhập địa chỉ reviewerSafe';
-    else if (!/^0x[a-f0-9]{40}$/.test(reviewerSafe)) errors.reviewerSafe = 'Địa chỉ reviewerSafe không hợp lệ';
+    if (reviewerSafe && !/^0x[a-f0-9]{40}$/.test(reviewerSafe)) {
+      errors.reviewerSafe = 'Địa chỉ reviewerSafe không hợp lệ';
+    }
 
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -347,6 +327,7 @@ export default function CreateCampaignPage() {
     setMetadataSynced(false);
     setMetadataSyncError(null);
     setIsMetadataSyncing(false);
+    setSubmittedTxHash(undefined);
     setStep('milestones');
   };
 
@@ -419,31 +400,49 @@ export default function CreateCampaignPage() {
                   );
                   setManualError(null);
 
-                  const fundingDeadline = Math.floor(new Date(formData.deadline).getTime() / 1000);
-                  const reviewerSafe = formData.reviewerSafe.trim().toLowerCase();
+                  const nowTimestamp = Math.floor(Date.now() / 1000);
+                  const campaignDeadline = Math.floor(new Date(formData.deadline).getTime() / 1000);
                   const milestoneDeadlines = nextMilestones.map((milestone) =>
                     Math.floor(new Date(milestone.deadline).getTime() / 1000)
                   );
-                  if (milestoneDeadlines.some((deadline) => deadline <= fundingDeadline)) {
-                    throw new Error('Mọi deadline milestone phải sau funding deadline.');
+                  if (campaignDeadline <= nowTimestamp) {
+                    throw new Error('Deadline chiến dịch phải ở tương lai.');
+                  }
+                  if (milestoneDeadlines.some((deadline) => deadline <= campaignDeadline)) {
+                    throw new Error('Mọi deadline milestone phải sau deadline chiến dịch.');
                   }
 
-                  const milestoneGoalWei = nextMilestones.map((milestone) =>
-                    parseEther(String(milestone.goal))
-                  );
-                  const allocationBps = mapGoalsToAllocationBps(milestoneGoalWei);
-                  const totalBps = allocationBps.reduce((sum, item) => sum + item, 0);
-                  if (totalBps !== BPS_DENOMINATOR) {
-                    throw new Error('Tổng allocationBps phải bằng 10,000.');
+                  const campaignDurationDays = toDurationDays(nowTimestamp, campaignDeadline);
+                  if (campaignDurationDays <= 0) {
+                    throw new Error('Không thể quy đổi campaign durationDays hợp lệ.');
                   }
 
-                  await createCampaign({
-                    goalEth: formData.goalEth,
-                    reviewerSafe: reviewerSafe as `0x${string}`,
-                    fundingDeadline,
-                    allocationBps,
-                    deadlines: milestoneDeadlines,
+                  let previousDeadline = campaignDeadline;
+                  const onChainMilestones = nextMilestones.map((milestone, index) => {
+                    const milestoneDeadline = milestoneDeadlines[index];
+                    const durationDays = toDurationDays(previousDeadline, milestoneDeadline);
+                    if (durationDays <= 0) {
+                      throw new Error(`Milestone ${index + 1} có durationDays không hợp lệ.`);
+                    }
+                    previousDeadline = milestoneDeadline;
+                    return {
+                      title: milestone.name.trim(),
+                      description: milestone.description.trim(),
+                      fundAmountWei: parseEther(String(milestone.goal)),
+                      durationDays,
+                    };
                   });
+                  if (onChainMilestones.some((milestone) => milestone.fundAmountWei <= 0n)) {
+                    throw new Error('Mỗi milestone phải có mục tiêu > 0.');
+                  }
+
+                  const txHash = await createCampaign({
+                    beneficiary: address as `0x${string}`,
+                    durationDays: campaignDurationDays,
+                    milestones: onChainMilestones,
+                  });
+                  setSubmittedTxHash(txHash);
+                  showSuccessToast(`Đã gửi giao dịch ${shortenHash(txHash)}. Đang chờ xác nhận trên blockchain...`);
                 } catch (err) {
                   const message = err instanceof Error ? err.message : 'Có lỗi xảy ra';
                   setManualError(message);
@@ -465,7 +464,7 @@ export default function CreateCampaignPage() {
         <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-8">
           {transactionStatus === 'success' ? (
             <CreateCampaignSuccessCard
-              txHash={hash || ''}
+              txHash={submittedTxHash || ''}
               etherscanLink={etherscanLink}
               createdCampaignId={createdCampaignId}
             />
@@ -475,7 +474,7 @@ export default function CreateCampaignPage() {
               formErrors={formErrors}
               isBusy={isFormBusy}
               status={transactionStatus}
-              txHash={hash}
+              txHash={submittedTxHash}
               etherscanLink={etherscanLink}
               errorMessage={transactionError}
               onFieldChange={handleFieldChange}

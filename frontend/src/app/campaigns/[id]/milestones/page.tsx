@@ -76,6 +76,7 @@ export default function CampaignMilestonesPage() {
       campaignCreatedAt: backendCampaign.data?.createdAt,
       progressPercent: progress,
       goalWei: campaign.goal,
+      milestoneCount: campaign.milestoneCount,
     }).map((item, index) => {
       const mappedStatus: PublicCampaignMilestone['status'] =
         item.status === 'completed'

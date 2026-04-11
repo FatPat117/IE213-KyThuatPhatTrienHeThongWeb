@@ -12,6 +12,7 @@ interface MilestonePreviewCardProps {
   campaignCreatedAt?: string;
   progressPercent: number;
   goalWei?: bigint;
+  milestoneCount?: number;
 }
 
 function formatDate(value: Date) {
@@ -60,6 +61,7 @@ export default function MilestonePreviewCard({
   campaignCreatedAt,
   progressPercent,
   goalWei = 0n,
+  milestoneCount,
 }: MilestonePreviewCardProps) {
   const [apiMilestones, setApiMilestones] = useState<PublicCampaignMilestone[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -71,7 +73,7 @@ export default function MilestonePreviewCard({
         setIsLoading(true);
         const data = await getPublicCampaignMilestones(campaignId);
         setApiMilestones(data.milestones || []);
-      } catch (err) {
+      } catch {
         // Silently fail - we'll use fallback
         setApiMilestones([]);
       } finally {
@@ -91,6 +93,7 @@ export default function MilestonePreviewCard({
     campaignCreatedAt,
     progressPercent,
     goalWei,
+    milestoneCount,
   });
 
   const hasMilestones = apiMilestones.length > 0 || fallbackMilestones.length > 0;

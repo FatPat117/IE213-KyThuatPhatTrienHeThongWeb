@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { Address, formatEther, parseEther } from 'viem';
-import { useReadContract, useReadContracts, useWriteContract } from 'wagmi';
+import { useAccount, usePublicClient, useReadContract, useReadContracts, useWriteContract } from 'wagmi';
 import { CROWDFUNDING_CONTRACT_ADDRESS, contractConfig } from './config';
 
 type CampaignTuple = {
@@ -19,9 +19,16 @@ type CampaignTuple = {
 
 const ZERO = BigInt(0);
 const ACTIVE_STATUS = 0;
+const CREATE_CAMPAIGN_GAS_BASE = 900_000n;
+const CREATE_CAMPAIGN_GAS_PER_MILESTONE = 180_000n;
+const CREATE_CAMPAIGN_GAS_MAX = 8_000_000n;
 
-function normalizeCampaign(raw: Partial<CampaignTuple> | null | undefined) {
-    const id = Number(raw?.id ?? 0);
+function normalizeCampaign(
+    raw: Partial<CampaignTuple> | null | undefined,
+    fallbackId?: number
+) {
+    const parsedId = Number(raw?.id ?? 0);
+    const id = Number.isFinite(parsedId) && parsedId > 0 ? parsedId : (fallbackId ?? 0);
     const status = Number(raw?.status ?? ACTIVE_STATUS);
 
     return {
@@ -110,11 +117,6 @@ export function useReadCampaign(campaignId: number | null | undefined) {
                       functionName: 'getCampaign' as const,
                       args: [campaignIdArg as bigint] as const,
                   },
-                  {
-                      ...contractConfig,
-                      functionName: 'campaignReviewerSafe' as const,
-                      args: [campaignIdArg as bigint] as const,
-                  },
               ]
             : [],
         query: {
@@ -132,14 +134,9 @@ export function useReadCampaign(campaignId: number | null | undefined) {
             null;
         if (!rawCampaign) return null;
 
-        const reviewerSafe =
-            ((campaignData[1] as { result?: Address } | undefined)?.result as
-                | Address
-                | undefined) ?? ('0x0000000000000000000000000000000000000000' as Address);
-
         return {
             ...normalizeCampaign(rawCampaign as CampaignTuple),
-            reviewerSafe,
+            reviewerSafe: '0x0000000000000000000000000000000000000000' as Address,
         };
     }, [campaignData]);
 
@@ -191,12 +188,21 @@ export function useReadAllCampaigns() {
     const campaigns = useMemo(() => {
         if (!campaignsData) return [];
 
-        return (campaignsData as Array<{ result?: CampaignTuple } | CampaignTuple>)
-            .map((item) => {
-                const raw = (item as { result?: CampaignTuple }).result ?? (item as CampaignTuple);
-                return raw ? normalizeCampaign(raw) : null;
+        const normalized = (campaignsData as Array<{ result?: CampaignTuple } | CampaignTuple>)
+            .map((item, index) => {
+                const raw = (item as { result?: CampaignTuple }).result;
+                if (!raw) return null;
+                return normalizeCampaign(raw, index + 1);
             })
             .filter((campaign): campaign is NonNullable<typeof campaign> => campaign !== null);
+
+        const seen = new Set<number>();
+        return normalized.filter((campaign) => {
+            if (!Number.isFinite(campaign.id) || campaign.id <= 0) return false;
+            if (seen.has(campaign.id)) return false;
+            seen.add(campaign.id);
+            return true;
+        });
     }, [campaignsData]);
 
     const refetch = async () => {
@@ -289,26 +295,74 @@ export function useDonateToCampaign() {
  * @returns write function và transaction state
  */
 export function useCreateCampaign() {
+    const { address } = useAccount();
+    const publicClient = usePublicClient();
     const { writeContractAsync, data, isPending, error } = useWriteContract();
 
     const createCampaign = (payload: {
-      goalEth: string;
-      reviewerSafe: Address;
-      fundingDeadline: number;
-      allocationBps: number[];
-      deadlines: number[];
+      beneficiary: Address;
+      durationDays: number;
+      milestones: Array<{
+        title: string;
+        description: string;
+        fundAmountWei: bigint;
+        durationDays: number;
+      }>;
     }) => {
-        return writeContractAsync({
-            ...contractConfig,
-            functionName: 'createCampaignWithGoal',
-            args: [
-              parseEther(payload.goalEth),
-              payload.allocationBps,
-              payload.deadlines.map((item) => BigInt(item)),
-              BigInt(payload.fundingDeadline),
-              payload.reviewerSafe,
-            ],
-        });
+        const milestoneCount = BigInt(Math.max(payload.milestones.length, 1));
+        const computedGasLimit = CREATE_CAMPAIGN_GAS_BASE + CREATE_CAMPAIGN_GAS_PER_MILESTONE * milestoneCount;
+        const gas = computedGasLimit > CREATE_CAMPAIGN_GAS_MAX ? CREATE_CAMPAIGN_GAS_MAX : computedGasLimit;
+        const args = [
+            payload.beneficiary,
+            BigInt(payload.durationDays),
+            payload.milestones.map((milestone) => ({
+                title: milestone.title,
+                description: milestone.description,
+                fundAmount: milestone.fundAmountWei,
+                durationDays: BigInt(milestone.durationDays),
+            })),
+        ] as const;
+
+        const run = async () => {
+            // Fail fast before wallet prompt when deployed contract/ABI does not match.
+            if (!publicClient) {
+                throw new Error('Không thể kết nối RPC để kiểm tra contract trước khi gửi giao dịch.');
+            }
+            if (!address) {
+                throw new Error('Không tìm thấy địa chỉ ví để mô phỏng giao dịch tạo campaign.');
+            }
+
+            try {
+                await publicClient.simulateContract({
+                    ...contractConfig,
+                    account: address,
+                    functionName: 'createCampaign',
+                    args,
+                });
+            } catch (simulationError) {
+                const simulationMessage =
+                    simulationError instanceof Error ? simulationError.message.toLowerCase() : '';
+                if (
+                    simulationMessage.includes('function selector was not recognized') ||
+                    simulationMessage.includes('function does not exist') ||
+                    simulationMessage.includes('execution reverted')
+                ) {
+                    throw new Error(
+                        'Contract hiện tại không hỗ trợ hàm createCampaign theo ABI deploy mới nhất. Vui lòng kiểm tra lại địa chỉ/ABI.'
+                    );
+                }
+                throw simulationError;
+            }
+
+            return writeContractAsync({
+                ...contractConfig,
+                functionName: 'createCampaign',
+                args,
+                gas,
+            });
+        };
+
+        return run();
     };
 
     return {
