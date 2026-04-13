@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useAccount, useChainId, useConnect, useDisconnect, useSignMessage, useSwitchChain } from 'wagmi';
-import { injected } from 'wagmi/connectors';
+import { injected } from '@wagmi/core';
 import WalletConnectedCard from './WalletConnectedCard';
 import WalletDisconnectedCard from './WalletDisconnectedCard';
 import { requestNonce, useAuth, verifyWalletSignature } from '@/lib';

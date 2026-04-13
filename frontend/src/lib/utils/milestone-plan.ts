@@ -24,6 +24,7 @@ type BuildMilestonesInput = {
   campaignCreatedAt?: string;
   progressPercent: number;
   goalWei?: bigint;
+  milestoneCount?: number;
 };
 
 export const DEFAULT_MILESTONE_TEMPLATES: MilestoneTemplate[] = [
@@ -47,6 +48,32 @@ export const DEFAULT_MILESTONE_TEMPLATES: MilestoneTemplate[] = [
   },
 ];
 
+function buildMilestoneTemplates(milestoneCount: number): MilestoneTemplate[] {
+  if (milestoneCount <= 0) return [];
+  if (milestoneCount === DEFAULT_MILESTONE_TEMPLATES.length) {
+    return DEFAULT_MILESTONE_TEMPLATES;
+  }
+
+  const baseAllocation = Math.floor(100 / milestoneCount);
+  const remainder = 100 - baseAllocation * milestoneCount;
+  let cumulative = 0;
+
+  return Array.from({ length: milestoneCount }, (_, index) => {
+    const allocationPercent = baseAllocation + (index < remainder ? 1 : 0);
+    cumulative += allocationPercent;
+    const fallbackTemplate = DEFAULT_MILESTONE_TEMPLATES[index];
+
+    return {
+      title: fallbackTemplate?.title ?? `Mốc ${index + 1}`,
+      allocationPercent,
+      cumulativePercent: cumulative,
+      description:
+        fallbackTemplate?.description ??
+        'Giải ngân theo tiến độ sau khi có báo cáo và minh chứng tương ứng.',
+    };
+  });
+}
+
 function isValidDateString(value?: string) {
   if (!value) return false;
   return !Number.isNaN(new Date(value).getTime());
@@ -67,18 +94,23 @@ export function buildTimelineMilestones({
   campaignCreatedAt,
   progressPercent,
   goalWei = 0n,
+  milestoneCount,
 }: BuildMilestonesInput): TimelineMilestone[] {
   const safeProgress = Math.max(0, Math.min(progressPercent, 100));
   const endMs = campaignDeadline > 0 ? campaignDeadline * 1000 : Date.now();
   const createdAtMs = isValidDateString(campaignCreatedAt)
     ? new Date(campaignCreatedAt as string).getTime()
     : Date.now();
+  const normalizedMilestoneCount = Number.isFinite(milestoneCount)
+    ? Math.max(0, Math.floor(Number(milestoneCount)))
+    : DEFAULT_MILESTONE_TEMPLATES.length;
+  const milestoneTemplates = buildMilestoneTemplates(normalizedMilestoneCount);
 
-  const currentMilestoneIndex = DEFAULT_MILESTONE_TEMPLATES.findIndex(
+  const currentMilestoneIndex = milestoneTemplates.findIndex(
     (item) => safeProgress < item.cumulativePercent,
   );
 
-  return DEFAULT_MILESTONE_TEMPLATES.map((template, index) => {
+  return milestoneTemplates.map((template, index) => {
     const expectedDate = calcEstimatedMilestoneDate(createdAtMs, endMs, template.cumulativePercent);
     const reached = safeProgress >= template.cumulativePercent;
 

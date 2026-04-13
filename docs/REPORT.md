@@ -358,6 +358,42 @@ Trang chi tiết là nơi thực hiện các thao tác nghiệp vụ chính:
   - Smart contract address/config (đọc campaignCount/totalRaised)
   - Đồng bộ block (latest block number)
 
+#### 4.1.13 Giao diện nộp bằng chứng (`/campaigns/[id]/milestones/upload`)
+
+> **[CHÈN HÌNH UI.14]** Screenshot màn hình upload bằng chứng: chọn mốc, chọn file, upload thành công và hiển thị CID/txHash.  
+> File gợi ý: `docs/images/ui-14-milestone-evidence-upload.png`
+
+Màn hình này hiện thực luồng “tải minh chứng -> lưu IPFS -> ghi CID lên blockchain” cho từng mốc giải ngân:
+
+- **Điểm vào UI**:
+  - Từ timeline mốc ở `/campaigns/[id]/milestones`, user chọn “Tải minh chứng cho mốc này”.
+  - Trang upload nhận `campaignId`, `milestoneId` (query `milestone`) và có thể nhận thêm `sourceCid` để đối chiếu CID hiện tại.
+
+- **Form nộp minh chứng**:
+  - Trường nhập gồm: milestone ID, loại bằng chứng (`report/photo/video/document`), tiêu đề, mô tả, file đính kèm.
+  - File được gửi theo `multipart/form-data`, field `file`, qua endpoint backend:
+    - `POST /api/milestones/:campaignOnChainId/:milestoneIndex/evidence`
+
+- **Xử lý backend (off-chain)**:
+  - `campaign-service` nhận file, kiểm tra quyền creator theo `x-wallet-address`.
+  - File được upload lên Pinata/IPFS, nhận `CID`.
+  - Hệ thống lưu bản ghi `ProgressReport` (campaign, milestone, CID, metadata file, thời gian submit) để truy vấn/audit.
+
+- **Ghi nhận on-chain (source of truth cho proof CID)**:
+  - Sau khi backend trả về `CID`, frontend gọi smart contract:
+    - `submitMilestoneProof(campaignId, milestoneId, ipfsCid)`
+  - Khi transaction được xác nhận, contract phát event `MilestoneReportSubmitted`.
+  - `listener-service` bắt event, publish RabbitMQ (`milestone.report.submitted`), `campaign-service` consumer cập nhật trạng thái milestone và danh sách `reportCids`.
+
+- **Trạng thái phản hồi trên UI**:
+  - **Thành công toàn bộ**: upload IPFS + ghi blockchain thành công, hiển thị cả `CID` và `txHash`.
+  - **Thành công một phần**: upload IPFS thành công nhưng ghi blockchain thất bại -> UI thông báo rõ để user retry bước on-chain.
+  - **Thất bại upload**: dừng flow ở backend, không gọi blockchain.
+
+- **Ý nghĩa nghiệp vụ**:
+  - Bằng chứng được lưu phân tán (IPFS) để dễ kiểm chứng nội dung.
+  - CID được neo on-chain để đảm bảo tính bất biến và truy vết minh bạch trong quy trình giải ngân theo mốc.
+
 ---
 
 ### 4.2 Smart Contract: FundingPlatform (chức năng on-chain)

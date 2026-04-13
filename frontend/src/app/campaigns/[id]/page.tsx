@@ -4,7 +4,6 @@ import {
   contractConfig,
   createTransaction,
   getDonationsByCampaign,
-  getCampaignMetadataFromCache,
   isPlaceholderCampaignDescription,
   isPlaceholderCampaignTitle,
   toAuthUserProfile,
@@ -441,6 +440,7 @@ export default function CampaignDetailPage() {
                                 campaignCreatedAt={backendCampaign.data?.createdAt}
                                 progressPercent={progress}
                                 goalWei={campaign.goal}
+                                milestoneCount={campaign.milestoneCount}
                             />
 
                             <CampaignInfoPanel

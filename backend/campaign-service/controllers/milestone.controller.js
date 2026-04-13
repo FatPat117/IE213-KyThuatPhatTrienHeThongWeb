@@ -69,10 +69,65 @@ const uploadProgressEvidence = async (req, res) => {
             });
         }
 
-        const milestone = await Milestone.findOne({
+        const normalizedMilestoneIndex = Number.parseInt(milestoneIndex, 10);
+        if (!Number.isFinite(normalizedMilestoneIndex) || normalizedMilestoneIndex < 0) {
+            return res.status(400).json({
+                status: "error",
+                code: "INVALID_PARAMS",
+                message: "milestoneIndex must be a non-negative integer",
+            });
+        }
+
+        let milestone = await Milestone.findOne({
             campaignId: campaign._id,
-            milestoneIndex: parseInt(milestoneIndex),
+            $or: [
+                { milestoneIndex: normalizedMilestoneIndex },
+                { milestoneId: normalizedMilestoneIndex },
+            ],
         });
+
+        // Self-heal missing milestone docs (indexer lag): create placeholder milestone row
+        // so evidence upload does not fail when on-chain campaign already has that milestone.
+        if (!milestone) {
+            const onChainMilestoneCount = Number(campaign.milestoneCount || 0);
+            const canAutoCreateMilestone =
+                normalizedMilestoneIndex >= 0 &&
+                (!Number.isFinite(onChainMilestoneCount) ||
+                    onChainMilestoneCount <= 0 ||
+                    normalizedMilestoneIndex < onChainMilestoneCount);
+
+            if (canAutoCreateMilestone) {
+                milestone = await Milestone.findOneAndUpdate(
+                    {
+                        campaignOnChainId: Number.parseInt(campaignOnChainId, 10),
+                        milestoneId: normalizedMilestoneIndex,
+                    },
+                    {
+                        $set: {
+                            campaignId: campaign._id,
+                            campaignOnChainId: Number.parseInt(campaignOnChainId, 10),
+                            milestoneId: normalizedMilestoneIndex,
+                            milestoneIndex: normalizedMilestoneIndex,
+                        },
+                        $setOnInsert: {
+                            allocationBps: 0,
+                            financialTargetWei: "0",
+                            deadline: campaign.deadline,
+                            status: "pending_funding",
+                            title: "",
+                            description: "",
+                            reportCids: [],
+                            evidenceCids: [],
+                        },
+                    },
+                    {
+                        new: true,
+                        upsert: true,
+                        runValidators: true,
+                    },
+                );
+            }
+        }
 
         if (!milestone) {
             return res.status(404).json({
