@@ -1,28 +1,34 @@
-'use client';
+"use client";
 
 import {
-  contractConfig,
-  createTransaction,
-  getDonationsByCampaign,
-  isPlaceholderCampaignDescription,
-  isPlaceholderCampaignTitle,
-  toAuthUserProfile,
-  updateUserProfile,
-  useAuth,
-  useBackendCampaign,
+    contractConfig,
+    createTransaction,
+    getDonationsByCampaign,
+    isPlaceholderCampaignDescription,
+    isPlaceholderCampaignTitle,
+    toAuthUserProfile,
+    updateUserProfile,
+    useAuth,
+    useBackendCampaign,
     useClaimFundingRefund,
     useClaimMilestoneRefund,
-  useDonateToCampaign,
+    useDonateToCampaign,
     useDisburseMilestone,
-  useMarkAsFailed,
-  useMintCertificate,
-  useReadCampaign,
+    useMarkAsFailed,
+    useMintCertificate,
+    useReadCampaign,
 } from "@/lib";
 import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { formatEther, parseAbiItem } from "viem";
-import { useAccount, usePublicClient, useReadContract, useWaitForTransactionReceipt, useWatchContractEvent } from "wagmi";
+import {
+    useAccount,
+    usePublicClient,
+    useReadContract,
+    useWaitForTransactionReceipt,
+    useWatchContractEvent,
+} from "wagmi";
 import CampaignInfoPanel from "@/components/campaign-detail/CampaignInfoPanel";
 import { MilestonePreviewCard } from "@/components/campaign-milestones";
 import CreatorActionsPanel from "@/components/campaign-detail/CreatorActionsPanel";
@@ -43,7 +49,7 @@ export default function CampaignDetailPage() {
     const { address, isConnected, chain } = useAccount();
     const id = Number(params?.id);
     const { campaign, isLoading, isError, error, refetch } = useReadCampaign(
-        Number.isFinite(id) ? id : null
+        Number.isFinite(id) ? id : null,
     );
     const backendCampaign = useBackendCampaign(Number.isFinite(id) ? id : null);
     const { token, user, setAuth } = useAuth();
@@ -53,13 +59,45 @@ export default function CampaignDetailPage() {
     const [mintProfileSaving, setMintProfileSaving] = useState(false);
     const [mintFlowError, setMintFlowError] = useState<string | null>(null);
     const publicClient = usePublicClient({ chainId: contractConfig.chainId });
-    const [donationHistoryWarning, setDonationHistoryWarning] = useState<string | null>(null);
-    const { donate, hash, isPending, error: donateError } = useDonateToCampaign();
-    const { disburseMilestone, hash: disburseHash, isPending: disbursePending, error: disburseError } = useDisburseMilestone();
-    const { claimFundingRefund, hash: fundingRefundHash, isPending: fundingRefundPending, error: fundingRefundError } = useClaimFundingRefund();
-    const { claimMilestoneRefund, hash: milestoneRefundHash, isPending: milestoneRefundPending, error: milestoneRefundError } = useClaimMilestoneRefund();
-    const { markAsFailed, hash: markAsFailedHash, isPending: markAsFailedPending, error: markAsFailedError } = useMarkAsFailed();
-    const { mintCertificate, hash: mintHash, isPending: mintPending, error: mintError } = useMintCertificate();
+    const [donationHistoryWarning, setDonationHistoryWarning] = useState<
+        string | null
+    >(null);
+    const {
+        donate,
+        hash,
+        isPending,
+        error: donateError,
+    } = useDonateToCampaign();
+    const {
+        disburseMilestone,
+        hash: disburseHash,
+        isPending: disbursePending,
+        error: disburseError,
+    } = useDisburseMilestone();
+    const {
+        claimFundingRefund,
+        hash: fundingRefundHash,
+        isPending: fundingRefundPending,
+        error: fundingRefundError,
+    } = useClaimFundingRefund();
+    const {
+        claimMilestoneRefund,
+        hash: milestoneRefundHash,
+        isPending: milestoneRefundPending,
+        error: milestoneRefundError,
+    } = useClaimMilestoneRefund();
+    const {
+        markAsFailed,
+        hash: markAsFailedHash,
+        isPending: markAsFailedPending,
+        error: markAsFailedError,
+    } = useMarkAsFailed();
+    const {
+        mintCertificate,
+        hash: mintHash,
+        isPending: mintPending,
+        error: mintError,
+    } = useMintCertificate();
 
     const { isLoading: isConfirming, isSuccess: isConfirmed } =
         useWaitForTransactionReceipt({
@@ -80,25 +118,32 @@ export default function CampaignDetailPage() {
         useWaitForTransactionReceipt({
             hash: mintHash,
         });
-    const { isLoading: markAsFailedConfirming, isSuccess: markAsFailedConfirmed } =
-        useWaitForTransactionReceipt({
-            hash: markAsFailedHash,
-        });
+    const {
+        isLoading: markAsFailedConfirming,
+        isSuccess: markAsFailedConfirmed,
+    } = useWaitForTransactionReceipt({
+        hash: markAsFailedHash,
+    });
 
     const { data: hasMintedCertificate } = useReadContract({
         ...contractConfig,
-        functionName: 'hasMintedCertificate',
-        args: Number.isFinite(id) && address ? [BigInt(id), address] : undefined,
+        functionName: "hasMintedCertificate",
+        args:
+            Number.isFinite(id) && address ? [BigInt(id), address] : undefined,
         query: { enabled: Number.isFinite(id) && !!address },
     });
     const { data: donatedAmountOnChain } = useReadContract({
         ...contractConfig,
-        functionName: 'getDonation',
-        args: Number.isFinite(id) && address ? [BigInt(id), address] : undefined,
+        functionName: "getDonation",
+        args:
+            Number.isFinite(id) && address ? [BigInt(id), address] : undefined,
         query: { enabled: Number.isFinite(id) && !!address },
     });
 
-    const mergeDonations = (current: DonationEvent[], incoming: DonationEvent[]) => {
+    const mergeDonations = (
+        current: DonationEvent[],
+        incoming: DonationEvent[],
+    ) => {
         const byTxHash = new Map<string, DonationEvent>();
         [...current, ...incoming].forEach((item) => {
             if (!item.transactionHash) return;
@@ -111,7 +156,9 @@ export default function CampaignDetailPage() {
             }
         });
 
-        return Array.from(byTxHash.values()).sort((a, b) => b.timestamp - a.timestamp);
+        return Array.from(byTxHash.values()).sort(
+            (a, b) => b.timestamp - a.timestamp,
+        );
     };
 
     useEffect(() => {
@@ -130,7 +177,7 @@ export default function CampaignDetailPage() {
                         amount: BigInt(item.amount),
                         transactionHash: item.txHash,
                         timestamp: new Date(item.donatedAt).getTime(),
-                    }))
+                    })),
                 );
                 hasAtLeastOneSource = true;
             } catch {
@@ -141,24 +188,36 @@ export default function CampaignDetailPage() {
                 try {
                     const logs = await publicClient.getLogs({
                         address: contractConfig.address,
-                        event: parseAbiItem('event Donated(uint256 indexed campaignId, address indexed donor, uint256 amount, uint256 totalRaised)'),
+                        event: parseAbiItem(
+                            "event Donated(uint256 indexed campaignId, address indexed donor, uint256 amount, uint256 totalRaised)",
+                        ),
                         args: { campaignId: BigInt(id) },
-                        fromBlock: 'earliest',
-                        toBlock: 'latest',
+                        fromBlock: "earliest",
+                        toBlock: "latest",
                     });
 
                     const onChainDonations = await Promise.all(
                         logs.map(async (log) => {
-                            const args = (log as { args?: { campaignId?: bigint; donor?: string; amount?: bigint } }).args;
+                            const args = (
+                                log as {
+                                    args?: {
+                                        campaignId?: bigint;
+                                        donor?: string;
+                                        amount?: bigint;
+                                    };
+                                }
+                            ).args;
                             return {
-                                campaignId: Number(args?.campaignId ?? BigInt(id)),
-                                donor: args?.donor ?? '',
+                                campaignId: Number(
+                                    args?.campaignId ?? BigInt(id),
+                                ),
+                                donor: args?.donor ?? "",
                                 amount: args?.amount ?? BigInt(0),
-                                transactionHash: log.transactionHash ?? '',
+                                transactionHash: log.transactionHash ?? "",
                                 // Avoid extra per-log RPC calls (getBlock) to prevent list being empty on flaky RPC.
                                 timestamp: Date.now(),
                             } satisfies DonationEvent;
-                        })
+                        }),
                     );
 
                     merged.push(...onChainDonations);
@@ -170,7 +229,9 @@ export default function CampaignDetailPage() {
 
             setDonations((prev) => mergeDonations(prev, merged));
             setDonationHistoryWarning(
-                hasAtLeastOneSource ? null : "Không thể tải lịch sử quyên góp từ backend/on-chain. Vui lòng thử lại sau."
+                hasAtLeastOneSource
+                    ? null
+                    : "Không thể tải lịch sử quyên góp từ backend/on-chain. Vui lòng thử lại sau.",
             );
         };
 
@@ -178,24 +239,30 @@ export default function CampaignDetailPage() {
     }, [donationReloadNonce, id, publicClient]);
 
     // Check if user is creator
-    const isCreator = address && campaign && address.toLowerCase() === campaign.creator.toLowerCase();
+    const isCreator =
+        address &&
+        campaign &&
+        address.toLowerCase() === campaign.creator.toLowerCase();
 
-    const campaignStatusLabel = campaign?.statusLabel || 'active';
-    const isCampaignActive = campaignStatusLabel === 'active';
-    const isCampaignInProgress = campaignStatusLabel === 'in_progress';
-    const isCampaignCompleted = campaignStatusLabel === 'completed';
-    const isCampaignPartialFailed = campaignStatusLabel === 'partial_failed';
-    const isCampaignFailed = campaignStatusLabel === 'failed';
-    const canMintCertificate = isCampaignInProgress || isCampaignCompleted || isCampaignPartialFailed;
+    const campaignStatusLabel = campaign?.statusLabel || "active";
+    const isCampaignActive = campaignStatusLabel === "active";
+    const isCampaignInProgress = campaignStatusLabel === "in_progress";
+    const isCampaignCompleted = campaignStatusLabel === "completed";
+    const isCampaignPartialFailed = campaignStatusLabel === "partial_failed";
+    const isCampaignFailed = campaignStatusLabel === "failed";
+    const canMintCertificate =
+        isCampaignInProgress || isCampaignCompleted || isCampaignPartialFailed;
     const canDisburseCurrentMilestone = Boolean(
-        campaign && isCampaignInProgress && campaign.currentMilestoneId < campaign.milestoneCount
+        campaign &&
+        isCampaignInProgress &&
+        campaign.currentMilestoneId < campaign.milestoneCount,
     );
     const shouldMarkAsFailed = Boolean(
         campaign &&
         isCampaignActive &&
         campaign.raised < campaign.goal &&
         campaign.deadline > 0 &&
-        Math.floor(Date.now() / 1000) >= campaign.deadline
+        Math.floor(Date.now() / 1000) >= campaign.deadline,
     );
 
     // Compute total donated by current user in this campaign.
@@ -230,14 +297,22 @@ export default function CampaignDetailPage() {
         onLogs: (logs) => {
             const newDonations = logs
                 .map((log) => {
-                const args = (log as { args?: { campaignId?: bigint; donor?: string; amount?: bigint } }).args;
-                return {
-                    campaignId: Number(args?.campaignId || 0),
-                    donor: args?.donor || '',
-                    amount: args?.amount || BigInt(0),
-                    transactionHash: log.transactionHash || '',
-                    timestamp: Date.now(),
-                };
+                    const args = (
+                        log as {
+                            args?: {
+                                campaignId?: bigint;
+                                donor?: string;
+                                amount?: bigint;
+                            };
+                        }
+                    ).args;
+                    return {
+                        campaignId: Number(args?.campaignId || 0),
+                        donor: args?.donor || "",
+                        amount: args?.amount || BigInt(0),
+                        transactionHash: log.transactionHash || "",
+                        timestamp: Date.now(),
+                    };
                 })
                 .filter((item) => item.campaignId === id);
 
@@ -286,7 +361,9 @@ export default function CampaignDetailPage() {
         if (isConfirmed) {
             refetch();
             setAmount("0.01");
-            showSuccessToast("Quyên góp thành công! Giao dịch đang được xác nhận.");
+            showSuccessToast(
+                "Quyên góp thành công! Giao dịch đang được xác nhận.",
+            );
         }
     }, [isConfirmed, refetch]);
 
@@ -295,7 +372,9 @@ export default function CampaignDetailPage() {
         if (parseFloat(amount) <= 0) return;
         donate(id, amount).catch((err) => {
             const friendly = getFriendlyError(err);
-            showErrorToast(friendly || "Không thể thực hiện quyên góp. Vui lòng thử lại.");
+            showErrorToast(
+                friendly || "Không thể thực hiện quyên góp. Vui lòng thử lại.",
+            );
         });
     };
 
@@ -306,7 +385,10 @@ export default function CampaignDetailPage() {
             disburseMilestone(id, campaign.currentMilestoneId);
         } catch (err) {
             const friendly = getFriendlyError(err as { message?: string });
-            showErrorToast(friendly || "Không thể giải ngân milestone hiện tại. Vui lòng thử lại.");
+            showErrorToast(
+                friendly ||
+                    "Không thể giải ngân milestone hiện tại. Vui lòng thử lại.",
+            );
         }
     };
 
@@ -321,7 +403,9 @@ export default function CampaignDetailPage() {
             }
         } catch (err) {
             const friendly = getFriendlyError(err as { message?: string });
-            showErrorToast(friendly || "Không thể hoàn tiền. Vui lòng thử lại.");
+            showErrorToast(
+                friendly || "Không thể hoàn tiền. Vui lòng thử lại.",
+            );
         }
     };
 
@@ -332,7 +416,9 @@ export default function CampaignDetailPage() {
             return;
         }
         if (!token) {
-            setMintFlowError("Bạn cần đăng nhập lại để cập nhật tên hiển thị trước khi mint.");
+            setMintFlowError(
+                "Bạn cần đăng nhập lại để cập nhật tên hiển thị trước khi mint.",
+            );
             return;
         }
 
@@ -352,9 +438,14 @@ export default function CampaignDetailPage() {
             setAuth(token, toAuthUserProfile(updated));
             await mintCertificate(id);
         } catch (err) {
-            const message = err instanceof Error ? err.message : "Không thể cập nhật tên hiển thị trước khi mint.";
+            const message =
+                err instanceof Error
+                    ? err.message
+                    : "Không thể cập nhật tên hiển thị trước khi mint.";
             setMintFlowError(message);
-            const friendly = getFriendlyError({ message } as { message: string });
+            const friendly = getFriendlyError({ message } as {
+                message: string;
+            });
             showErrorToast(friendly || message);
         } finally {
             setMintProfileSaving(false);
@@ -369,7 +460,10 @@ export default function CampaignDetailPage() {
             markAsFailed(id);
         } catch (err) {
             const friendly = getFriendlyError(err as { message?: string });
-            showErrorToast(friendly || "Không thể cập nhật trạng thái Failed. Vui lòng thử lại.");
+            showErrorToast(
+                friendly ||
+                    "Không thể cập nhật trạng thái Failed. Vui lòng thử lại.",
+            );
         }
     };
 
@@ -396,7 +490,7 @@ export default function CampaignDetailPage() {
         const txHash = mintHash || hash;
         if (!txHash || !address) return;
 
-        const action = mintHash ? 'mintNFT' : 'donate';
+        const action = mintHash ? "mintNFT" : "donate";
 
         createTransaction(token, {
             txHash,
@@ -416,7 +510,9 @@ export default function CampaignDetailPage() {
     }, [campaign]);
 
     const isSepolia = chain?.id === 11155111;
-    const canDonate = Boolean(isConnected && isSepolia && campaign && isCampaignActive);
+    const canDonate = Boolean(
+        isConnected && isSepolia && campaign && isCampaignActive,
+    );
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
@@ -425,14 +521,20 @@ export default function CampaignDetailPage() {
                 <header className="flex flex-col gap-4 mb-8">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <BackButton fallbackHref="/campaigns" preferFallback />
+                            <BackButton
+                                fallbackHref="/campaigns"
+                                preferFallback
+                            />
                             <div>
                                 <div className="inline-flex items-center gap-2 mb-1">
                                     <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">
-                                        Campaign #{Number.isFinite(id) ? id : "-"}
+                                        Campaign #
+                                        {Number.isFinite(id) ? id : "-"}
                                     </span>
                                 </div>
-                                <h1 className="text-3xl font-bold text-slate-900">Chi tiết chiến dịch</h1>
+                                <h1 className="text-3xl font-bold text-slate-900">
+                                    Chi tiết chiến dịch
+                                </h1>
                             </div>
                         </div>
                     </div>
@@ -455,8 +557,12 @@ export default function CampaignDetailPage() {
                         <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4">
                             <span className="text-2xl">⚠️</span>
                         </div>
-                        <p className="text-lg font-semibold text-red-900 mb-2">Không thể tải chiến dịch</p>
-                        <p className="text-sm text-red-700 mb-4">{error || "Có lỗi xảy ra."}</p>
+                        <p className="text-lg font-semibold text-red-900 mb-2">
+                            Không thể tải chiến dịch
+                        </p>
+                        <p className="text-sm text-red-700 mb-4">
+                            {error || "Có lỗi xảy ra."}
+                        </p>
                         <button
                             onClick={() => refetch()}
                             className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700 transition"
@@ -467,215 +573,336 @@ export default function CampaignDetailPage() {
                 )}
 
                 {/* Campaign Content */}
-                {!isLoading && !backendCampaign.isLoading && !isError && campaign && (
-                    <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
-                        {/* Left Column - Main Content */}
-                        <div className="space-y-6">
-                            <MilestonePreviewCard
-                                campaignId={campaign.id}
-                                campaignDeadline={campaign.deadline}
-                                campaignCreatedAt={backendCampaign.data?.createdAt}
-                                progressPercent={progress}
-                                goalWei={campaign.goal}
-                                milestoneCount={campaign.milestoneCount}
-                                campaignStatusLabel={campaign.statusLabel}
-                                currentMilestoneId={campaign.currentMilestoneId}
-                            />
+                {!isLoading &&
+                    !backendCampaign.isLoading &&
+                    !isError &&
+                    campaign && (
+                        <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
+                            {/* Left Column - Main Content */}
+                            <div className="space-y-6">
+                                <MilestonePreviewCard
+                                    campaignId={campaign.id}
+                                    campaignDeadline={campaign.deadline}
+                                    campaignCreatedAt={
+                                        backendCampaign.data?.createdAt
+                                    }
+                                    progressPercent={progress}
+                                    goalWei={campaign.goal}
+                                    milestoneCount={campaign.milestoneCount}
+                                    campaignStatusLabel={campaign.statusLabel}
+                                    currentMilestoneId={
+                                        campaign.currentMilestoneId
+                                    }
+                                />
 
-                            <CampaignInfoPanel
-                                campaign={campaign}
-                                backendTitle={
-                                    !isPlaceholderCampaignTitle(backendCampaign.data?.title, id)
-                                        ? backendCampaign.data?.title
-                                        : undefined
-                                }
-                                backendDescription={
-                                    !isPlaceholderCampaignDescription(backendCampaign.data?.description)
-                                        ? backendCampaign.data?.description
-                                        : undefined
-                                }
-                                progress={progress}
-                            />
+                                <CampaignInfoPanel
+                                    campaign={campaign}
+                                    backendTitle={
+                                        !isPlaceholderCampaignTitle(
+                                            backendCampaign.data?.title,
+                                            id,
+                                        )
+                                            ? backendCampaign.data?.title
+                                            : undefined
+                                    }
+                                    backendDescription={
+                                        !isPlaceholderCampaignDescription(
+                                            backendCampaign.data?.description,
+                                        )
+                                            ? backendCampaign.data?.description
+                                            : undefined
+                                    }
+                                    progress={progress}
+                                />
 
-                            {/* Donation History Card */}
-                            <div className="rounded-2xl bg-white border border-slate-200 p-8 shadow-sm">
-                                <div className="flex items-center justify-between mb-6">
-                                    <h3 className="text-xl font-bold text-slate-900">Lịch sử quyên góp</h3>
-                                    <div className="flex items-center gap-3">
-                                        <span className="text-sm font-medium text-slate-600">
-                                            {donations.length} recent donation{donations.length !== 1 ? 's' : ''}
-                                        </span>
-                                        <button
-                                            onClick={handleReloadDonations}
-                                            type="button"
-                                            className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                                        >
-                                            Tải lại lịch sử
-                                        </button>
-                                    </div>
-                                </div>
-                                {donationHistoryWarning && (
-                                    <p className="mb-4 text-xs text-amber-700">{donationHistoryWarning}</p>
-                                )}
-
-                                {donations.length === 0 ? (
-                                    <div className="text-center py-12">
-                                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
-                                            <span className="text-3xl">💝</span>
+                                {/* Donation History Card */}
+                                <div className="rounded-2xl bg-white border border-slate-200 p-8 shadow-sm">
+                                    <div className="flex items-center justify-between mb-6">
+                                        <h3 className="text-xl font-bold text-slate-900">
+                                            Lịch sử quyên góp
+                                        </h3>
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-sm font-medium text-slate-600">
+                                                {donations.length} recent
+                                                donation
+                                                {donations.length !== 1
+                                                    ? "s"
+                                                    : ""}
+                                            </span>
+                                            <button
+                                                onClick={handleReloadDonations}
+                                                type="button"
+                                                className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                            >
+                                                Tải lại lịch sử
+                                            </button>
                                         </div>
-                                        <p className="text-slate-600 mb-2">Chưa có quyên góp</p>
-                                        <p className="text-sm text-slate-500">Hãy là người đầu tiên ủng hộ!</p>
                                     </div>
-                                ) : (
-                                    <>
-                                        <div className="space-y-3">
-                                            {donations.map((donation, index) => (
-                                                <div
-                                                    key={`${donation.transactionHash}-${index}`}
-                                                    className="rounded-xl bg-slate-50 border border-slate-200 p-4 hover:bg-slate-100 transition"
-                                                >
-                                                    <div className="flex items-center justify-between mb-2">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-green-600" />
-                                                            <div>
-                                                                <code className="text-sm font-mono text-slate-900">
-                                                                    {donation.donor.slice(0, 6)}...{donation.donor.slice(-4)}
-                                                                </code>
-                                                                <p className="text-xs text-slate-500">
-                                                                    {new Date(donation.timestamp).toLocaleString()}
+                                    {donationHistoryWarning && (
+                                        <p className="mb-4 text-xs text-amber-700">
+                                            {donationHistoryWarning}
+                                        </p>
+                                    )}
+
+                                    {donations.length === 0 ? (
+                                        <div className="text-center py-12">
+                                            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
+                                                <span className="text-3xl">
+                                                    💝
+                                                </span>
+                                            </div>
+                                            <p className="text-slate-600 mb-2">
+                                                Chưa có quyên góp
+                                            </p>
+                                            <p className="text-sm text-slate-500">
+                                                Hãy là người đầu tiên ủng hộ!
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="space-y-3">
+                                                {donations.map(
+                                                    (donation, index) => (
+                                                        <div
+                                                            key={`${donation.transactionHash}-${index}`}
+                                                            className="rounded-xl bg-slate-50 border border-slate-200 p-4 hover:bg-slate-100 transition"
+                                                        >
+                                                            <div className="flex items-center justify-between mb-2">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-green-600" />
+                                                                    <div>
+                                                                        <code className="text-sm font-mono text-slate-900">
+                                                                            {donation.donor.slice(
+                                                                                0,
+                                                                                6,
+                                                                            )}
+                                                                            ...
+                                                                            {donation.donor.slice(
+                                                                                -4,
+                                                                            )}
+                                                                        </code>
+                                                                        <p className="text-xs text-slate-500">
+                                                                            {new Date(
+                                                                                donation.timestamp,
+                                                                            ).toLocaleString()}
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                                <p className="text-lg font-bold text-green-600">
+                                                                    +
+                                                                    {Number(
+                                                                        formatEther(
+                                                                            donation.amount,
+                                                                        ),
+                                                                    ).toFixed(
+                                                                        4,
+                                                                    )}{" "}
+                                                                    ETH
                                                                 </p>
                                                             </div>
+                                                            <a
+                                                                href={`https://sepolia.etherscan.io/tx/${donation.transactionHash}`}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+                                                            >
+                                                                View Transaction
+                                                                →
+                                                            </a>
                                                         </div>
-                                                        <p className="text-lg font-bold text-green-600">
-                                                            +{Number(formatEther(donation.amount)).toFixed(4)} ETH
+                                                    ),
+                                                )}
+                                            </div>
+                                            {topDonors.length > 0 && (
+                                                <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                                    <div className="mb-3 flex items-center justify-between">
+                                                        <p className="text-sm font-semibold text-slate-900">
+                                                            Bảng xếp hạng nhà
+                                                            hảo tâm
+                                                        </p>
+                                                        <p className="text-xs text-slate-500">
+                                                            Top{" "}
+                                                            {topDonors.length}{" "}
+                                                            theo tổng ETH đã
+                                                            quyên góp
                                                         </p>
                                                     </div>
-                                                    <a
-                                                        href={`https://sepolia.etherscan.io/tx/${donation.transactionHash}`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
-                                                    >
-                                                        View Transaction →
-                                                    </a>
+                                                    <div className="space-y-2">
+                                                        {topDonors.map(
+                                                            (item, index) => (
+                                                                <div
+                                                                    key={
+                                                                        item.donor
+                                                                    }
+                                                                    className="flex items-center justify-between rounded-lg bg-white px-3 py-2"
+                                                                >
+                                                                    <div className="flex items-center gap-3">
+                                                                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-700">
+                                                                            {index +
+                                                                                1}
+                                                                        </span>
+                                                                        <code className="text-xs font-mono text-slate-900">
+                                                                            {item.donor.slice(
+                                                                                0,
+                                                                                6,
+                                                                            )}
+                                                                            ...
+                                                                            {item.donor.slice(
+                                                                                -4,
+                                                                            )}
+                                                                        </code>
+                                                                    </div>
+                                                                    <p className="text-sm font-semibold text-emerald-700">
+                                                                        {Number(
+                                                                            formatEther(
+                                                                                item.totalAmount,
+                                                                            ),
+                                                                        ).toFixed(
+                                                                            4,
+                                                                        )}{" "}
+                                                                        ETH
+                                                                    </p>
+                                                                </div>
+                                                            ),
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            ))}
-                                        </div>
-                                        {topDonors.length > 0 && (
-                                            <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                                                <div className="mb-3 flex items-center justify-between">
-                                                    <p className="text-sm font-semibold text-slate-900">
-                                                        Bảng xếp hạng nhà hảo tâm
-                                                    </p>
-                                                    <p className="text-xs text-slate-500">
-                                                        Top {topDonors.length} theo tổng ETH đã quyên góp
-                                                    </p>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    {topDonors.map((item, index) => (
-                                                        <div
-                                                            key={item.donor}
-                                                            className="flex items-center justify-between rounded-lg bg-white px-3 py-2"
-                                                        >
-                                                            <div className="flex items-center gap-3">
-                                                                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-700">
-                                                                    {index + 1}
-                                                                </span>
-                                                                <code className="text-xs font-mono text-slate-900">
-                                                                    {item.donor.slice(0, 6)}...{item.donor.slice(-4)}
-                                                                </code>
-                                                            </div>
-                                                            <p className="text-sm font-semibold text-emerald-700">
-                                                                {Number(formatEther(item.totalAmount)).toFixed(4)} ETH
-                                                            </p>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Right Column - Actions */}
-                        <div className="lg:sticky lg:top-6 h-fit space-y-4">
-                            {shouldMarkAsFailed && (
-                                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-                                    <p className="text-sm font-semibold text-amber-900 mb-2">Campaign đã quá deadline nhưng chưa cập nhật Failed</p>
-                                    <p className="text-xs text-amber-800 mb-4">
-                                        Bấm để ghi nhận trạng thái Failed on-chain, sau đó donor có thể refund.
-                                    </p>
-                                    <button
-                                        onClick={handleMarkAsFailed}
-                                        disabled={markAsFailedPending || markAsFailedConfirming}
-                                        className="w-full rounded-lg bg-amber-600 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
-                                    >
-                                        {markAsFailedPending
-                                            ? '⏳ Đợi xác nhận từ ví...'
-                                            : markAsFailedConfirming
-                                                ? '🔄 Đang xác nhận...'
-                                                : 'Cập nhật trạng thái Failed'}
-                                    </button>
-                                    {markAsFailedError && (
-                                        <p className="mt-3 text-xs text-red-700">{getFriendlyError(markAsFailedError)}</p>
+                                            )}
+                                        </>
                                     )}
                                 </div>
-                            )}
-                            <CreatorActionsPanel
-                                visible={Boolean(isCreator && canDisburseCurrentMilestone)}
-                                isPending={disbursePending}
-                                isConfirming={disburseConfirming}
-                                isWithdrawn={!canDisburseCurrentMilestone}
-                                isConfirmed={disburseConfirmed}
-                                txHash={disburseHash}
-                                errorMessage={getFriendlyError(disburseError)}
-                                onWithdraw={handleWithdraw}
-                            />
-                            <RefundAndMintPanel
-                                showRefund={Boolean((isCampaignFailed || isCampaignPartialFailed) && effectiveUserDonatedAmount > 0n)}
-                                showMint={Boolean(canMintCertificate && effectiveUserDonatedAmount > 0n && !hasMintedCertificate)}
-                                refundPending={isCampaignPartialFailed ? milestoneRefundPending : fundingRefundPending}
-                                refundConfirming={refundConfirming}
-                                refundConfirmed={refundConfirmed}
-                                refundHash={isCampaignPartialFailed ? milestoneRefundHash : fundingRefundHash}
-                                refundError={getFriendlyError(isCampaignPartialFailed ? milestoneRefundError : fundingRefundError)}
-                                mintPending={mintPending}
-                                mintConfirming={mintConfirming}
-                                mintConfirmed={mintConfirmed}
-                                mintHash={mintHash}
-                                mintError={mintFlowError || getFriendlyError(mintError)}
-                                mintProfileSaving={mintProfileSaving}
-                                defaultDisplayName={user?.displayName || ''}
-                                onRefund={handleRefund}
-                                onMint={handleMintCertificate}
-                            />
-                            <DonatePanel
-                                amount={amount}
-                                canDonate={canDonate}
-                                isConnected={isConnected}
-                                isSepolia={isSepolia}
-                                campaignStatusLabel={campaignStatusLabel as 'active' | 'in_progress' | 'completed' | 'partial_failed' | 'failed' | 'cancelled'}
-                                isPending={isPending}
-                                isConfirming={isConfirming}
-                                isConfirmed={isConfirmed}
-                                txHash={hash}
-                                donateError={getFriendlyError(donateError)}
-                                onAmountChange={setAmount}
-                                onDonate={handleDonate}
-                            />
+                            </div>
 
-                            {/* Network Info */}
-                            <div className="rounded-xl bg-white border border-slate-200 p-4 text-center">
-                                <div className="flex items-center justify-center gap-2 mb-1">
-                                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                                    <p className="text-xs font-semibold text-slate-600">SEPOLIA TESTNET</p>
+                            {/* Right Column - Actions */}
+                            <div className="lg:sticky lg:top-6 h-fit space-y-4">
+                                {shouldMarkAsFailed && (
+                                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                                        <p className="text-sm font-semibold text-amber-900 mb-2">
+                                            Campaign đã quá deadline nhưng chưa
+                                            cập nhật Failed
+                                        </p>
+                                        <p className="text-xs text-amber-800 mb-4">
+                                            Bấm để ghi nhận trạng thái Failed
+                                            on-chain, sau đó donor có thể
+                                            refund.
+                                        </p>
+                                        <button
+                                            onClick={handleMarkAsFailed}
+                                            disabled={
+                                                markAsFailedPending ||
+                                                markAsFailedConfirming
+                                            }
+                                            className="w-full rounded-lg bg-amber-600 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            {markAsFailedPending
+                                                ? "⏳ Đợi xác nhận từ ví..."
+                                                : markAsFailedConfirming
+                                                  ? "🔄 Đang xác nhận..."
+                                                  : "Cập nhật trạng thái Failed"}
+                                        </button>
+                                        {markAsFailedError && (
+                                            <p className="mt-3 text-xs text-red-700">
+                                                {getFriendlyError(
+                                                    markAsFailedError,
+                                                )}
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                                <CreatorActionsPanel
+                                    visible={Boolean(
+                                        isCreator &&
+                                        canDisburseCurrentMilestone,
+                                    )}
+                                    isPending={disbursePending}
+                                    isConfirming={disburseConfirming}
+                                    isWithdrawn={!canDisburseCurrentMilestone}
+                                    isConfirmed={disburseConfirmed}
+                                    txHash={disburseHash}
+                                    errorMessage={getFriendlyError(
+                                        disburseError,
+                                    )}
+                                    onWithdraw={handleWithdraw}
+                                />
+                                <RefundAndMintPanel
+                                    showRefund={Boolean(
+                                        (isCampaignFailed ||
+                                            isCampaignPartialFailed) &&
+                                        effectiveUserDonatedAmount > 0n,
+                                    )}
+                                    showMint={Boolean(
+                                        canMintCertificate &&
+                                        effectiveUserDonatedAmount > 0n &&
+                                        !hasMintedCertificate,
+                                    )}
+                                    refundPending={
+                                        isCampaignPartialFailed
+                                            ? milestoneRefundPending
+                                            : fundingRefundPending
+                                    }
+                                    refundConfirming={refundConfirming}
+                                    refundConfirmed={refundConfirmed}
+                                    refundHash={
+                                        isCampaignPartialFailed
+                                            ? milestoneRefundHash
+                                            : fundingRefundHash
+                                    }
+                                    refundError={getFriendlyError(
+                                        isCampaignPartialFailed
+                                            ? milestoneRefundError
+                                            : fundingRefundError,
+                                    )}
+                                    mintPending={mintPending}
+                                    mintConfirming={mintConfirming}
+                                    mintConfirmed={mintConfirmed}
+                                    mintHash={mintHash}
+                                    mintError={
+                                        mintFlowError ||
+                                        getFriendlyError(mintError)
+                                    }
+                                    mintProfileSaving={mintProfileSaving}
+                                    defaultDisplayName={user?.displayName || ""}
+                                    onRefund={handleRefund}
+                                    onMint={handleMintCertificate}
+                                />
+                                <DonatePanel
+                                    amount={amount}
+                                    canDonate={canDonate}
+                                    isConnected={isConnected}
+                                    isSepolia={isSepolia}
+                                    campaignStatusLabel={
+                                        campaignStatusLabel as
+                                            | "active"
+                                            | "in_progress"
+                                            | "completed"
+                                            | "partial_failed"
+                                            | "failed"
+                                            | "cancelled"
+                                    }
+                                    isPending={isPending}
+                                    isConfirming={isConfirming}
+                                    isConfirmed={isConfirmed}
+                                    txHash={hash}
+                                    donateError={getFriendlyError(donateError)}
+                                    onAmountChange={setAmount}
+                                    onDonate={handleDonate}
+                                />
+
+                                {/* Network Info */}
+                                <div className="rounded-xl bg-white border border-slate-200 p-4 text-center">
+                                    <div className="flex items-center justify-center gap-2 mb-1">
+                                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                                        <p className="text-xs font-semibold text-slate-600">
+                                            SEPOLIA TESTNET
+                                        </p>
+                                    </div>
+                                    <p className="text-xs text-slate-500">
+                                        All transactions are on Ethereum Sepolia
+                                    </p>
                                 </div>
-                                <p className="text-xs text-slate-500">All transactions are on Ethereum Sepolia</p>
                             </div>
                         </div>
-                    </div>
-                )}
+                    )}
             </main>
         </div>
     );

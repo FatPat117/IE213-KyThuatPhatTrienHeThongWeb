@@ -1,252 +1,316 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import { getPublicCampaignMilestones, PublicCampaignMilestone } from '@/lib/api/campaigns';
-import { buildTimelineMilestones } from '@/lib/utils/milestone-plan';
-import { formatEther } from 'viem';
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import {
+    getPublicCampaignMilestones,
+    PublicCampaignMilestone,
+} from "@/lib/api/campaigns";
+import { buildTimelineMilestones } from "@/lib/utils/milestone-plan";
+import { formatEther } from "viem";
 
 interface MilestonePreviewCardProps {
-  campaignId: number;
-  campaignDeadline: number;
-  campaignCreatedAt?: string;
-  progressPercent: number;
-  goalWei?: bigint;
-  milestoneCount?: number;
-  campaignStatusLabel?: 'active' | 'in_progress' | 'completed' | 'partial_failed' | 'failed' | 'cancelled';
-  currentMilestoneId?: number;
+    campaignId: number;
+    campaignDeadline: number;
+    campaignCreatedAt?: string;
+    progressPercent: number;
+    goalWei?: bigint;
+    milestoneCount?: number;
+    campaignStatusLabel?:
+        | "active"
+        | "in_progress"
+        | "completed"
+        | "partial_failed"
+        | "failed"
+        | "cancelled";
+    currentMilestoneId?: number;
 }
 
 function formatDate(value: Date) {
-  return new Intl.DateTimeFormat('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(value);
+    return new Intl.DateTimeFormat("vi-VN", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+    }).format(value);
 }
 
 function getStatusBadgeColor(status: string): string {
-  switch (status) {
-    case 'disbursed':
-    case 'completed':
-      return 'bg-emerald-100 text-emerald-700';
-    case 'submitted':
-    case 'pending_verification':
-    case 'in_progress':
-      return 'bg-blue-100 text-blue-700';
-    case 'deadline_exceeded':
-    case 'verification_failed':
-    case 'failed':
-    case 'cancelled':
-    case 'delayed':
-      return 'bg-red-100 text-red-700';
-    default:
-      return 'bg-slate-200 text-slate-600';
-  }
+    switch (status) {
+        case "disbursed":
+        case "completed":
+            return "bg-emerald-100 text-emerald-700";
+        case "submitted":
+        case "pending_verification":
+        case "in_progress":
+            return "bg-blue-100 text-blue-700";
+        case "deadline_exceeded":
+        case "verification_failed":
+        case "failed":
+        case "cancelled":
+        case "delayed":
+            return "bg-red-100 text-red-700";
+        default:
+            return "bg-slate-200 text-slate-600";
+    }
 }
 
 function getStatusLabel(status: string): string {
-  switch (status) {
-    case 'disbursed':
-    case 'completed':
-      return 'Disbursed';
-    case 'submitted':
-      return 'Proof submitted';
-    case 'pending_verification':
-      return 'Pending review';
-    case 'in_progress':
-      return 'In progress';
-    case 'deadline_exceeded':
-    case 'delayed':
-      return 'Deadline exceeded';
-    case 'verification_failed':
-      return 'Review rejected';
-    case 'failed':
-      return 'Failed';
-    case 'cancelled':
-      return 'Stopped';
-    case 'upcoming':
-      return 'Upcoming';
-    case 'pending_funding':
-      return 'Awaiting funding';
-    default:
-      return 'No report yet';
-  }
+    switch (status) {
+        case "disbursed":
+        case "completed":
+            return "Disbursed";
+        case "submitted":
+            return "Proof submitted";
+        case "pending_verification":
+            return "Pending review";
+        case "in_progress":
+            return "In progress";
+        case "deadline_exceeded":
+        case "delayed":
+            return "Deadline exceeded";
+        case "verification_failed":
+            return "Review rejected";
+        case "failed":
+            return "Failed";
+        case "cancelled":
+            return "Stopped";
+        case "upcoming":
+            return "Upcoming";
+        case "pending_funding":
+            return "Awaiting funding";
+        default:
+            return "No report yet";
+    }
 }
 
 export default function MilestonePreviewCard({
-  campaignId,
-  campaignDeadline,
-  campaignCreatedAt,
-  progressPercent,
-  goalWei = 0n,
-  milestoneCount,
-  campaignStatusLabel,
-  currentMilestoneId,
-}: MilestonePreviewCardProps) {
-  const [apiMilestones, setApiMilestones] = useState<PublicCampaignMilestone[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Fetch real milestones from API
-  useEffect(() => {
-    const fetchMilestones = async () => {
-      try {
-        setIsLoading(true);
-        const data = await getPublicCampaignMilestones(campaignId);
-        setApiMilestones(data.milestones || []);
-      } catch {
-        // Silently fail - we'll use fallback
-        setApiMilestones([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    if (campaignId > 0) {
-      fetchMilestones();
-    }
-  }, [campaignId]);
-
-  // Use API milestones if available, otherwise use mock data
-  const fallbackMilestones = buildTimelineMilestones({
     campaignId,
     campaignDeadline,
     campaignCreatedAt,
     progressPercent,
-    goalWei,
+    goalWei = 0n,
     milestoneCount,
     campaignStatusLabel,
     currentMilestoneId,
-  });
+}: MilestonePreviewCardProps) {
+    const [apiMilestones, setApiMilestones] = useState<
+        PublicCampaignMilestone[]
+    >([]);
+    const [isLoading, setIsLoading] = useState(true);
 
-  const hasMilestones = apiMilestones.length > 0 || fallbackMilestones.length > 0;
+    // Fetch real milestones from API
+    useEffect(() => {
+        const fetchMilestones = async () => {
+            try {
+                setIsLoading(true);
+                const data = await getPublicCampaignMilestones(campaignId);
+                setApiMilestones(data.milestones || []);
+            } catch {
+                // Silently fail - we'll use fallback
+                setApiMilestones([]);
+            } finally {
+                setIsLoading(false);
+            }
+        };
 
-  // If no milestones at all, hide the section
-  if (!hasMilestones) {
-    return null;
-  }
+        if (campaignId > 0) {
+            fetchMilestones();
+        }
+    }, [campaignId]);
 
-  return (
-    <Link href={`/campaigns/${campaignId}/milestones`} className="group block">
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition duration-200 hover:border-blue-300 hover:shadow-md">
-        <div className="border-b border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50 px-8 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-xl font-bold text-slate-900">Các mốc giải ngân dự kiến</h3>
-            <span className="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100">
-              Xem timeline chi tiết →
-            </span>
-          </div>
-          <p className="mt-2 text-sm text-slate-600">
-            Thông tin giúp nhà tài trợ đánh giá mức độ minh bạch và kế hoạch sử dụng quỹ trước khi quyên góp.
-          </p>
-        </div>
+    // Use API milestones if available, otherwise use mock data
+    const fallbackMilestones = buildTimelineMilestones({
+        campaignId,
+        campaignDeadline,
+        campaignCreatedAt,
+        progressPercent,
+        goalWei,
+        milestoneCount,
+        campaignStatusLabel,
+        currentMilestoneId,
+    });
 
-        <div className="p-8">
-          <div className="mb-5 flex items-center justify-between gap-3">
-            <p className="text-sm font-medium text-slate-600">Tiến độ chiến dịch hiện tại</p>
-            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
-              {progressPercent.toFixed(1)}%
-            </span>
-          </div>
+    const hasMilestones =
+        apiMilestones.length > 0 || fallbackMilestones.length > 0;
 
-          <div className="mb-6 h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-500"
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
+    // If no milestones at all, hide the section
+    if (!hasMilestones) {
+        return null;
+    }
 
-          {isLoading && (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="rounded-xl border border-slate-200 bg-slate-50 p-4 animate-pulse">
-                  <div className="h-4 w-2/3 bg-slate-200 rounded mb-2" />
-                  <div className="h-3 w-full bg-slate-200 rounded mb-2" />
-                  <div className="h-3 w-1/3 bg-slate-200 rounded" />
+    return (
+        <Link
+            href={`/campaigns/${campaignId}/milestones`}
+            className="group block"
+        >
+            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition duration-200 hover:border-blue-300 hover:shadow-md">
+                <div className="border-b border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50 px-8 py-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="text-xl font-bold text-slate-900">
+                            Các mốc giải ngân dự kiến
+                        </h3>
+                        <span className="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100">
+                            Xem timeline chi tiết →
+                        </span>
+                    </div>
+                    <p className="mt-2 text-sm text-slate-600">
+                        Thông tin giúp nhà tài trợ đánh giá mức độ minh bạch và
+                        kế hoạch sử dụng quỹ trước khi quyên góp.
+                    </p>
                 </div>
-              ))}
-            </div>
-          )}
 
-          {!isLoading && (
-            <div className="space-y-3">
-              {(apiMilestones.length > 0 ? apiMilestones : fallbackMilestones).map((milestone) => {
-                // Handle both API and mock milestone types
-                const isApiMilestone = 'milestoneId' in milestone;
-                const title = isApiMilestone ? milestone.title : milestone.title;
-                const allocationPercent = isApiMilestone
-                  ? Math.floor((Number(milestone.allocationBps) / 10000) * 100)
-                  : milestone.allocationPercent;
-                const status = isApiMilestone ? milestone.status : milestone.status;
-                const amountText = isApiMilestone
-                  ? (() => {
-                      try {
-                        const wei = BigInt(milestone.amountWei || '0');
-                        return `${Number(formatEther(wei)).toFixed(2)} ETH`;
-                      } catch {
-                        return '';
-                      }
-                    })()
-                  : '';
-
-                return (
-                  <article
-                    key={isApiMilestone ? milestone.milestoneId : milestone.id}
-                    className="rounded-xl border border-slate-200 bg-slate-50 p-4"
-                  >
-                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-semibold text-slate-900">{title}</p>
-                      <div className="flex items-center gap-2 text-xs font-semibold">
-                        <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700">
-                          {allocationPercent}% ngân sách
+                <div className="p-8">
+                    <div className="mb-5 flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium text-slate-600">
+                            Tiến độ chiến dịch hiện tại
+                        </p>
+                        <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
+                            {progressPercent.toFixed(1)}%
                         </span>
-                        <span className={`rounded-full px-2.5 py-1 ${getStatusBadgeColor(status)}`}>
-                          {getStatusLabel(status)}
-                        </span>
-                      </div>
                     </div>
 
-                    <p className="mb-2 text-sm leading-relaxed text-slate-600">
-                      {isApiMilestone ? milestone.description : milestone.description}
-                    </p>
+                    <div className="mb-6 h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
+                        <div
+                            className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-500"
+                            style={{ width: `${progressPercent}%` }}
+                        />
+                    </div>
 
-                    {amountText && (
-                      <p className="mb-2 text-xs font-medium text-slate-500">
-                        Số tiền: <span className="text-slate-700">{amountText}</span>
-                      </p>
+                    {isLoading && (
+                        <div className="space-y-3">
+                            {[1, 2, 3].map((i) => (
+                                <div
+                                    key={i}
+                                    className="rounded-xl border border-slate-200 bg-slate-50 p-4 animate-pulse"
+                                >
+                                    <div className="h-4 w-2/3 bg-slate-200 rounded mb-2" />
+                                    <div className="h-3 w-full bg-slate-200 rounded mb-2" />
+                                    <div className="h-3 w-1/3 bg-slate-200 rounded" />
+                                </div>
+                            ))}
+                        </div>
                     )}
 
-                    {isApiMilestone && milestone.deadline && (
-                      <p className="text-xs font-medium text-slate-500">
-                        Hạn chót dự kiến:{' '}
-                        <span className="text-slate-700">
-                          {formatDate(new Date(milestone.deadline))}
-                        </span>
-                      </p>
+                    {!isLoading && (
+                        <div className="space-y-3">
+                            {(apiMilestones.length > 0
+                                ? apiMilestones
+                                : fallbackMilestones
+                            ).map((milestone) => {
+                                // Handle both API and mock milestone types
+                                const isApiMilestone =
+                                    "milestoneId" in milestone;
+                                const title = isApiMilestone
+                                    ? milestone.title
+                                    : milestone.title;
+                                const allocationPercent = isApiMilestone
+                                    ? Math.floor(
+                                          (Number(milestone.allocationBps) /
+                                              10000) *
+                                              100,
+                                      )
+                                    : milestone.allocationPercent;
+                                const status = isApiMilestone
+                                    ? milestone.status
+                                    : milestone.status;
+                                const amountText = isApiMilestone
+                                    ? (() => {
+                                          try {
+                                              const wei = BigInt(
+                                                  milestone.amountWei || "0",
+                                              );
+                                              return `${Number(formatEther(wei)).toFixed(2)} ETH`;
+                                          } catch {
+                                              return "";
+                                          }
+                                      })()
+                                    : "";
+
+                                return (
+                                    <article
+                                        key={
+                                            isApiMilestone
+                                                ? milestone.milestoneId
+                                                : milestone.id
+                                        }
+                                        className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                                    >
+                                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                            <p className="font-semibold text-slate-900">
+                                                {title}
+                                            </p>
+                                            <div className="flex items-center gap-2 text-xs font-semibold">
+                                                <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700">
+                                                    {allocationPercent}% ngân
+                                                    sách
+                                                </span>
+                                                <span
+                                                    className={`rounded-full px-2.5 py-1 ${getStatusBadgeColor(status)}`}
+                                                >
+                                                    {getStatusLabel(status)}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <p className="mb-2 text-sm leading-relaxed text-slate-600">
+                                            {isApiMilestone
+                                                ? milestone.description
+                                                : milestone.description}
+                                        </p>
+
+                                        {amountText && (
+                                            <p className="mb-2 text-xs font-medium text-slate-500">
+                                                Số tiền:{" "}
+                                                <span className="text-slate-700">
+                                                    {amountText}
+                                                </span>
+                                            </p>
+                                        )}
+
+                                        {isApiMilestone &&
+                                            milestone.deadline && (
+                                                <p className="text-xs font-medium text-slate-500">
+                                                    Hạn chót dự kiến:{" "}
+                                                    <span className="text-slate-700">
+                                                        {formatDate(
+                                                            new Date(
+                                                                milestone.deadline,
+                                                            ),
+                                                        )}
+                                                    </span>
+                                                </p>
+                                            )}
+
+                                        {!isApiMilestone && (
+                                            <p className="text-xs font-medium text-slate-500">
+                                                Hạn chót dự kiến:{" "}
+                                                <span className="text-slate-700">
+                                                    {formatDate(
+                                                        milestone.expectedDate,
+                                                    )}
+                                                </span>
+                                            </p>
+                                        )}
+                                    </article>
+                                );
+                            })}
+                        </div>
                     )}
 
-                    {!isApiMilestone && (
-                      <p className="text-xs font-medium text-slate-500">
-                        Hạn chót dự kiến:{' '}
-                        <span className="text-slate-700">{formatDate(milestone.expectedDate)}</span>
-                      </p>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
-          )}
-
-          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
-            <p className="text-sm font-semibold text-amber-900">Chú thích về giải ngân theo giai đoạn</p>
-            <p className="mt-1 text-sm leading-relaxed text-amber-800">
-              Tiền quỹ không được rút một lần. Mỗi đợt giải ngân cần được mở khóa theo mốc tiến độ và được đối soát
-              minh chứng kết quả. Cách này giúp nhà tài trợ giảm rủi ro và tăng tính minh bạch trước khi quyết định
-              quyên góp.
-            </p>
-          </div>
-        </div>
-      </section>
-    </Link>
-  );
+                    <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                        <p className="text-sm font-semibold text-amber-900">
+                            Chú thích về giải ngân theo giai đoạn
+                        </p>
+                        <p className="mt-1 text-sm leading-relaxed text-amber-800">
+                            Tiền quỹ không được rút một lần. Mỗi đợt giải ngân
+                            cần được mở khóa theo mốc tiến độ và được đối soát
+                            minh chứng kết quả. Cách này giúp nhà tài trợ giảm
+                            rủi ro và tăng tính minh bạch trước khi quyết định
+                            quyên góp.
+                        </p>
+                    </div>
+                </div>
+            </section>
+        </Link>
+    );
 }

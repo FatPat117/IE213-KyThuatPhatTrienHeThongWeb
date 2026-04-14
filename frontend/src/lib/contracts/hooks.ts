@@ -1,9 +1,15 @@
-'use client';
+"use client";
 
-import { useMemo } from 'react';
-import { Address, formatEther, parseEther } from 'viem';
-import { useAccount, usePublicClient, useReadContract, useReadContracts, useWriteContract } from 'wagmi';
-import { CROWDFUNDING_CONTRACT_ADDRESS, contractConfig } from './config';
+import { useMemo } from "react";
+import { Address, formatEther, parseEther } from "viem";
+import {
+    useAccount,
+    usePublicClient,
+    useReadContract,
+    useReadContracts,
+    useWriteContract,
+} from "wagmi";
+import { CROWDFUNDING_CONTRACT_ADDRESS, contractConfig } from "./config";
 
 type CampaignTuple = {
     id: bigint;
@@ -20,12 +26,12 @@ type CampaignTuple = {
 };
 
 export type CampaignStatusLabel =
-    | 'active'
-    | 'in_progress'
-    | 'completed'
-    | 'partial_failed'
-    | 'failed'
-    | 'cancelled';
+    | "active"
+    | "in_progress"
+    | "completed"
+    | "partial_failed"
+    | "failed"
+    | "cancelled";
 
 const ZERO = BigInt(0);
 const ACTIVE_STATUS = 0;
@@ -36,12 +42,12 @@ const FAILED_STATUS = 4;
 const CANCELLED_STATUS = 5;
 
 const STATUS_MAP: Record<number, CampaignStatusLabel> = {
-    [ACTIVE_STATUS]: 'active',
-    [IN_PROGRESS_STATUS]: 'in_progress',
-    [COMPLETED_STATUS]: 'completed',
-    [PARTIAL_FAILED_STATUS]: 'partial_failed',
-    [FAILED_STATUS]: 'failed',
-    [CANCELLED_STATUS]: 'cancelled',
+    [ACTIVE_STATUS]: "active",
+    [IN_PROGRESS_STATUS]: "in_progress",
+    [COMPLETED_STATUS]: "completed",
+    [PARTIAL_FAILED_STATUS]: "partial_failed",
+    [FAILED_STATUS]: "failed",
+    [CANCELLED_STATUS]: "cancelled",
 };
 
 const CREATE_CAMPAIGN_GAS_BASE = 900_000n;
@@ -57,27 +63,38 @@ type CreateCampaignWithGoalPayload = {
 };
 
 function toStatusLabel(status: number): CampaignStatusLabel {
-    return STATUS_MAP[status] ?? 'active';
+    return STATUS_MAP[status] ?? "active";
 }
 
 function isTerminalStatus(status: number) {
-    return [COMPLETED_STATUS, PARTIAL_FAILED_STATUS, FAILED_STATUS, CANCELLED_STATUS].includes(status);
+    return [
+        COMPLETED_STATUS,
+        PARTIAL_FAILED_STATUS,
+        FAILED_STATUS,
+        CANCELLED_STATUS,
+    ].includes(status);
 }
 
 function normalizeCampaign(
     raw: Partial<CampaignTuple> | null | undefined,
-    fallbackId?: number
+    fallbackId?: number,
 ) {
     const parsedId = Number(raw?.id ?? 0);
-    const id = Number.isFinite(parsedId) && parsedId > 0 ? parsedId : (fallbackId ?? 0);
+    const id =
+        Number.isFinite(parsedId) && parsedId > 0
+            ? parsedId
+            : (fallbackId ?? 0);
     const status = Number(raw?.status ?? ACTIVE_STATUS);
 
     return {
         id,
         title: `Campaign #${id}`,
-        description: 'Campaign data is stored on-chain without off-chain metadata.',
-        creator: (raw?.creator ?? '0x0000000000000000000000000000000000000000') as Address,
-        beneficiary: (raw?.beneficiary ?? '0x0000000000000000000000000000000000000000') as Address,
+        description:
+            "Campaign data is stored on-chain without off-chain metadata.",
+        creator: (raw?.creator ??
+            "0x0000000000000000000000000000000000000000") as Address,
+        beneficiary: (raw?.beneficiary ??
+            "0x0000000000000000000000000000000000000000") as Address,
         goal: raw?.goal ?? ZERO,
         raised: raw?.totalRaised ?? ZERO,
         totalRaised: raw?.totalRaised ?? ZERO,
@@ -95,9 +112,15 @@ function normalizeCampaign(
 }
 
 export function useReadCampaignCount() {
-    const { data: campaignCount, isLoading, isError, error, refetch } = useReadContract({
+    const {
+        data: campaignCount,
+        isLoading,
+        isError,
+        error,
+        refetch,
+    } = useReadContract({
         ...contractConfig,
-        functionName: 'campaignCount',
+        functionName: "campaignCount",
         query: {
             staleTime: 30000,
             refetchOnWindowFocus: true,
@@ -116,10 +139,11 @@ export function useReadCampaignCount() {
 }
 
 export function useReadTotalRaised() {
-    const { campaigns, isLoading, isError, error, refetch } = useReadAllCampaigns();
+    const { campaigns, isLoading, isError, error, refetch } =
+        useReadAllCampaigns();
     const totalRaisedWei = useMemo(
         () => campaigns.reduce((sum, campaign) => sum + campaign.raised, ZERO),
-        [campaigns]
+        [campaigns],
     );
 
     return {
@@ -133,7 +157,8 @@ export function useReadTotalRaised() {
 }
 
 export function useReadCampaign(campaignId: number | null | undefined) {
-    const enabled = campaignId !== null && campaignId !== undefined && campaignId > 0;
+    const enabled =
+        campaignId !== null && campaignId !== undefined && campaignId > 0;
     const campaignIdArg = enabled ? BigInt(campaignId) : undefined;
 
     const {
@@ -144,7 +169,7 @@ export function useReadCampaign(campaignId: number | null | undefined) {
         refetch,
     } = useReadContract({
         ...contractConfig,
-        functionName: 'getCampaign',
+        functionName: "getCampaign",
         args: campaignIdArg ? [campaignIdArg] : undefined,
         query: {
             staleTime: 30000,
@@ -160,7 +185,8 @@ export function useReadCampaign(campaignId: number | null | undefined) {
 
         return {
             ...normalizeCampaign(rawCampaign as CampaignTuple),
-            reviewerSafe: '0x0000000000000000000000000000000000000000' as Address,
+            reviewerSafe:
+                "0x0000000000000000000000000000000000000000" as Address,
         };
     }, [campaignData]);
 
@@ -181,10 +207,10 @@ export function useReadAllCampaigns() {
         () =>
             Array.from({ length: campaignCount }, (_, i) => ({
                 ...contractConfig,
-                functionName: 'getCampaign' as const,
+                functionName: "getCampaign" as const,
                 args: [BigInt(i + 1)] as const,
             })),
-        [campaignCount]
+        [campaignCount],
     );
 
     const {
@@ -200,7 +226,8 @@ export function useReadAllCampaigns() {
             refetchOnWindowFocus: false,
             refetchOnMount: true,
             enabled:
-                CROWDFUNDING_CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000' &&
+                CROWDFUNDING_CONTRACT_ADDRESS !==
+                    "0x0000000000000000000000000000000000000000" &&
                 campaignCount > 0,
         },
     });
@@ -208,13 +235,18 @@ export function useReadAllCampaigns() {
     const campaigns = useMemo(() => {
         if (!campaignsData) return [];
 
-        const normalized = (campaignsData as Array<{ result?: CampaignTuple } | CampaignTuple>)
+        const normalized = (
+            campaignsData as Array<{ result?: CampaignTuple } | CampaignTuple>
+        )
             .map((item, index) => {
                 const raw = (item as { result?: CampaignTuple }).result;
                 if (!raw) return null;
                 return normalizeCampaign(raw, index + 1);
             })
-            .filter((campaign): campaign is NonNullable<typeof campaign> => campaign !== null);
+            .filter(
+                (campaign): campaign is NonNullable<typeof campaign> =>
+                    campaign !== null,
+            );
 
         const seen = new Set<number>();
         return normalized.filter((campaign) => {
@@ -245,7 +277,9 @@ export function useContractStats() {
 
     const isLoading = campaignCount.isLoading || totalRaised.isLoading;
     const isError = campaignCount.isError || totalRaised.isError;
-    const errors = [campaignCount.error, totalRaised.error].filter((e) => e !== null);
+    const errors = [campaignCount.error, totalRaised.error].filter(
+        (e) => e !== null,
+    );
 
     const refetch = async () => {
         await Promise.all([campaignCount.refetch(), totalRaised.refetch()]);
@@ -263,10 +297,13 @@ export function useContractStats() {
 }
 
 export function useReadFilteredCampaigns(isCompleted?: boolean) {
-    const { campaigns, isLoading, isError, error, refetch } = useReadAllCampaigns();
+    const { campaigns, isLoading, isError, error, refetch } =
+        useReadAllCampaigns();
 
     const filteredCampaigns =
-        isCompleted !== undefined ? campaigns.filter((c) => c.completed === isCompleted) : campaigns;
+        isCompleted !== undefined
+            ? campaigns.filter((c) => c.completed === isCompleted)
+            : campaigns;
 
     return {
         campaigns: filteredCampaigns,
@@ -284,7 +321,7 @@ export function useDonateToCampaign() {
     const donate = (campaignId: number, amountEth: string) => {
         return writeContractAsync({
             ...contractConfig,
-            functionName: 'donate',
+            functionName: "donate",
             args: [BigInt(campaignId)],
             value: parseEther(amountEth),
         });
@@ -305,40 +342,66 @@ export function useCreateCampaign() {
 
     const createCampaign = (payload: CreateCampaignWithGoalPayload) => {
         if (payload.goalWei <= 0n) {
-            throw new Error('Campaign goal must be greater than zero.');
+            throw new Error("Campaign goal must be greater than zero.");
         }
-        if (!payload.allocationBps.length || payload.allocationBps.length !== payload.deadlines.length) {
-            throw new Error('Milestone allocations and deadlines must have the same non-zero length.');
+        if (
+            !payload.allocationBps.length ||
+            payload.allocationBps.length !== payload.deadlines.length
+        ) {
+            throw new Error(
+                "Milestone allocations and deadlines must have the same non-zero length.",
+            );
         }
 
-        const normalizedAllocations = payload.allocationBps.map((value, index) => {
-            if (!Number.isInteger(value) || value <= 0 || value > 10_000) {
-                throw new Error(`Invalid allocation at milestone #${index + 1}.`);
-            }
-            return value;
-        });
+        const normalizedAllocations = payload.allocationBps.map(
+            (value, index) => {
+                if (!Number.isInteger(value) || value <= 0 || value > 10_000) {
+                    throw new Error(
+                        `Invalid allocation at milestone #${index + 1}.`,
+                    );
+                }
+                return value;
+            },
+        );
 
-        const totalAllocation = normalizedAllocations.reduce((sum, value) => sum + value, 0);
+        const totalAllocation = normalizedAllocations.reduce(
+            (sum, value) => sum + value,
+            0,
+        );
         if (totalAllocation !== 10_000) {
-            throw new Error('Milestone allocation must sum to exactly 10000 bps.');
+            throw new Error(
+                "Milestone allocation must sum to exactly 10000 bps.",
+            );
         }
 
         const fundingDeadline = Math.floor(payload.fundingDeadline);
-        if (!Number.isFinite(fundingDeadline) || fundingDeadline <= Math.floor(Date.now() / 1000)) {
-            throw new Error('Funding deadline must be a future timestamp.');
+        if (
+            !Number.isFinite(fundingDeadline) ||
+            fundingDeadline <= Math.floor(Date.now() / 1000)
+        ) {
+            throw new Error("Funding deadline must be a future timestamp.");
         }
 
         const normalizedDeadlines = payload.deadlines.map((value, index) => {
             const deadline = Math.floor(value);
             if (!Number.isFinite(deadline) || deadline <= fundingDeadline) {
-                throw new Error(`Milestone deadline #${index + 1} must be after funding deadline.`);
+                throw new Error(
+                    `Milestone deadline #${index + 1} must be after funding deadline.`,
+                );
             }
             return BigInt(deadline);
         });
 
-        const milestoneCount = BigInt(Math.max(normalizedAllocations.length, 1));
-        const computedGasLimit = CREATE_CAMPAIGN_GAS_BASE + CREATE_CAMPAIGN_GAS_PER_MILESTONE * milestoneCount;
-        const gas = computedGasLimit > CREATE_CAMPAIGN_GAS_MAX ? CREATE_CAMPAIGN_GAS_MAX : computedGasLimit;
+        const milestoneCount = BigInt(
+            Math.max(normalizedAllocations.length, 1),
+        );
+        const computedGasLimit =
+            CREATE_CAMPAIGN_GAS_BASE +
+            CREATE_CAMPAIGN_GAS_PER_MILESTONE * milestoneCount;
+        const gas =
+            computedGasLimit > CREATE_CAMPAIGN_GAS_MAX
+                ? CREATE_CAMPAIGN_GAS_MAX
+                : computedGasLimit;
 
         const args = [
             payload.goalWei,
@@ -350,29 +413,37 @@ export function useCreateCampaign() {
 
         const run = async () => {
             if (!publicClient) {
-                throw new Error('Unable to connect RPC before sending transaction.');
+                throw new Error(
+                    "Unable to connect RPC before sending transaction.",
+                );
             }
             if (!address) {
-                throw new Error('Wallet address is unavailable for transaction simulation.');
+                throw new Error(
+                    "Wallet address is unavailable for transaction simulation.",
+                );
             }
 
             try {
                 await publicClient.simulateContract({
                     ...contractConfig,
                     account: address,
-                    functionName: 'createCampaignWithGoal',
+                    functionName: "createCampaignWithGoal",
                     args,
                 });
             } catch (simulationError) {
                 const simulationMessage =
-                    simulationError instanceof Error ? simulationError.message.toLowerCase() : '';
+                    simulationError instanceof Error
+                        ? simulationError.message.toLowerCase()
+                        : "";
                 if (
-                    simulationMessage.includes('function selector was not recognized') ||
-                    simulationMessage.includes('function does not exist') ||
-                    simulationMessage.includes('execution reverted')
+                    simulationMessage.includes(
+                        "function selector was not recognized",
+                    ) ||
+                    simulationMessage.includes("function does not exist") ||
+                    simulationMessage.includes("execution reverted")
                 ) {
                     throw new Error(
-                        'The deployed contract does not match createCampaignWithGoal ABI. Please verify contract address and ABI version.'
+                        "The deployed contract does not match createCampaignWithGoal ABI. Please verify contract address and ABI version.",
                     );
                 }
                 throw simulationError;
@@ -380,7 +451,7 @@ export function useCreateCampaign() {
 
             return writeContractAsync({
                 ...contractConfig,
-                functionName: 'createCampaignWithGoal',
+                functionName: "createCampaignWithGoal",
                 args,
                 gas,
             });
@@ -403,7 +474,7 @@ export function useWithdrawFunds() {
     const withdrawFunds = (campaignId: number, milestoneId: number) => {
         return writeContractAsync({
             ...contractConfig,
-            functionName: 'disburseMilestone',
+            functionName: "disburseMilestone",
             args: [BigInt(campaignId), BigInt(milestoneId)],
         });
     };
@@ -422,7 +493,7 @@ export function useRefundDonation() {
     const refund = (campaignId: number) => {
         return writeContractAsync({
             ...contractConfig,
-            functionName: 'claimFundingRefund',
+            functionName: "claimFundingRefund",
             args: [BigInt(campaignId)],
         });
     };
@@ -441,7 +512,7 @@ export function useMarkAsFailed() {
     const markAsFailed = (campaignId: number) => {
         return writeContractAsync({
             ...contractConfig,
-            functionName: 'markCampaignFailed',
+            functionName: "markCampaignFailed",
             args: [BigInt(campaignId)],
         });
     };
@@ -457,10 +528,14 @@ export function useMarkAsFailed() {
 export function useSubmitMilestoneProof() {
     const { writeContractAsync, data, isPending, error } = useWriteContract();
 
-    const submitMilestoneProof = (campaignId: number, milestoneId: number, ipfsCid: string) => {
+    const submitMilestoneProof = (
+        campaignId: number,
+        milestoneId: number,
+        ipfsCid: string,
+    ) => {
         return writeContractAsync({
             ...contractConfig,
-            functionName: 'submitMilestoneProof',
+            functionName: "submitMilestoneProof",
             args: [BigInt(campaignId), BigInt(milestoneId), ipfsCid],
         });
     };
@@ -479,7 +554,7 @@ export function useApproveMilestone() {
     const approveMilestone = (campaignId: number, milestoneId: number) => {
         return writeContractAsync({
             ...contractConfig,
-            functionName: 'approveMilestone',
+            functionName: "approveMilestone",
             args: [BigInt(campaignId), BigInt(milestoneId)],
         });
     };
@@ -498,7 +573,7 @@ export function useDisburseMilestone() {
     const disburseMilestone = (campaignId: number, milestoneId: number) => {
         return writeContractAsync({
             ...contractConfig,
-            functionName: 'disburseMilestone',
+            functionName: "disburseMilestone",
             args: [BigInt(campaignId), BigInt(milestoneId)],
         });
     };
@@ -517,7 +592,7 @@ export function useMarkMilestoneFailed() {
     const markMilestoneFailed = (campaignId: number, milestoneId: number) => {
         return writeContractAsync({
             ...contractConfig,
-            functionName: 'markMilestoneFailed',
+            functionName: "markMilestoneFailed",
             args: [BigInt(campaignId), BigInt(milestoneId)],
         });
     };
@@ -536,7 +611,7 @@ export function useClaimMilestoneRefund() {
     const claimMilestoneRefund = (campaignId: number, milestoneId: number) => {
         return writeContractAsync({
             ...contractConfig,
-            functionName: 'claimMilestoneRefund',
+            functionName: "claimMilestoneRefund",
             args: [BigInt(campaignId), BigInt(milestoneId)],
         });
     };
@@ -555,7 +630,7 @@ export function useClaimFundingRefund() {
     const claimFundingRefund = (campaignId: number) => {
         return writeContractAsync({
             ...contractConfig,
-            functionName: 'claimFundingRefund',
+            functionName: "claimFundingRefund",
             args: [BigInt(campaignId)],
         });
     };
@@ -569,20 +644,20 @@ export function useClaimFundingRefund() {
 }
 
 export function useMintCertificate() {
-  const { writeContractAsync, data, isPending, error } = useWriteContract();
+    const { writeContractAsync, data, isPending, error } = useWriteContract();
 
-  const mintCertificate = (campaignId: number) => {
-    return writeContractAsync({
-      ...contractConfig,
-      functionName: 'mintCertificate',
-      args: [BigInt(campaignId)],
-    });
-  };
+    const mintCertificate = (campaignId: number) => {
+        return writeContractAsync({
+            ...contractConfig,
+            functionName: "mintCertificate",
+            args: [BigInt(campaignId)],
+        });
+    };
 
-  return {
-    mintCertificate,
-    hash: data,
-    isPending,
-    error,
-  };
+    return {
+        mintCertificate,
+        hash: data,
+        isPending,
+        error,
+    };
 }
