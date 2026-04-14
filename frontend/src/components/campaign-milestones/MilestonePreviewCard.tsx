@@ -13,6 +13,8 @@ interface MilestonePreviewCardProps {
   progressPercent: number;
   goalWei?: bigint;
   milestoneCount?: number;
+  campaignStatusLabel?: 'active' | 'in_progress' | 'completed' | 'partial_failed' | 'failed' | 'cancelled';
+  currentMilestoneId?: number;
 }
 
 function formatDate(value: Date) {
@@ -26,12 +28,17 @@ function formatDate(value: Date) {
 function getStatusBadgeColor(status: string): string {
   switch (status) {
     case 'disbursed':
+    case 'completed':
       return 'bg-emerald-100 text-emerald-700';
     case 'submitted':
     case 'pending_verification':
+    case 'in_progress':
       return 'bg-blue-100 text-blue-700';
     case 'deadline_exceeded':
     case 'verification_failed':
+    case 'failed':
+    case 'cancelled':
+    case 'delayed':
       return 'bg-red-100 text-red-700';
     default:
       return 'bg-slate-200 text-slate-600';
@@ -41,17 +48,29 @@ function getStatusBadgeColor(status: string): string {
 function getStatusLabel(status: string): string {
   switch (status) {
     case 'disbursed':
-      return 'Đã giải ngân';
+    case 'completed':
+      return 'Disbursed';
     case 'submitted':
-      return 'Đã báo cáo';
+      return 'Proof submitted';
     case 'pending_verification':
-      return 'Chờ duyệt';
+      return 'Pending review';
+    case 'in_progress':
+      return 'In progress';
     case 'deadline_exceeded':
-      return 'Quá hạn';
+    case 'delayed':
+      return 'Deadline exceeded';
     case 'verification_failed':
-      return 'Duyệt không đạt';
+      return 'Review rejected';
+    case 'failed':
+      return 'Failed';
+    case 'cancelled':
+      return 'Stopped';
+    case 'upcoming':
+      return 'Upcoming';
+    case 'pending_funding':
+      return 'Awaiting funding';
     default:
-      return 'Chưa báo cáo';
+      return 'No report yet';
   }
 }
 
@@ -62,6 +81,8 @@ export default function MilestonePreviewCard({
   progressPercent,
   goalWei = 0n,
   milestoneCount,
+  campaignStatusLabel,
+  currentMilestoneId,
 }: MilestonePreviewCardProps) {
   const [apiMilestones, setApiMilestones] = useState<PublicCampaignMilestone[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -94,6 +115,8 @@ export default function MilestonePreviewCard({
     progressPercent,
     goalWei,
     milestoneCount,
+    campaignStatusLabel,
+    currentMilestoneId,
   });
 
   const hasMilestones = apiMilestones.length > 0 || fallbackMilestones.length > 0;

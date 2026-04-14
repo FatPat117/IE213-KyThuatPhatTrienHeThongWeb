@@ -48,6 +48,20 @@ export interface MilestoneApprovalStatus {
   pendingTxHash: string;
 }
 
+export interface PublicStatsResponse {
+  totalCampaigns: number;
+  activeCampaigns: number;
+  inProgressCampaigns: number;
+  completedCampaigns: number;
+  partialFailedCampaigns: number;
+  failedCampaigns: number;
+  totalRaisedWei: string;
+  totalDisbursedWei: string;
+  uniqueDonors: number;
+  totalCertificates: number;
+  updatedAt: string;
+}
+
 interface PublicCampaignsResponse {
   items: PublicCampaignItem[];
   pagination: {
@@ -125,6 +139,10 @@ export async function getPublicCampaigns(params?: {
 
   const suffix = query.toString() ? `?${query.toString()}` : '';
   return apiRequest<PublicCampaignsResponse>(`/campaigns/public/campaigns${suffix}`);
+}
+
+export async function getPublicStats() {
+  return apiRequest<PublicStatsResponse>('/campaigns/public/stats');
 }
 
 export async function getPublicCampaignMilestones(onChainId: number) {

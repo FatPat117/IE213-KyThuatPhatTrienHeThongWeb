@@ -506,6 +506,9 @@ function HomeContent() {
               <Link href="/leaderboard" className="text-sm text-slate-600 transition hover:text-indigo-600">
                 Bảng xếp hạng
               </Link>
+              <Link href="/transparency" className="text-sm text-slate-600 transition hover:text-indigo-600">
+                Transparency
+              </Link>
               <Link href="/campaigns/create" className="text-sm text-slate-600 transition hover:text-indigo-600">
                 Tạo chiến dịch
               </Link>

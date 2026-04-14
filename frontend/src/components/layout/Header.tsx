@@ -59,6 +59,7 @@ export default function Header() {
     const publicLinks = [
         { href: "/campaigns", label: "Chiến dịch" },
         { href: "/leaderboard", label: "Bảng xếp hạng" },
+        { href: "/transparency", label: "Transparency" },
         { href: "/status", label: "Trạng thái" },
     ];
 

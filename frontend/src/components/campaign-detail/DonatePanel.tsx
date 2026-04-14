@@ -5,7 +5,7 @@ interface DonatePanelProps {
   canDonate: boolean;
   isConnected: boolean;
   isSepolia: boolean;
-  campaignCompleted: boolean;
+  campaignStatusLabel?: 'active' | 'in_progress' | 'completed' | 'partial_failed' | 'failed' | 'cancelled';
   isPending: boolean;
   isConfirming: boolean;
   isConfirmed: boolean;
@@ -23,7 +23,7 @@ export default function DonatePanel({
   canDonate,
   isConnected,
   isSepolia,
-  campaignCompleted,
+  campaignStatusLabel,
   isPending,
   isConfirming,
   isConfirmed,
@@ -92,8 +92,14 @@ export default function DonatePanel({
                 ? 'Kết nối ví để quyên góp'
                 : !isSepolia
                   ? 'Sai mạng'
-                  : campaignCompleted
-                    ? 'Chiến dịch đã kết thúc'
+                  : campaignStatusLabel && campaignStatusLabel !== 'active'
+                    ? campaignStatusLabel === 'in_progress'
+                      ? 'Chiến dịch đang triển khai milestone'
+                      : campaignStatusLabel === 'partial_failed'
+                        ? 'Chiến dịch thất bại một phần'
+                        : campaignStatusLabel === 'failed'
+                          ? 'Chiến dịch đã thất bại'
+                          : 'Chiến dịch đã kết thúc'
                     : '💝 Quyên góp'}
         </button>
 

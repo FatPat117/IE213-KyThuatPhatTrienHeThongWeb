@@ -6,21 +6,29 @@
   },
   {
     "type": "function",
-    "name": "addReviewer",
-    "inputs": [
+    "name": "BPS_DENOMINATOR",
+    "inputs": [],
+    "outputs": [
       {
-        "name": "_wallet",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "_name",
-        "type": "string",
-        "internalType": "string"
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "DEFAULT_GOAL_WEI",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -45,12 +53,12 @@
     "name": "approveMilestone",
     "inputs": [
       {
-        "name": "_campaignId",
+        "name": "campaignId",
         "type": "uint256",
         "internalType": "uint256"
       },
       {
-        "name": "_milestoneId",
+        "name": "milestoneId",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -92,6 +100,25 @@
   },
   {
     "type": "function",
+    "name": "campaignReviewerSafe",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "campaigns",
     "inputs": [
       {
@@ -127,6 +154,11 @@
         "internalType": "uint256"
       },
       {
+        "name": "totalDisbursed",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
         "name": "deadline",
         "type": "uint256",
         "internalType": "uint256"
@@ -143,6 +175,11 @@
       },
       {
         "name": "milestoneCount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "currentMilestoneId",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -178,7 +215,7 @@
     "name": "claimFundingRefund",
     "inputs": [
       {
-        "name": "_campaignId",
+        "name": "campaignId",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -191,12 +228,12 @@
     "name": "claimMilestoneRefund",
     "inputs": [
       {
-        "name": "_campaignId",
+        "name": "campaignId",
         "type": "uint256",
         "internalType": "uint256"
       },
       {
-        "name": "_milestoneId",
+        "name": "milestoneId",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -206,44 +243,32 @@
   },
   {
     "type": "function",
-    "name": "createCampaign",
+    "name": "createCampaignWithGoal",
     "inputs": [
       {
-        "name": "_beneficiary",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "_durationDays",
+        "name": "goalWei",
         "type": "uint256",
         "internalType": "uint256"
       },
       {
-        "name": "_milestones",
-        "type": "tuple[]",
-        "internalType": "struct FundingPlatform.MilestoneInput[]",
-        "components": [
-          {
-            "name": "title",
-            "type": "string",
-            "internalType": "string"
-          },
-          {
-            "name": "description",
-            "type": "string",
-            "internalType": "string"
-          },
-          {
-            "name": "fundAmount",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "durationDays",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ]
+        "name": "allocationBps",
+        "type": "uint16[]",
+        "internalType": "uint16[]"
+      },
+      {
+        "name": "deadlines",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      },
+      {
+        "name": "fundingDeadline",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "reviewerSafe",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "outputs": [
@@ -257,15 +282,36 @@
   },
   {
     "type": "function",
-    "name": "deactivateReviewer",
+    "name": "createCampaignWithMilestones",
     "inputs": [
       {
-        "name": "_reviewerId",
+        "name": "allocationBps",
+        "type": "uint16[]",
+        "internalType": "uint16[]"
+      },
+      {
+        "name": "deadlines",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      },
+      {
+        "name": "fundingDeadline",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "reviewerSafe",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
         "type": "uint256",
         "internalType": "uint256"
       }
     ],
-    "outputs": [],
     "stateMutability": "nonpayable"
   },
   {
@@ -273,12 +319,12 @@
     "name": "disburseMilestone",
     "inputs": [
       {
-        "name": "_campaignId",
+        "name": "campaignId",
         "type": "uint256",
         "internalType": "uint256"
       },
       {
-        "name": "_milestoneId",
+        "name": "milestoneId",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -291,7 +337,7 @@
     "name": "donate",
     "inputs": [
       {
-        "name": "_campaignId",
+        "name": "campaignId",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -328,7 +374,7 @@
     "name": "getAllMilestones",
     "inputs": [
       {
-        "name": "_campaignId",
+        "name": "campaignId",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -345,24 +391,9 @@
             "internalType": "uint256"
           },
           {
-            "name": "campaignId",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "title",
-            "type": "string",
-            "internalType": "string"
-          },
-          {
-            "name": "description",
-            "type": "string",
-            "internalType": "string"
-          },
-          {
-            "name": "fundAmount",
-            "type": "uint256",
-            "internalType": "uint256"
+            "name": "allocationBps",
+            "type": "uint16",
+            "internalType": "uint16"
           },
           {
             "name": "deadline",
@@ -378,6 +409,26 @@
             "name": "status",
             "type": "uint8",
             "internalType": "enum FundingPlatform.MilestoneStatus"
+          },
+          {
+            "name": "approvedBy",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "approvedAt",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "disbursedAt",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "failedAt",
+            "type": "uint256",
+            "internalType": "uint256"
           }
         ]
       }
@@ -408,7 +459,7 @@
     "name": "getCampaign",
     "inputs": [
       {
-        "name": "_campaignId",
+        "name": "campaignId",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -445,6 +496,11 @@
             "internalType": "uint256"
           },
           {
+            "name": "totalDisbursed",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
             "name": "deadline",
             "type": "uint256",
             "internalType": "uint256"
@@ -463,6 +519,11 @@
             "name": "milestoneCount",
             "type": "uint256",
             "internalType": "uint256"
+          },
+          {
+            "name": "currentMilestoneId",
+            "type": "uint256",
+            "internalType": "uint256"
           }
         ]
       }
@@ -474,7 +535,7 @@
     "name": "getCertificates",
     "inputs": [
       {
-        "name": "_owner",
+        "name": "owner",
         "type": "address",
         "internalType": "address"
       }
@@ -493,12 +554,12 @@
     "name": "getDonation",
     "inputs": [
       {
-        "name": "_campaignId",
+        "name": "campaignId",
         "type": "uint256",
         "internalType": "uint256"
       },
       {
-        "name": "_donor",
+        "name": "donor",
         "type": "address",
         "internalType": "address"
       }
@@ -517,12 +578,12 @@
     "name": "getMilestone",
     "inputs": [
       {
-        "name": "_campaignId",
+        "name": "campaignId",
         "type": "uint256",
         "internalType": "uint256"
       },
       {
-        "name": "_milestoneId",
+        "name": "milestoneId",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -539,24 +600,9 @@
             "internalType": "uint256"
           },
           {
-            "name": "campaignId",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "title",
-            "type": "string",
-            "internalType": "string"
-          },
-          {
-            "name": "description",
-            "type": "string",
-            "internalType": "string"
-          },
-          {
-            "name": "fundAmount",
-            "type": "uint256",
-            "internalType": "uint256"
+            "name": "allocationBps",
+            "type": "uint16",
+            "internalType": "uint16"
           },
           {
             "name": "deadline",
@@ -572,6 +618,26 @@
             "name": "status",
             "type": "uint8",
             "internalType": "enum FundingPlatform.MilestoneStatus"
+          },
+          {
+            "name": "approvedBy",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "approvedAt",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "disbursedAt",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "failedAt",
+            "type": "uint256",
+            "internalType": "uint256"
           }
         ]
       }
@@ -580,10 +646,15 @@
   },
   {
     "type": "function",
-    "name": "getReviewer",
+    "name": "getMilestoneAmount",
     "inputs": [
       {
-        "name": "_reviewerId",
+        "name": "campaignId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "milestoneId",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -591,25 +662,8 @@
     "outputs": [
       {
         "name": "",
-        "type": "tuple",
-        "internalType": "struct FundingPlatform.Reviewer",
-        "components": [
-          {
-            "name": "wallet",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "name",
-            "type": "string",
-            "internalType": "string"
-          },
-          {
-            "name": "active",
-            "type": "bool",
-            "internalType": "bool"
-          }
-        ]
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -625,25 +679,6 @@
       },
       {
         "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "isActiveReviewer",
-    "inputs": [
-      {
-        "name": "_addr",
         "type": "address",
         "internalType": "address"
       }
@@ -683,29 +718,10 @@
   },
   {
     "type": "function",
-    "name": "isFundingActive",
-    "inputs": [
-      {
-        "name": "_campaignId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "markCampaignFailed",
     "inputs": [
       {
-        "name": "_campaignId",
+        "name": "campaignId",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -718,12 +734,12 @@
     "name": "markMilestoneFailed",
     "inputs": [
       {
-        "name": "_campaignId",
+        "name": "campaignId",
         "type": "uint256",
         "internalType": "uint256"
       },
       {
-        "name": "_milestoneId",
+        "name": "milestoneId",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -753,24 +769,9 @@
         "internalType": "uint256"
       },
       {
-        "name": "campaignId",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "title",
-        "type": "string",
-        "internalType": "string"
-      },
-      {
-        "name": "description",
-        "type": "string",
-        "internalType": "string"
-      },
-      {
-        "name": "fundAmount",
-        "type": "uint256",
-        "internalType": "uint256"
+        "name": "allocationBps",
+        "type": "uint16",
+        "internalType": "uint16"
       },
       {
         "name": "deadline",
@@ -786,6 +787,26 @@
         "name": "status",
         "type": "uint8",
         "internalType": "enum FundingPlatform.MilestoneStatus"
+      },
+      {
+        "name": "approvedBy",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "approvedAt",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "disbursedAt",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "failedAt",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -795,7 +816,7 @@
     "name": "mintCertificate",
     "inputs": [
       {
-        "name": "_campaignId",
+        "name": "campaignId",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -886,67 +907,6 @@
   },
   {
     "type": "function",
-    "name": "reviewerCount",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "reviewerIndex",
-    "inputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "reviewers",
-    "inputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "wallet",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "name",
-        "type": "string",
-        "internalType": "string"
-      },
-      {
-        "name": "active",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "safeTransferFrom",
     "inputs": [
       {
@@ -1016,33 +976,20 @@
   },
   {
     "type": "function",
-    "name": "startExecution",
-    "inputs": [
-      {
-        "name": "_campaignId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "submitMilestoneProof",
     "inputs": [
       {
-        "name": "_campaignId",
+        "name": "campaignId",
         "type": "uint256",
         "internalType": "uint256"
       },
       {
-        "name": "_milestoneId",
+        "name": "milestoneId",
         "type": "uint256",
         "internalType": "uint256"
       },
       {
-        "name": "_ipfsCid",
+        "name": "ipfsCid",
         "type": "string",
         "internalType": "string"
       }
@@ -1122,6 +1069,30 @@
   },
   {
     "type": "function",
+    "name": "totalRefundedPerMilestone",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "transferFrom",
     "inputs": [
       {
@@ -1149,24 +1120,6 @@
     "inputs": [
       {
         "name": "newOwner",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "updateReviewerWallet",
-    "inputs": [
-      {
-        "name": "_reviewerId",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "_newWallet",
         "type": "address",
         "internalType": "address"
       }
@@ -1237,7 +1190,7 @@
       {
         "name": "creator",
         "type": "address",
-        "indexed": true,
+        "indexed": false,
         "internalType": "address"
       },
       {
@@ -1253,13 +1206,94 @@
         "internalType": "uint256"
       },
       {
-        "name": "deadline",
+        "name": "fundingDeadline",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
       },
       {
         "name": "milestoneCount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "CampaignStopped",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "remainingWei",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "milestoneId",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "CertificateMinted",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "owner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "tokenId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Donated",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "donor",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "totalRaised",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -1307,6 +1341,18 @@
         "type": "address",
         "indexed": true,
         "internalType": "address"
+      },
+      {
+        "name": "ipfsCid",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
       }
     ],
     "anonymous": false
@@ -1363,6 +1409,12 @@
         "type": "address",
         "indexed": false,
         "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
       }
     ],
     "anonymous": false
@@ -1443,37 +1495,6 @@
         "name": "newOwner",
         "type": "address",
         "indexed": true,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "ReviewerWalletUpdated",
-    "inputs": [
-      {
-        "name": "reviewerId",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
-      },
-      {
-        "name": "oldWallet",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
-      {
-        "name": "newWallet",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
-      {
-        "name": "updatedBy",
-        "type": "address",
-        "indexed": false,
         "internalType": "address"
       }
     ],

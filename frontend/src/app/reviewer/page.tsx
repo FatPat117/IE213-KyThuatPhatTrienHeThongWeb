@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { formatEther } from 'viem';
-import { useAccount, useReadContract, useWriteContract } from 'wagmi';
+import { useAccount } from 'wagmi';
 import {
-  contractConfig,
   getMilestoneApprovalStatus,
   getPublicCampaignMilestones,
   getPublicCampaigns,
+  useApproveMilestone,
   useAuth,
 } from '@/lib';
 import type {
@@ -142,12 +142,10 @@ function buildSignatureProgressLabel(status: MilestoneApprovalStatus) {
 function EvidenceCard({ cid, submittedAt }: { cid: string; submittedAt: string }) {
   const [kind, setKind] = useState<'loading' | 'image' | 'pdf' | 'other'>('loading');
   const evidenceUrl = useMemo(() => buildIpfsUrl(cid), [cid]);
+  const resolvedKind = evidenceUrl ? kind : 'other';
 
   useEffect(() => {
-    if (!evidenceUrl) {
-      setKind('other');
-      return;
-    }
+    if (!evidenceUrl) return;
 
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 8_000);
@@ -189,9 +187,9 @@ function EvidenceCard({ cid, submittedAt }: { cid: string; submittedAt: string }
       <p className="mt-1 break-all text-xs text-slate-700">{cid}</p>
       <p className="mt-2 text-xs text-slate-500">Nộp lúc: {formatDate(submittedAt)}</p>
 
-      {kind === 'loading' && <p className="mt-2 text-xs text-slate-500">Đang xác định loại tệp...</p>}
+      {resolvedKind === 'loading' && <p className="mt-2 text-xs text-slate-500">Đang xác định loại tệp...</p>}
 
-      {kind === 'image' && (
+      {resolvedKind === 'image' && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={evidenceUrl}
@@ -200,7 +198,7 @@ function EvidenceCard({ cid, submittedAt }: { cid: string; submittedAt: string }
         />
       )}
 
-      {kind === 'pdf' && (
+      {resolvedKind === 'pdf' && (
         <a
           href={evidenceUrl}
           target="_blank"
@@ -211,7 +209,7 @@ function EvidenceCard({ cid, submittedAt }: { cid: string; submittedAt: string }
         </a>
       )}
 
-      {kind === 'other' && (
+      {resolvedKind === 'other' && (
         <a
           href={evidenceUrl}
           target="_blank"
@@ -228,7 +226,7 @@ function EvidenceCard({ cid, submittedAt }: { cid: string; submittedAt: string }
 export default function ReviewerWorkspacePage() {
   const { address, isConnected } = useAccount();
   const { token, user } = useAuth();
-  const { writeContractAsync } = useWriteContract();
+  const { approveMilestone } = useApproveMilestone();
 
   const walletAddress = useMemo(
     () => (user?.wallet || address || '').trim().toLowerCase(),
@@ -246,50 +244,18 @@ export default function ReviewerWorkspacePage() {
   const [rejectingKey, setRejectingKey] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
-  const reviewerAddressArg = walletAddress ? (walletAddress as `0x${string}`) : undefined;
+  const assignedCampaignCount = useMemo(
+    () =>
+      rows.filter(
+        (row) =>
+          Boolean(walletAddress) &&
+          (row.campaign.reviewerSafe || '').trim().toLowerCase() === walletAddress,
+      ).length,
+    [rows, walletAddress],
+  );
 
-  const { data: reviewerIndex } = useReadContract({
-    ...contractConfig,
-    functionName: 'reviewerIndex',
-    args: reviewerAddressArg ? [reviewerAddressArg] : undefined,
-    query: {
-      enabled: Boolean(reviewerAddressArg),
-      staleTime: 60_000,
-      refetchOnWindowFocus: true,
-    },
-  });
-
-  const reviewerId = Number(reviewerIndex || 0n);
-
-  const { data: reviewerRecord } = useReadContract({
-    ...contractConfig,
-    functionName: 'getReviewer',
-    args: reviewerId > 0 ? [BigInt(reviewerId)] : undefined,
-    query: {
-      enabled: reviewerId > 0,
-      staleTime: 60_000,
-      refetchOnWindowFocus: true,
-    },
-  });
-
-  const { data: isActiveReviewer } = useReadContract({
-    ...contractConfig,
-    functionName: 'isActiveReviewer',
-    args: walletAddress ? [walletAddress as `0x${string}`] : undefined,
-    query: {
-      enabled: Boolean(walletAddress),
-      staleTime: 30_000,
-      refetchOnWindowFocus: true,
-    },
-  });
-
-  const normalizedIsReviewer = Boolean(isActiveReviewer);
-  const reviewerName = typeof reviewerRecord === 'object' && reviewerRecord && 'name' in reviewerRecord
-    ? String((reviewerRecord as { name?: string }).name || '').trim()
-    : '';
-  const reviewerActive = typeof reviewerRecord === 'object' && reviewerRecord && 'active' in reviewerRecord
-    ? Boolean((reviewerRecord as { active?: boolean }).active)
-    : false;
+  const normalizedIsReviewer = assignedCampaignCount > 0;
+  const reviewerName = user?.displayName?.trim() || shortenAddress(walletAddress);
 
   const loadReviewerCampaigns = useCallback(async () => {
     try {
@@ -340,7 +306,7 @@ export default function ReviewerWorkspacePage() {
       setIsRefreshing(false);
       setIsLoading(false);
     }
-  }, [token]);
+  }, []);
 
   const refreshApprovalStatuses = useCallback(async () => {
     if (!token || rows.length === 0) return;
@@ -408,8 +374,18 @@ export default function ReviewerWorkspacePage() {
         setActionMessage('Vui lòng kết nối ví để gửi phê duyệt.');
         return;
       }
-      if (!normalizedIsReviewer || (reviewerId > 0 && reviewerRecord && !reviewerActive)) {
-        setActionMessage('Ví hiện tại không có quyền reviewer để phê duyệt milestone.');
+
+      const campaignReviewerSafe =
+        rows.find((item) => item.campaign.onChainId === campaignId)?.campaign.reviewerSafe?.trim().toLowerCase() ||
+        '';
+
+      if (!campaignReviewerSafe) {
+        setActionMessage('Campaign chưa có reviewerSafe nên không thể gửi approve on-chain.');
+        return;
+      }
+
+      if (campaignReviewerSafe !== walletAddress) {
+        setActionMessage('Ví hiện tại không trùng reviewerSafe của campaign này. Nếu dùng Gnosis Safe, hãy ký và thực thi giao dịch approveMilestone từ Safe.');
         return;
       }
 
@@ -418,11 +394,7 @@ export default function ReviewerWorkspacePage() {
       setActionMessage(null);
 
       try {
-        const txHash = await writeContractAsync({
-          ...contractConfig,
-          functionName: 'approveMilestone',
-          args: [BigInt(campaignId), BigInt(milestoneId)],
-        });
+        const txHash = await approveMilestone(campaignId, milestoneId);
 
         setActionMessage(`Đã gửi giao dịch phê duyệt: ${txHash}`);
         await refreshApprovalStatuses();
@@ -433,14 +405,11 @@ export default function ReviewerWorkspacePage() {
       }
     },
     [
+      approveMilestone,
       isConnected,
-      normalizedIsReviewer,
       refreshApprovalStatuses,
-      reviewerActive,
-      reviewerId,
-      reviewerRecord,
+      rows,
       walletAddress,
-      writeContractAsync,
     ],
   );
 
@@ -453,8 +422,17 @@ export default function ReviewerWorkspacePage() {
         return;
       }
 
-      if (!normalizedIsReviewer || (reviewerId > 0 && reviewerRecord && !reviewerActive)) {
-        setActionMessage('Ví hiện tại không có quyền reviewer để từ chối milestone.');
+      const campaignReviewerSafe =
+        rows.find((item) => item.campaign.onChainId === campaignId)?.campaign.reviewerSafe?.trim().toLowerCase() ||
+        '';
+
+      if (!campaignReviewerSafe) {
+        setActionMessage('Campaign chưa có reviewerSafe nên không thể gửi từ chối on-chain.');
+        return;
+      }
+
+      if (campaignReviewerSafe !== walletAddress) {
+        setActionMessage('Ví hiện tại không trùng reviewerSafe của campaign này. Nếu dùng Gnosis Safe, hãy tạo giao dịch reject/fail milestone trong Safe UI.');
         return;
       }
 
@@ -469,10 +447,7 @@ export default function ReviewerWorkspacePage() {
     },
     [
       isConnected,
-      normalizedIsReviewer,
-      reviewerActive,
-      reviewerId,
-      reviewerRecord,
+      rows,
       walletAddress,
     ],
   );
@@ -514,9 +489,8 @@ export default function ReviewerWorkspacePage() {
 
               <div className="mt-4 space-y-1 text-sm text-slate-600">
                 <p>Ví đăng nhập: {shortenAddress(walletAddress) || 'Chưa kết nối'}</p>
-                <p>
-                  Hồ sơ on-chain: {reviewerName || 'Đang tải...'} {reviewerActive ? '(active)' : reviewerId > 0 ? '(inactive)' : ''}
-                </p>
+                <p>Reviewer profile: {reviewerName || 'Chưa có tên hiển thị'}</p>
+                <p>Campaigns assigned to this wallet: {assignedCampaignCount}</p>
               </div>
 
               <div className="mt-6 flex flex-wrap items-center gap-3">
@@ -624,6 +598,9 @@ export default function ReviewerWorkspacePage() {
                     const isRejecting = rejectingKey === key;
                     const isPendingMilestone = PENDING_STATUSES.has(milestone.status);
                     const hasEvidence = milestone.reportCids.length > 0;
+                    const canWalletApproveMilestone =
+                      Boolean(walletAddress) &&
+                      (row.campaign.reviewerSafe || '').trim().toLowerCase() === walletAddress;
 
                     return (
                       <article key={key} className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
@@ -652,7 +629,7 @@ export default function ReviewerWorkspacePage() {
                           <div className="mb-3 flex flex-wrap items-center gap-2">
                             <button
                               onClick={() => handleApprove(row.campaign.onChainId, milestone.milestoneId)}
-                              disabled={isApproving || isRejecting || !hasEvidence}
+                              disabled={isApproving || isRejecting || !hasEvidence || !canWalletApproveMilestone}
                               className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               {isApproving ? 'Đang gửi phê duyệt...' : 'Phê duyệt mốc'}
@@ -660,12 +637,18 @@ export default function ReviewerWorkspacePage() {
 
                             <button
                               onClick={() => handleReject(row.campaign.onChainId, milestone.milestoneId)}
-                              disabled={isApproving || isRejecting}
+                              disabled={isApproving || isRejecting || !canWalletApproveMilestone}
                               className="rounded-xl border border-rose-600 bg-rose-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               {isRejecting ? 'Đang xử lý từ chối...' : 'Từ chối mốc'}
                             </button>
                           </div>
+                        )}
+
+                        {isPendingMilestone && !canWalletApproveMilestone && (
+                          <p className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                            Ví hiện tại không trùng reviewerSafe của campaign này. Nếu campaign dùng Gnosis Safe, hãy ký/phê duyệt giao dịch trong Safe UI.
+                          </p>
                         )}
 
                         {!hasEvidence && (

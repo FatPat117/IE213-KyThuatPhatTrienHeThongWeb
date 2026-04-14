@@ -21,17 +21,10 @@ import CreateCampaignSuccessCard from '@/components/campaign-create/CreateCampai
 import MilestoneBuilder from '@/components/campaign-create/MilestoneBuilder';
 
 const SEPOLIA_CHAIN_ID = 11155111;
-const SECONDS_PER_DAY = 24 * 60 * 60;
 
 function shortenHash(hash: string) {
   if (!hash || hash.length < 14) return hash;
   return `${hash.slice(0, 10)}...${hash.slice(-6)}`;
-}
-
-function toDurationDays(startTimestamp: number, endTimestamp: number) {
-  const diffSeconds = endTimestamp - startTimestamp;
-  if (diffSeconds <= 0) return 0;
-  return Math.max(1, Math.ceil(diffSeconds / SECONDS_PER_DAY));
 }
 
 export default function CreateCampaignPage() {
@@ -283,7 +276,9 @@ export default function CreateCampaignPage() {
     }
 
     const reviewerSafe = formData.reviewerSafe.trim().toLowerCase();
-    if (reviewerSafe && !/^0x[a-f0-9]{40}$/.test(reviewerSafe)) {
+    if (!reviewerSafe) {
+      errors.reviewerSafe = 'Vui lòng nhập địa chỉ reviewerSafe';
+    } else if (!/^0x[a-f0-9]{40}$/.test(reviewerSafe)) {
       errors.reviewerSafe = 'Địa chỉ reviewerSafe không hợp lệ';
     }
 
@@ -400,46 +395,56 @@ export default function CreateCampaignPage() {
                   );
                   setManualError(null);
 
-                  const nowTimestamp = Math.floor(Date.now() / 1000);
-                  const campaignDeadline = Math.floor(new Date(formData.deadline).getTime() / 1000);
+                  const campaignFundingDeadline = Math.floor(new Date(formData.deadline).getTime() / 1000);
                   const milestoneDeadlines = nextMilestones.map((milestone) =>
                     Math.floor(new Date(milestone.deadline).getTime() / 1000)
                   );
-                  if (campaignDeadline <= nowTimestamp) {
+
+                  if (campaignFundingDeadline <= Math.floor(Date.now() / 1000)) {
                     throw new Error('Deadline chiến dịch phải ở tương lai.');
                   }
-                  if (milestoneDeadlines.some((deadline) => deadline <= campaignDeadline)) {
+
+                  if (milestoneDeadlines.some((deadline) => deadline <= campaignFundingDeadline)) {
                     throw new Error('Mọi deadline milestone phải sau deadline chiến dịch.');
                   }
 
-                  const campaignDurationDays = toDurationDays(nowTimestamp, campaignDeadline);
-                  if (campaignDurationDays <= 0) {
-                    throw new Error('Không thể quy đổi campaign durationDays hợp lệ.');
+                  const totalGoalEth = Number.parseFloat(formData.goalEth);
+                  if (!Number.isFinite(totalGoalEth) || totalGoalEth <= 0) {
+                    throw new Error('Mục tiêu gây quỹ không hợp lệ.');
                   }
 
-                  let previousDeadline = campaignDeadline;
-                  const onChainMilestones = nextMilestones.map((milestone, index) => {
-                    const milestoneDeadline = milestoneDeadlines[index];
-                    const durationDays = toDurationDays(previousDeadline, milestoneDeadline);
-                    if (durationDays <= 0) {
-                      throw new Error(`Milestone ${index + 1} có durationDays không hợp lệ.`);
+                  const allocationBps = nextMilestones.map((milestone, index) => {
+                    if (!Number.isFinite(milestone.goal) || milestone.goal <= 0) {
+                      throw new Error(`Milestone ${index + 1} phải có mục tiêu > 0.`);
                     }
-                    previousDeadline = milestoneDeadline;
-                    return {
-                      title: milestone.name.trim(),
-                      description: milestone.description.trim(),
-                      fundAmountWei: parseEther(String(milestone.goal)),
-                      durationDays,
-                    };
+
+                    return Math.round((milestone.goal / totalGoalEth) * 10_000);
                   });
-                  if (onChainMilestones.some((milestone) => milestone.fundAmountWei <= 0n)) {
-                    throw new Error('Mỗi milestone phải có mục tiêu > 0.');
+
+                  if (allocationBps.some((value) => value <= 0)) {
+                    throw new Error('Mỗi milestone phải có tỷ lệ phân bổ > 0 bps.');
+                  }
+
+                  const bpsSum = allocationBps.reduce((sum, value) => sum + value, 0);
+                  const bpsDiff = 10_000 - bpsSum;
+                  allocationBps[allocationBps.length - 1] += bpsDiff;
+
+                  const adjustedSum = allocationBps.reduce((sum, value) => sum + value, 0);
+                  if (adjustedSum !== 10_000 || allocationBps.some((value) => value <= 0)) {
+                    throw new Error('Không thể chuẩn hóa allocationBps về đúng 10000. Vui lòng điều chỉnh milestones.');
+                  }
+
+                  const reviewerSafe = formData.reviewerSafe.trim().toLowerCase();
+                  if (!/^0x[a-f0-9]{40}$/.test(reviewerSafe)) {
+                    throw new Error('Địa chỉ reviewerSafe không hợp lệ.');
                   }
 
                   const txHash = await createCampaign({
-                    beneficiary: address as `0x${string}`,
-                    durationDays: campaignDurationDays,
-                    milestones: onChainMilestones,
+                    goalWei: parseEther(formData.goalEth),
+                    allocationBps,
+                    deadlines: milestoneDeadlines,
+                    fundingDeadline: campaignFundingDeadline,
+                    reviewerSafe: reviewerSafe as `0x${string}`,
                   });
                   setSubmittedTxHash(txHash);
                   showSuccessToast(`Đã gửi giao dịch ${shortenHash(txHash)}. Đang chờ xác nhận trên blockchain...`);

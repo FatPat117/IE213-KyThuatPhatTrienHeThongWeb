@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useCallback } from 'react';
 import type { CampaignRecord, DonationRecord, TransactionRecord } from '@/lib/api/types';
 import { getCampaignById, getCampaigns, getDonationsByWallet, getTransactionsByWallet } from '@/lib';
+import { getPublicStats, type PublicStatsResponse } from '@/lib/api/campaigns';
 import { useAuth } from '@/lib';
 
 /**
@@ -114,6 +115,30 @@ export function useBackendTransactions(wallet: string | null): QueryState<Transa
       setIsLoading(false);
     }
   }, [token, wallet]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  return { data, isLoading, error, refetch: fetchData };
+}
+
+export function usePublicStats(): QueryState<PublicStatsResponse | null> {
+  const [data, setData] = useState<PublicStatsResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      setData(await getPublicStats());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load public statistics');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchData();

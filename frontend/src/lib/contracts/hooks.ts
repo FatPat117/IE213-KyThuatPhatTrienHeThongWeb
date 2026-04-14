@@ -11,17 +11,58 @@ type CampaignTuple = {
     beneficiary: Address;
     goal: bigint;
     totalRaised: bigint;
+    totalDisbursed: bigint;
     deadline: bigint;
     withdrawn: boolean;
     status: number;
     milestoneCount: bigint;
+    currentMilestoneId: bigint;
 };
+
+export type CampaignStatusLabel =
+    | 'active'
+    | 'in_progress'
+    | 'completed'
+    | 'partial_failed'
+    | 'failed'
+    | 'cancelled';
 
 const ZERO = BigInt(0);
 const ACTIVE_STATUS = 0;
+const IN_PROGRESS_STATUS = 1;
+const COMPLETED_STATUS = 2;
+const PARTIAL_FAILED_STATUS = 3;
+const FAILED_STATUS = 4;
+const CANCELLED_STATUS = 5;
+
+const STATUS_MAP: Record<number, CampaignStatusLabel> = {
+    [ACTIVE_STATUS]: 'active',
+    [IN_PROGRESS_STATUS]: 'in_progress',
+    [COMPLETED_STATUS]: 'completed',
+    [PARTIAL_FAILED_STATUS]: 'partial_failed',
+    [FAILED_STATUS]: 'failed',
+    [CANCELLED_STATUS]: 'cancelled',
+};
+
 const CREATE_CAMPAIGN_GAS_BASE = 900_000n;
 const CREATE_CAMPAIGN_GAS_PER_MILESTONE = 180_000n;
 const CREATE_CAMPAIGN_GAS_MAX = 8_000_000n;
+
+type CreateCampaignWithGoalPayload = {
+    goalWei: bigint;
+    allocationBps: number[];
+    deadlines: number[];
+    fundingDeadline: number;
+    reviewerSafe: Address;
+};
+
+function toStatusLabel(status: number): CampaignStatusLabel {
+    return STATUS_MAP[status] ?? 'active';
+}
+
+function isTerminalStatus(status: number) {
+    return [COMPLETED_STATUS, PARTIAL_FAILED_STATUS, FAILED_STATUS, CANCELLED_STATUS].includes(status);
+}
 
 function normalizeCampaign(
     raw: Partial<CampaignTuple> | null | undefined,
@@ -40,20 +81,19 @@ function normalizeCampaign(
         goal: raw?.goal ?? ZERO,
         raised: raw?.totalRaised ?? ZERO,
         totalRaised: raw?.totalRaised ?? ZERO,
-        totalDisbursed: ZERO,
+        totalDisbursed: raw?.totalDisbursed ?? ZERO,
         deadline: Number(raw?.deadline ?? 0),
         withdrawn: Boolean(raw?.withdrawn),
         status,
+        statusLabel: toStatusLabel(status),
         milestoneCount: Number(raw?.milestoneCount ?? 0n),
-        currentMilestoneId: 0,
-        completed: status !== ACTIVE_STATUS,
+        currentMilestoneId: Number(raw?.currentMilestoneId ?? 0n),
+        completed: isTerminalStatus(status),
+        isActive: status === ACTIVE_STATUS,
+        isInProgress: status === IN_PROGRESS_STATUS,
     };
 }
 
-/**
- * Hook để đọc tổng số chiến dịch
- * Tự động xử lý caching và refetching
- */
 export function useReadCampaignCount() {
     const { data: campaignCount, isLoading, isError, error, refetch } = useReadContract({
         ...contractConfig,
@@ -75,10 +115,6 @@ export function useReadCampaignCount() {
     };
 }
 
-/**
- * Hook để đọc tổng ETH quyên góp
- * Trả về giá trị theo ETH (tự động chuyển đổi từ Wei)
- */
 export function useReadTotalRaised() {
     const { campaigns, isLoading, isError, error, refetch } = useReadAllCampaigns();
     const totalRaisedWei = useMemo(
@@ -96,29 +132,20 @@ export function useReadTotalRaised() {
     };
 }
 
-/**
- * Hook để đọc một chiến dịch cụ thể theo ID
- * @param campaignId - ID của chiến dịch cần đọc
- */
 export function useReadCampaign(campaignId: number | null | undefined) {
     const enabled = campaignId !== null && campaignId !== undefined && campaignId > 0;
     const campaignIdArg = enabled ? BigInt(campaignId) : undefined;
+
     const {
         data: campaignData,
         isLoading,
         isError,
         error,
         refetch,
-    } = useReadContracts({
-        contracts: enabled
-            ? [
-                  {
-                      ...contractConfig,
-                      functionName: 'getCampaign' as const,
-                      args: [campaignIdArg as bigint] as const,
-                  },
-              ]
-            : [],
+    } = useReadContract({
+        ...contractConfig,
+        functionName: 'getCampaign',
+        args: campaignIdArg ? [campaignIdArg] : undefined,
         query: {
             staleTime: 30000,
             refetchOnWindowFocus: true,
@@ -128,10 +155,7 @@ export function useReadCampaign(campaignId: number | null | undefined) {
     });
 
     const campaign = useMemo(() => {
-        if (!campaignData || campaignData.length < 1) return null;
-        const rawCampaign =
-            (campaignData[0] as { result?: CampaignTuple } | undefined)?.result ??
-            null;
+        const rawCampaign = (campaignData as CampaignTuple | undefined) ?? null;
         if (!rawCampaign) return null;
 
         return {
@@ -149,10 +173,6 @@ export function useReadCampaign(campaignId: number | null | undefined) {
     };
 }
 
-/**
- * Hook để đọc tất cả chiến dịch cùng một lúc
- * Cảnh báo: Có thể tốn kém cho mảng lớn, sử dụng cẩn thận
- */
 export function useReadAllCampaigns() {
     const countQuery = useReadCampaignCount();
     const campaignCount = countQuery.count;
@@ -219,10 +239,6 @@ export function useReadAllCampaigns() {
     };
 }
 
-/**
- * Hook để lấy thống kê hợp đồng
- * Kết hợp nhiều hoạt động đọc
- */
 export function useContractStats() {
     const campaignCount = useReadCampaignCount();
     const totalRaised = useReadTotalRaised();
@@ -246,10 +262,6 @@ export function useContractStats() {
     };
 }
 
-/**
- * Hook để đọc chiến dịch được lọc
- * @param isCompleted - Lọc theo trạng thái hoàn thành (tùy chọn)
- */
 export function useReadFilteredCampaigns(isCompleted?: boolean) {
     const { campaigns, isLoading, isError, error, refetch } = useReadAllCampaigns();
 
@@ -266,10 +278,6 @@ export function useReadFilteredCampaigns(isCompleted?: boolean) {
     };
 }
 
-/**
- * Hook để quyên góp ETH cho một chiến dịch
- * @returns write function và transaction state
- */
 export function useDonateToCampaign() {
     const { writeContractAsync, data, isPending, error } = useWriteContract();
 
@@ -290,53 +298,69 @@ export function useDonateToCampaign() {
     };
 }
 
-/**
- * Hook để tạo chiến dịch mới
- * @returns write function và transaction state
- */
 export function useCreateCampaign() {
     const { address } = useAccount();
     const publicClient = usePublicClient();
     const { writeContractAsync, data, isPending, error } = useWriteContract();
 
-    const createCampaign = (payload: {
-      beneficiary: Address;
-      durationDays: number;
-      milestones: Array<{
-        title: string;
-        description: string;
-        fundAmountWei: bigint;
-        durationDays: number;
-      }>;
-    }) => {
-        const milestoneCount = BigInt(Math.max(payload.milestones.length, 1));
+    const createCampaign = (payload: CreateCampaignWithGoalPayload) => {
+        if (payload.goalWei <= 0n) {
+            throw new Error('Campaign goal must be greater than zero.');
+        }
+        if (!payload.allocationBps.length || payload.allocationBps.length !== payload.deadlines.length) {
+            throw new Error('Milestone allocations and deadlines must have the same non-zero length.');
+        }
+
+        const normalizedAllocations = payload.allocationBps.map((value, index) => {
+            if (!Number.isInteger(value) || value <= 0 || value > 10_000) {
+                throw new Error(`Invalid allocation at milestone #${index + 1}.`);
+            }
+            return value;
+        });
+
+        const totalAllocation = normalizedAllocations.reduce((sum, value) => sum + value, 0);
+        if (totalAllocation !== 10_000) {
+            throw new Error('Milestone allocation must sum to exactly 10000 bps.');
+        }
+
+        const fundingDeadline = Math.floor(payload.fundingDeadline);
+        if (!Number.isFinite(fundingDeadline) || fundingDeadline <= Math.floor(Date.now() / 1000)) {
+            throw new Error('Funding deadline must be a future timestamp.');
+        }
+
+        const normalizedDeadlines = payload.deadlines.map((value, index) => {
+            const deadline = Math.floor(value);
+            if (!Number.isFinite(deadline) || deadline <= fundingDeadline) {
+                throw new Error(`Milestone deadline #${index + 1} must be after funding deadline.`);
+            }
+            return BigInt(deadline);
+        });
+
+        const milestoneCount = BigInt(Math.max(normalizedAllocations.length, 1));
         const computedGasLimit = CREATE_CAMPAIGN_GAS_BASE + CREATE_CAMPAIGN_GAS_PER_MILESTONE * milestoneCount;
         const gas = computedGasLimit > CREATE_CAMPAIGN_GAS_MAX ? CREATE_CAMPAIGN_GAS_MAX : computedGasLimit;
+
         const args = [
-            payload.beneficiary,
-            BigInt(payload.durationDays),
-            payload.milestones.map((milestone) => ({
-                title: milestone.title,
-                description: milestone.description,
-                fundAmount: milestone.fundAmountWei,
-                durationDays: BigInt(milestone.durationDays),
-            })),
+            payload.goalWei,
+            normalizedAllocations,
+            normalizedDeadlines,
+            BigInt(fundingDeadline),
+            payload.reviewerSafe,
         ] as const;
 
         const run = async () => {
-            // Fail fast before wallet prompt when deployed contract/ABI does not match.
             if (!publicClient) {
-                throw new Error('Không thể kết nối RPC để kiểm tra contract trước khi gửi giao dịch.');
+                throw new Error('Unable to connect RPC before sending transaction.');
             }
             if (!address) {
-                throw new Error('Không tìm thấy địa chỉ ví để mô phỏng giao dịch tạo campaign.');
+                throw new Error('Wallet address is unavailable for transaction simulation.');
             }
 
             try {
                 await publicClient.simulateContract({
                     ...contractConfig,
                     account: address,
-                    functionName: 'createCampaign',
+                    functionName: 'createCampaignWithGoal',
                     args,
                 });
             } catch (simulationError) {
@@ -348,7 +372,7 @@ export function useCreateCampaign() {
                     simulationMessage.includes('execution reverted')
                 ) {
                     throw new Error(
-                        'Contract hiện tại không hỗ trợ hàm createCampaign theo ABI deploy mới nhất. Vui lòng kiểm tra lại địa chỉ/ABI.'
+                        'The deployed contract does not match createCampaignWithGoal ABI. Please verify contract address and ABI version.'
                     );
                 }
                 throw simulationError;
@@ -356,7 +380,7 @@ export function useCreateCampaign() {
 
             return writeContractAsync({
                 ...contractConfig,
-                functionName: 'createCampaign',
+                functionName: 'createCampaignWithGoal',
                 args,
                 gas,
             });
@@ -373,33 +397,25 @@ export function useCreateCampaign() {
     };
 }
 
-/**
- * Hook để rút tiền từ chiến dịch (creator only)
- * @returns write function và transaction state
- */
 export function useWithdrawFunds() {
     const { writeContractAsync, data, isPending, error } = useWriteContract();
 
-    const markCampaignFailed = (campaignId: number) => {
+    const withdrawFunds = (campaignId: number, milestoneId: number) => {
         return writeContractAsync({
             ...contractConfig,
-            functionName: 'markCampaignFailed',
-            args: [BigInt(campaignId)],
+            functionName: 'disburseMilestone',
+            args: [BigInt(campaignId), BigInt(milestoneId)],
         });
     };
 
     return {
-        withdrawFunds: markCampaignFailed,
+        withdrawFunds,
         hash: data,
         isPending,
         error,
     };
 }
 
-/**
- * Hook để hoàn tiền (donor only, nếu campaign thất bại)
- * @returns write function và transaction state
- */
 export function useRefundDonation() {
     const { writeContractAsync, data, isPending, error } = useWriteContract();
 
@@ -419,9 +435,6 @@ export function useRefundDonation() {
     };
 }
 
-/**
- * Hook để cập nhật campaign thành Failed sau deadline (nếu chưa đạt goal).
- */
 export function useMarkAsFailed() {
     const { writeContractAsync, data, isPending, error } = useWriteContract();
 
@@ -441,14 +454,125 @@ export function useMarkAsFailed() {
     };
 }
 
-/**
- * Hook để mint NFT certificate sau khi đã donate.
- */
+export function useSubmitMilestoneProof() {
+    const { writeContractAsync, data, isPending, error } = useWriteContract();
+
+    const submitMilestoneProof = (campaignId: number, milestoneId: number, ipfsCid: string) => {
+        return writeContractAsync({
+            ...contractConfig,
+            functionName: 'submitMilestoneProof',
+            args: [BigInt(campaignId), BigInt(milestoneId), ipfsCid],
+        });
+    };
+
+    return {
+        submitMilestoneProof,
+        hash: data,
+        isPending,
+        error,
+    };
+}
+
+export function useApproveMilestone() {
+    const { writeContractAsync, data, isPending, error } = useWriteContract();
+
+    const approveMilestone = (campaignId: number, milestoneId: number) => {
+        return writeContractAsync({
+            ...contractConfig,
+            functionName: 'approveMilestone',
+            args: [BigInt(campaignId), BigInt(milestoneId)],
+        });
+    };
+
+    return {
+        approveMilestone,
+        hash: data,
+        isPending,
+        error,
+    };
+}
+
+export function useDisburseMilestone() {
+    const { writeContractAsync, data, isPending, error } = useWriteContract();
+
+    const disburseMilestone = (campaignId: number, milestoneId: number) => {
+        return writeContractAsync({
+            ...contractConfig,
+            functionName: 'disburseMilestone',
+            args: [BigInt(campaignId), BigInt(milestoneId)],
+        });
+    };
+
+    return {
+        disburseMilestone,
+        hash: data,
+        isPending,
+        error,
+    };
+}
+
+export function useMarkMilestoneFailed() {
+    const { writeContractAsync, data, isPending, error } = useWriteContract();
+
+    const markMilestoneFailed = (campaignId: number, milestoneId: number) => {
+        return writeContractAsync({
+            ...contractConfig,
+            functionName: 'markMilestoneFailed',
+            args: [BigInt(campaignId), BigInt(milestoneId)],
+        });
+    };
+
+    return {
+        markMilestoneFailed,
+        hash: data,
+        isPending,
+        error,
+    };
+}
+
+export function useClaimMilestoneRefund() {
+    const { writeContractAsync, data, isPending, error } = useWriteContract();
+
+    const claimMilestoneRefund = (campaignId: number, milestoneId: number) => {
+        return writeContractAsync({
+            ...contractConfig,
+            functionName: 'claimMilestoneRefund',
+            args: [BigInt(campaignId), BigInt(milestoneId)],
+        });
+    };
+
+    return {
+        claimMilestoneRefund,
+        hash: data,
+        isPending,
+        error,
+    };
+}
+
+export function useClaimFundingRefund() {
+    const { writeContractAsync, data, isPending, error } = useWriteContract();
+
+    const claimFundingRefund = (campaignId: number) => {
+        return writeContractAsync({
+            ...contractConfig,
+            functionName: 'claimFundingRefund',
+            args: [BigInt(campaignId)],
+        });
+    };
+
+    return {
+        claimFundingRefund,
+        hash: data,
+        isPending,
+        error,
+    };
+}
+
 export function useMintCertificate() {
-  const { writeContract, data, isPending, error } = useWriteContract();
+  const { writeContractAsync, data, isPending, error } = useWriteContract();
 
   const mintCertificate = (campaignId: number) => {
-    return writeContract({
+    return writeContractAsync({
       ...contractConfig,
       functionName: 'mintCertificate',
       args: [BigInt(campaignId)],

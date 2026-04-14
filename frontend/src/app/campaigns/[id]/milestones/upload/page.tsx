@@ -3,9 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { useAuth } from '@/lib';
-import { useWriteContract } from 'wagmi';
-import { contractConfig } from '@/lib/contracts/config';
+import { useAuth, useSubmitMilestoneProof } from '@/lib';
 
 const DEFAULT_API_BASE_URL = 'http://localhost:4000/api';
 
@@ -35,7 +33,7 @@ export default function MilestoneEvidenceUploadPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const { token } = useAuth();
-  const { writeContractAsync } = useWriteContract();
+  const { submitMilestoneProof } = useSubmitMilestoneProof();
 
   const idParam = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const campaignId = toSafeInteger(typeof idParam === 'string' ? idParam : undefined, NaN);
@@ -156,11 +154,7 @@ export default function MilestoneEvidenceUploadPage() {
       }
 
       try {
-        const txHash = await writeContractAsync({
-          ...contractConfig,
-          functionName: 'submitMilestoneProof',
-          args: [BigInt(campaignId), BigInt(resolvedMilestoneId), cid],
-        });
+        const txHash = await submitMilestoneProof(campaignId, resolvedMilestoneId, cid);
 
         setResultMessage(
           `Upload và ghi blockchain thành công (milestone index: ${resolvedMilestoneId}). CID: ${cid}. Tx: ${txHash}`

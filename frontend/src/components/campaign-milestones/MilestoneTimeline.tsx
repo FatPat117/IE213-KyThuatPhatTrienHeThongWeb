@@ -65,6 +65,20 @@ function getStatusMeta(status: string) {
         dotClass: 'bg-rose-500 ring-rose-100',
         cardClass: 'border-rose-100',
       };
+    case 'failed':
+      return {
+        label: 'Failed',
+        badgeClass: 'bg-red-100 text-red-700 border-red-200',
+        dotClass: 'bg-red-500 ring-red-100',
+        cardClass: 'border-red-100',
+      };
+    case 'refunded':
+      return {
+        label: 'Refunded',
+        badgeClass: 'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200',
+        dotClass: 'bg-fuchsia-500 ring-fuchsia-100',
+        cardClass: 'border-fuchsia-100',
+      };
     default:
       return {
         label: 'Sắp tới',

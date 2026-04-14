@@ -77,14 +77,18 @@ export default function CampaignMilestonesPage() {
       progressPercent: progress,
       goalWei: campaign.goal,
       milestoneCount: campaign.milestoneCount,
+      campaignStatusLabel: campaign.statusLabel,
+      currentMilestoneId: campaign.currentMilestoneId,
     }).map((item, index) => {
       const mappedStatus: PublicCampaignMilestone['status'] =
         item.status === 'completed'
           ? 'disbursed'
           : item.status === 'in_progress'
-            ? 'submitted'
+            ? 'pending_verification'
             : item.status === 'delayed'
               ? 'deadline_exceeded'
+              : item.status === 'failed'
+                ? 'failed'
               : 'pending_funding';
 
       return {

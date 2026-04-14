@@ -11,6 +11,7 @@ interface CampaignInfoPanelProps {
     goal: bigint;
     raised: bigint;
     completed: boolean;
+    statusLabel?: 'active' | 'in_progress' | 'completed' | 'partial_failed' | 'failed' | 'cancelled';
   };
   backendDescription?: string;
   backendTitle?: string;
@@ -21,6 +22,51 @@ function formatEthAmount(value: number) {
   if (!Number.isFinite(value) || value <= 0) return '0';
   if (value < 0.01) return value.toFixed(4).replace(/\.?0+$/, '');
   return value.toFixed(2);
+}
+
+function getStatusBadge(statusLabel?: CampaignInfoPanelProps['campaign']['statusLabel'], completed?: boolean) {
+  switch (statusLabel) {
+    case 'active':
+      return {
+        className: 'bg-emerald-100 text-emerald-700',
+        label: '● Đang kêu gọi',
+      };
+    case 'in_progress':
+      return {
+        className: 'bg-blue-100 text-blue-700',
+        label: 'Đang triển khai milestone',
+      };
+    case 'completed':
+      return {
+        className: 'bg-green-100 text-green-700',
+        label: 'Đã hoàn thành',
+      };
+    case 'partial_failed':
+      return {
+        className: 'bg-amber-100 text-amber-700',
+        label: 'Thất bại một phần',
+      };
+    case 'failed':
+      return {
+        className: 'bg-rose-100 text-rose-700',
+        label: 'Thất bại gây quỹ',
+      };
+    case 'cancelled':
+      return {
+        className: 'bg-slate-200 text-slate-700',
+        label: 'Đã hủy',
+      };
+    default:
+      return completed
+        ? {
+            className: 'bg-slate-100 text-slate-600',
+            label: 'Đã kết thúc',
+          }
+        : {
+            className: 'bg-green-100 text-green-700',
+            label: '● Đang hoạt động',
+          };
+  }
 }
 
 /**
@@ -34,6 +80,7 @@ export default function CampaignInfoPanel({
 }: CampaignInfoPanelProps) {
   const goalEth = Number(formatEther(campaign.goal));
   const raisedEth = Number(formatEther(campaign.raised));
+  const statusBadge = getStatusBadge(campaign.statusLabel, campaign.completed);
 
   return (
     <div className="rounded-2xl bg-white border border-slate-200 p-8 shadow-sm">
@@ -42,12 +89,8 @@ export default function CampaignInfoPanel({
           {backendTitle || campaign.title || `Campaign ${campaign.id}`}
         </h2>
         <div className="mb-3 flex justify-start sm:justify-end">
-          <span
-            className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold ${
-              campaign.completed ? 'bg-slate-100 text-slate-600' : 'bg-green-100 text-green-700'
-            }`}
-          >
-            {campaign.completed ? 'Đã kết thúc' : '● Đang hoạt động'}
+          <span className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold ${statusBadge.className}`}>
+            {statusBadge.label}
           </span>
         </div>
         <p className="text-slate-600 leading-relaxed">

@@ -6,7 +6,24 @@ export {
     contractConfig
 } from './contracts/config';
 export {
-    useContractStats, useCreateCampaign, useDonateToCampaign, useMarkAsFailed, useMintCertificate, useReadAllCampaigns, useReadCampaign, useReadCampaignCount, useReadFilteredCampaigns, useReadTotalRaised, useRefundDonation, useWithdrawFunds
+    useApproveMilestone,
+    useClaimFundingRefund,
+    useClaimMilestoneRefund,
+    useContractStats,
+    useCreateCampaign,
+    useDisburseMilestone,
+    useDonateToCampaign,
+    useMarkAsFailed,
+    useMarkMilestoneFailed,
+    useMintCertificate,
+    useReadAllCampaigns,
+    useReadCampaign,
+    useReadCampaignCount,
+    useReadFilteredCampaigns,
+    useReadTotalRaised,
+    useRefundDonation,
+    useSubmitMilestoneProof,
+    useWithdrawFunds
 } from './contracts/hooks';
 export { config } from './contracts/wagmi';
 
@@ -21,7 +38,7 @@ export { WagmiProviderWrapper } from './providers/wagmi-provider';
 // Hooks
 export { useRpcErrorHandler } from './hooks/use-rpc-error';
 export { useHasStatus, useStatusType, useSystemStatus } from './hooks/use-system-status';
-export { useBackendCampaign, useBackendCampaigns, useBackendDonations, useBackendTransactions } from './hooks/use-backend-data';
+export { useBackendCampaign, useBackendCampaigns, useBackendDonations, useBackendTransactions, usePublicStats } from './hooks/use-backend-data';
 export { useIsSepoliaNetwork, useShortenAddress, useWalletStatus, useWalletValidation } from './hooks/use-wallet';
 export {
     getCampaignMetadataFromCache,
@@ -39,6 +56,7 @@ export {
     getMilestoneApprovalStatus,
     getPublicCampaignMilestones,
     getPublicCampaigns,
+    getPublicStats,
     getReviewerAggregates,
     updateCampaignMetadata
 } from './api/campaigns';

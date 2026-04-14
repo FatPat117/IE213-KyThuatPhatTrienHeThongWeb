@@ -23,7 +23,7 @@ export default function MilestoneOverviewCard({
   raisedWei,
 }: MilestoneOverviewCardProps) {
   const completedCount = milestones.filter((item) => item.status === 'disbursed').length;
-  const delayedCount = milestones.filter((item) => item.status === 'deadline_exceeded').length;
+  const issueCount = milestones.filter((item) => ['deadline_exceeded', 'failed', 'refunded'].includes(item.status)).length;
   const inProgressCount = milestones.filter((item) => {
     return ['pending_verification', 'submitted', 'resubmittable', 'review_timeout', 'approved'].includes(item.status);
   }).length;
@@ -53,8 +53,8 @@ export default function MilestoneOverviewCard({
             <p className="text-base font-semibold text-blue-800">{inProgressCount}</p>
           </div>
           <div className="rounded-xl bg-rose-50 px-4 py-3">
-            <p className="text-xs text-rose-700">Trễ hạn</p>
-            <p className="text-base font-semibold text-rose-800">{delayedCount}</p>
+            <p className="text-xs text-rose-700">Issues</p>
+            <p className="text-base font-semibold text-rose-800">{issueCount}</p>
           </div>
           <div className="rounded-xl bg-indigo-50 px-4 py-3">
             <p className="text-xs text-indigo-700">Mục tiêu quỹ</p>

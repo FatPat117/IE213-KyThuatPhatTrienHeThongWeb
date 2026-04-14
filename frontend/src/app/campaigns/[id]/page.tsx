@@ -10,12 +10,13 @@ import {
   updateUserProfile,
   useAuth,
   useBackendCampaign,
+    useClaimFundingRefund,
+    useClaimMilestoneRefund,
   useDonateToCampaign,
+    useDisburseMilestone,
   useMarkAsFailed,
   useMintCertificate,
   useReadCampaign,
-  useRefundDonation,
-  useWithdrawFunds,
 } from "@/lib";
 import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
 import { useParams } from "next/navigation";
@@ -54,8 +55,9 @@ export default function CampaignDetailPage() {
     const publicClient = usePublicClient({ chainId: contractConfig.chainId });
     const [donationHistoryWarning, setDonationHistoryWarning] = useState<string | null>(null);
     const { donate, hash, isPending, error: donateError } = useDonateToCampaign();
-    const { withdrawFunds, hash: withdrawHash, isPending: withdrawPending, error: withdrawError } = useWithdrawFunds();
-    const { refund, hash: refundHash, isPending: refundPending, error: refundError } = useRefundDonation();
+    const { disburseMilestone, hash: disburseHash, isPending: disbursePending, error: disburseError } = useDisburseMilestone();
+    const { claimFundingRefund, hash: fundingRefundHash, isPending: fundingRefundPending, error: fundingRefundError } = useClaimFundingRefund();
+    const { claimMilestoneRefund, hash: milestoneRefundHash, isPending: milestoneRefundPending, error: milestoneRefundError } = useClaimMilestoneRefund();
     const { markAsFailed, hash: markAsFailedHash, isPending: markAsFailedPending, error: markAsFailedError } = useMarkAsFailed();
     const { mintCertificate, hash: mintHash, isPending: mintPending, error: mintError } = useMintCertificate();
 
@@ -64,15 +66,16 @@ export default function CampaignDetailPage() {
             hash,
         });
 
-    const { isLoading: withdrawConfirming, isSuccess: withdrawConfirmed } =
+    const { isLoading: disburseConfirming, isSuccess: disburseConfirmed } =
         useWaitForTransactionReceipt({
-            hash: withdrawHash,
+            hash: disburseHash,
         });
 
     const { isLoading: refundConfirming, isSuccess: refundConfirmed } =
         useWaitForTransactionReceipt({
-            hash: refundHash,
+            hash: milestoneRefundHash || fundingRefundHash,
         });
+
     const { isLoading: mintConfirming, isSuccess: mintConfirmed } =
         useWaitForTransactionReceipt({
             hash: mintHash,
@@ -138,7 +141,7 @@ export default function CampaignDetailPage() {
                 try {
                     const logs = await publicClient.getLogs({
                         address: contractConfig.address,
-                        event: parseAbiItem('event Donated(uint256 indexed campaignId, address indexed donor, uint256 amount)'),
+                        event: parseAbiItem('event Donated(uint256 indexed campaignId, address indexed donor, uint256 amount, uint256 totalRaised)'),
                         args: { campaignId: BigInt(id) },
                         fromBlock: 'earliest',
                         toBlock: 'latest',
@@ -177,12 +180,19 @@ export default function CampaignDetailPage() {
     // Check if user is creator
     const isCreator = address && campaign && address.toLowerCase() === campaign.creator.toLowerCase();
 
-    // Campaign outcome inferred from on-chain goal vs raised.
-    const isSucceededCampaign = Boolean(campaign && campaign.completed && campaign.raised >= campaign.goal);
-    const isFailedCampaign = Boolean(campaign && campaign.completed && campaign.raised < campaign.goal);
+    const campaignStatusLabel = campaign?.statusLabel || 'active';
+    const isCampaignActive = campaignStatusLabel === 'active';
+    const isCampaignInProgress = campaignStatusLabel === 'in_progress';
+    const isCampaignCompleted = campaignStatusLabel === 'completed';
+    const isCampaignPartialFailed = campaignStatusLabel === 'partial_failed';
+    const isCampaignFailed = campaignStatusLabel === 'failed';
+    const canMintCertificate = isCampaignInProgress || isCampaignCompleted || isCampaignPartialFailed;
+    const canDisburseCurrentMilestone = Boolean(
+        campaign && isCampaignInProgress && campaign.currentMilestoneId < campaign.milestoneCount
+    );
     const shouldMarkAsFailed = Boolean(
         campaign &&
-        !campaign.completed &&
+        isCampaignActive &&
         campaign.raised < campaign.goal &&
         campaign.deadline > 0 &&
         Math.floor(Date.now() / 1000) >= campaign.deadline
@@ -260,6 +270,15 @@ export default function CampaignDetailPage() {
         if (msg.includes("not active")) {
             return "Campaign không còn ở trạng thái Active.";
         }
+        if (msg.includes("milestone not approved")) {
+            return "Milestone hiện tại chưa được reviewer phê duyệt nên chưa thể giải ngân.";
+        }
+        if (msg.includes("only current milestone can be disbursed")) {
+            return "Chỉ có thể giải ngân milestone hiện tại.";
+        }
+        if (msg.includes("wrong reviewer")) {
+            return "Ví hiện tại không có quyền reviewer cho campaign này.";
+        }
         return err.message;
     };
 
@@ -282,18 +301,24 @@ export default function CampaignDetailPage() {
 
     const handleWithdraw = () => {
         if (!Number.isFinite(id)) return;
+        if (!campaign) return;
         try {
-            withdrawFunds(id);
+            disburseMilestone(id, campaign.currentMilestoneId);
         } catch (err) {
             const friendly = getFriendlyError(err as { message?: string });
-            showErrorToast(friendly || "Không thể rút tiền từ chiến dịch. Vui lòng thử lại.");
+            showErrorToast(friendly || "Không thể giải ngân milestone hiện tại. Vui lòng thử lại.");
         }
     };
 
     const handleRefund = () => {
         if (!Number.isFinite(id)) return;
+        if (!campaign) return;
         try {
-            refund(id);
+            if (isCampaignPartialFailed) {
+                claimMilestoneRefund(id, campaign.currentMilestoneId);
+            } else {
+                claimFundingRefund(id);
+            }
         } catch (err) {
             const friendly = getFriendlyError(err as { message?: string });
             showErrorToast(friendly || "Không thể hoàn tiền. Vui lòng thử lại.");
@@ -356,6 +381,18 @@ export default function CampaignDetailPage() {
     }, [markAsFailedConfirmed, refetch]);
 
     useEffect(() => {
+        if (!disburseConfirmed) return;
+        refetch();
+        showSuccessToast("Giải ngân milestone thành công.");
+    }, [disburseConfirmed, refetch]);
+
+    useEffect(() => {
+        if (!refundConfirmed) return;
+        refetch();
+        showSuccessToast("Hoàn tiền thành công.");
+    }, [refundConfirmed, refetch]);
+
+    useEffect(() => {
         const txHash = mintHash || hash;
         if (!txHash || !address) return;
 
@@ -379,7 +416,7 @@ export default function CampaignDetailPage() {
     }, [campaign]);
 
     const isSepolia = chain?.id === 11155111;
-    const canDonate = Boolean(isConnected && isSepolia && campaign && !campaign.completed);
+    const canDonate = Boolean(isConnected && isSepolia && campaign && isCampaignActive);
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
@@ -441,6 +478,8 @@ export default function CampaignDetailPage() {
                                 progressPercent={progress}
                                 goalWei={campaign.goal}
                                 milestoneCount={campaign.milestoneCount}
+                                campaignStatusLabel={campaign.statusLabel}
+                                currentMilestoneId={campaign.currentMilestoneId}
                             />
 
                             <CampaignInfoPanel
@@ -584,23 +623,23 @@ export default function CampaignDetailPage() {
                                 </div>
                             )}
                             <CreatorActionsPanel
-                                visible={Boolean(isCreator && isSucceededCampaign)}
-                                isPending={withdrawPending}
-                                isConfirming={withdrawConfirming}
-                                isWithdrawn={campaign.withdrawn}
-                                isConfirmed={withdrawConfirmed}
-                                txHash={withdrawHash}
-                                errorMessage={getFriendlyError(withdrawError)}
+                                visible={Boolean(isCreator && canDisburseCurrentMilestone)}
+                                isPending={disbursePending}
+                                isConfirming={disburseConfirming}
+                                isWithdrawn={!canDisburseCurrentMilestone}
+                                isConfirmed={disburseConfirmed}
+                                txHash={disburseHash}
+                                errorMessage={getFriendlyError(disburseError)}
                                 onWithdraw={handleWithdraw}
                             />
                             <RefundAndMintPanel
-                                showRefund={Boolean(isFailedCampaign && effectiveUserDonatedAmount > 0n)}
-                                showMint={Boolean(effectiveUserDonatedAmount > 0n && !hasMintedCertificate)}
-                                refundPending={refundPending}
+                                showRefund={Boolean((isCampaignFailed || isCampaignPartialFailed) && effectiveUserDonatedAmount > 0n)}
+                                showMint={Boolean(canMintCertificate && effectiveUserDonatedAmount > 0n && !hasMintedCertificate)}
+                                refundPending={isCampaignPartialFailed ? milestoneRefundPending : fundingRefundPending}
                                 refundConfirming={refundConfirming}
                                 refundConfirmed={refundConfirmed}
-                                refundHash={refundHash}
-                                refundError={getFriendlyError(refundError)}
+                                refundHash={isCampaignPartialFailed ? milestoneRefundHash : fundingRefundHash}
+                                refundError={getFriendlyError(isCampaignPartialFailed ? milestoneRefundError : fundingRefundError)}
                                 mintPending={mintPending}
                                 mintConfirming={mintConfirming}
                                 mintConfirmed={mintConfirmed}
@@ -616,7 +655,7 @@ export default function CampaignDetailPage() {
                                 canDonate={canDonate}
                                 isConnected={isConnected}
                                 isSepolia={isSepolia}
-                                campaignCompleted={campaign.completed}
+                                campaignStatusLabel={campaignStatusLabel as 'active' | 'in_progress' | 'completed' | 'partial_failed' | 'failed' | 'cancelled'}
                                 isPending={isPending}
                                 isConfirming={isConfirming}
                                 isConfirmed={isConfirmed}

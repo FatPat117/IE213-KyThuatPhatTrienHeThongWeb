@@ -5,7 +5,15 @@ export type MilestoneTemplate = {
   description: string;
 };
 
-export type MilestoneStatus = 'completed' | 'in_progress' | 'upcoming' | 'delayed';
+export type MilestoneStatus = 'completed' | 'in_progress' | 'upcoming' | 'delayed' | 'failed' | 'cancelled';
+
+export type CampaignStatusForTimeline =
+  | 'active'
+  | 'in_progress'
+  | 'completed'
+  | 'partial_failed'
+  | 'failed'
+  | 'cancelled';
 
 export type TimelineMilestone = {
   id: string;
@@ -25,6 +33,8 @@ type BuildMilestonesInput = {
   progressPercent: number;
   goalWei?: bigint;
   milestoneCount?: number;
+  campaignStatusLabel?: CampaignStatusForTimeline;
+  currentMilestoneId?: number;
 };
 
 export const DEFAULT_MILESTONE_TEMPLATES: MilestoneTemplate[] = [
@@ -95,6 +105,8 @@ export function buildTimelineMilestones({
   progressPercent,
   goalWei = 0n,
   milestoneCount,
+  campaignStatusLabel,
+  currentMilestoneId,
 }: BuildMilestonesInput): TimelineMilestone[] {
   const safeProgress = Math.max(0, Math.min(progressPercent, 100));
   const endMs = campaignDeadline > 0 ? campaignDeadline * 1000 : Date.now();
@@ -106,20 +118,65 @@ export function buildTimelineMilestones({
     : DEFAULT_MILESTONE_TEMPLATES.length;
   const milestoneTemplates = buildMilestoneTemplates(normalizedMilestoneCount);
 
-  const currentMilestoneIndex = milestoneTemplates.findIndex(
+  if (milestoneTemplates.length === 0) {
+    return [];
+  }
+
+  const progressCurrentMilestoneIndex = milestoneTemplates.findIndex(
     (item) => safeProgress < item.cumulativePercent,
   );
+  const normalizedProgressIndex =
+    progressCurrentMilestoneIndex >= 0
+      ? progressCurrentMilestoneIndex
+      : milestoneTemplates.length - 1;
+
+  const normalizedCurrentMilestoneId = Number.isFinite(currentMilestoneId)
+    ? Math.max(
+        0,
+        Math.min(
+          Math.floor(Number(currentMilestoneId)),
+          Math.max(milestoneTemplates.length - 1, 0),
+        ),
+      )
+    : null;
+
+  const timelineCampaignStatus = campaignStatusLabel;
 
   return milestoneTemplates.map((template, index) => {
     const expectedDate = calcEstimatedMilestoneDate(createdAtMs, endMs, template.cumulativePercent);
     const reached = safeProgress >= template.cumulativePercent;
 
     let status: MilestoneStatus = 'upcoming';
-    if (reached) {
+
+    if (timelineCampaignStatus === 'completed') {
+      status = 'completed';
+    } else if (timelineCampaignStatus === 'failed' || timelineCampaignStatus === 'cancelled') {
+      status = 'cancelled';
+    } else if (timelineCampaignStatus === 'partial_failed') {
+      const failedIndex = normalizedCurrentMilestoneId ?? normalizedProgressIndex;
+      if (index < failedIndex) {
+        status = 'completed';
+      } else if (index === failedIndex) {
+        status = 'failed';
+      } else {
+        status = 'upcoming';
+      }
+    } else if (timelineCampaignStatus === 'in_progress') {
+      const currentIndex = normalizedCurrentMilestoneId ?? normalizedProgressIndex;
+      if (index < currentIndex) {
+        status = 'completed';
+      } else if (index === currentIndex) {
+        status = expectedDate.getTime() < Date.now() ? 'delayed' : 'in_progress';
+      } else {
+        status = 'upcoming';
+      }
+    } else if (timelineCampaignStatus === 'active') {
+      status = 'upcoming';
+    } else if (reached) {
       status = 'completed';
     } else if (expectedDate.getTime() < Date.now()) {
       status = 'delayed';
-    } else if (currentMilestoneIndex === index) {
+    } else if (normalizedProgressIndex === index) {
       status = 'in_progress';
     }
 

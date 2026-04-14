@@ -29,7 +29,7 @@ export default function CreatorActionsPanel({
   return (
     <div className="rounded-2xl bg-gradient-to-br from-purple-600 to-purple-700 p-8 shadow-xl text-white">
       <h3 className="text-2xl font-bold mb-2">Hành động của chủ chiến dịch</h3>
-      <p className="text-purple-100 mb-6 text-sm">Chiến dịch đã kết thúc. Thực hiện rút tiền gây quỹ.</p>
+      <p className="text-purple-100 mb-6 text-sm">Milestone hiện tại đã sẵn sàng giải ngân sau khi được reviewer phê duyệt.</p>
 
       <button
         onClick={onWithdraw}
@@ -41,13 +41,13 @@ export default function CreatorActionsPanel({
           : isConfirming
             ? '🔄 Đang xác nhận...'
             : isWithdrawn
-              ? '✓ Đã rút'
-              : '💰 Rút tiền'}
+              ? '✓ Đã giải ngân'
+              : '💸 Giải ngân milestone'}
       </button>
 
       {isConfirmed && txHash && (
         <div className="rounded-lg bg-green-500 px-4 py-3 text-sm font-medium text-white">
-          ✓ Rút tiền thành công!
+          ✓ Giải ngân thành công!
         </div>
       )}
       {errorMessage && (
