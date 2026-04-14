@@ -39,6 +39,15 @@ export interface ReviewerAggregate {
   campaignIds: number[];
 }
 
+export interface MilestoneApprovalStatus {
+  safeAddress: string;
+  required: number;
+  confirmed: number;
+  executed: boolean;
+  signers: string[];
+  pendingTxHash: string;
+}
+
 interface PublicCampaignsResponse {
   items: PublicCampaignItem[];
   pagination: {
@@ -121,6 +130,17 @@ export async function getPublicCampaigns(params?: {
 export async function getPublicCampaignMilestones(onChainId: number) {
   return apiRequest<PublicCampaignMilestonesResponse>(
     `/campaigns/public/campaigns/${onChainId}/milestones`
+  );
+}
+
+export async function getMilestoneApprovalStatus(
+  onChainId: number,
+  milestoneId: number,
+  token: string
+) {
+  return apiRequest<MilestoneApprovalStatus>(
+    `/campaigns/${onChainId}/milestones/${milestoneId}/approval-status`,
+    { token }
   );
 }
 
