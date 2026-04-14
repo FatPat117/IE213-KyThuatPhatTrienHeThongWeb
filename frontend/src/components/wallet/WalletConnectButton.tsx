@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { useAccount, useChainId, useConnect, useDisconnect, useSignMessage, useSwitchChain } from 'wagmi';
 import { injected } from '@wagmi/core';
 import WalletConnectedCard from './WalletConnectedCard';
@@ -8,12 +9,14 @@ import WalletDisconnectedCard from './WalletDisconnectedCard';
 import { requestNonce, useAuth, verifyWalletSignature } from '@/lib';
 
 const SEPOLIA_CHAIN_ID = 11155111;
+const EMPTY_SUBSCRIBE = () => () => {};
 const isIgnorableConnectorError = (message: string) => {
   const normalized = message.toLowerCase();
   return normalized.includes('connector not connected');
 };
 
 export default function WalletConnectButton() {
+  const isHydrated = useSyncExternalStore(EMPTY_SUBSCRIBE, () => true, () => false);
   const { address, isConnected } = useAccount();
   const { connect, isPending } = useConnect();
   const { disconnect } = useDisconnect();
@@ -127,6 +130,11 @@ export default function WalletConnectButton() {
     setErrorMessage(null);
     switchChain({ chainId: SEPOLIA_CHAIN_ID });
   };
+
+  if (!isHydrated) {
+    // Keep server/client initial DOM identical to avoid hydration mismatch.
+    return <div className="h-10 w-36" aria-hidden />;
+  }
 
   if (!isConnected || !isAuthenticated) {
     return (

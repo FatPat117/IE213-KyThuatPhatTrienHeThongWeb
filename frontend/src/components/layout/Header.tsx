@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import dynamic from "next/dynamic";
 import { useState, useSyncExternalStore } from "react";
-import { useAuth } from "@/lib";
+import { useReadContract } from "wagmi";
+import { contractConfig, useAuth } from "@/lib";
+import WalletConnectButton from "@/components/wallet/WalletConnectButton";
 
 function isLinkActive(href: string, pathname: string): boolean {
     if (href === "/campaigns") {
@@ -19,13 +20,6 @@ function isLinkActive(href: string, pathname: string): boolean {
     }
     return pathname === href || pathname.startsWith(href + "/");
 }
-
-const WalletConnectButton = dynamic(
-    () => import("@/components/wallet/WalletConnectButton"),
-    {
-        ssr: false,
-    },
-);
 
 export default function Header() {
     const pathname = usePathname();
@@ -46,6 +40,20 @@ export default function Header() {
         ? true
         : Boolean((window as Window & { ethereum?: unknown }).ethereum);
     const isSignedIn = isClient ? Boolean(token && user?.wallet) : false;
+    const walletAddress = (user?.wallet || "").trim().toLowerCase();
+
+    const { data: isActiveReviewer } = useReadContract({
+        ...contractConfig,
+        functionName: "isActiveReviewer",
+        args: walletAddress ? [walletAddress as `0x${string}`] : undefined,
+        query: {
+            enabled: Boolean(walletAddress),
+            staleTime: 30_000,
+            refetchOnWindowFocus: true,
+        },
+    });
+
+    const canSeeReviewerLink = isSignedIn && Boolean(isActiveReviewer);
 
     // Public navigation always hiển thị trên header
     const publicLinks = [
@@ -57,12 +65,17 @@ export default function Header() {
     // Các trang cá nhân gom vào nhóm "Tài khoản" để header gọn hơn
     const accountLinks = [
         { href: "/dashboard", label: "Tổng quan" },
+        { href: "/reviewer", label: "Kiểm duyệt" },
         { href: "/my-campaigns", label: "Chiến dịch của tôi" },
         { href: "/campaigns/create", label: "Tạo mới campaign" },
         { href: "/donations", label: "Quyên góp của tôi" },
         { href: "/certificates", label: "Chứng chỉ của tôi" },
         { href: "/settings", label: "Cài đặt" },
     ];
+
+    const visibleAccountLinks = accountLinks.filter(
+        (link) => link.href !== "/reviewer" || canSeeReviewerLink,
+    );
 
     return (
         <>
@@ -142,7 +155,7 @@ export default function Header() {
                                 <WalletConnectButton />
                                 {/* THE INVISIBLE BRIDGE FIX IS ADDED HERE */}
                                 <div className="invisible absolute right-0 top-full z-40 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 text-sm text-slate-700 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 before:absolute before:-top-2 before:left-0 before:h-2 before:w-full before:content-['']">
-                                    {accountLinks.map((link) => {
+                                    {visibleAccountLinks.map((link) => {
                                         const active = isLinkActive(
                                             link.href,
                                             pathname ?? "",
@@ -233,7 +246,7 @@ export default function Header() {
                                     <p className="pt-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
                                         Tài khoản
                                     </p>
-                                    {accountLinks.map((link) => {
+                                    {visibleAccountLinks.map((link) => {
                                         const active = isLinkActive(
                                             link.href,
                                             pathname ?? "",

@@ -36,6 +36,7 @@ export {
     getCampaignIndexStatus,
     getCampaigns,
     getDisbursedMilestoneCount,
+    getMilestoneApprovalStatus,
     getPublicCampaignMilestones,
     getPublicCampaigns,
     getReviewerAggregates,
