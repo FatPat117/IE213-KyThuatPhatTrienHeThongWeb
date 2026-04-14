@@ -63,7 +63,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 const PRIMARY_FILTER_OPTIONS: Array<{ value: ReviewFilter; label: string }> = [
   { value: 'all', label: 'Tất cả mốc' },
-  { value: 'pending', label: 'Đang chờ' },
+  { value: 'pending', label: 'Đang chờ duyệt' },
   { value: 'processed', label: 'Đã xử lý' },
 ];
 
@@ -236,7 +236,6 @@ export default function ReviewerWorkspacePage() {
   );
 
   const [filter, setFilter] = useState<ReviewFilter>('all');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [rows, setRows] = useState<ReviewerCampaignRow[]>([]);
   const [approvalStatusMap, setApprovalStatusMap] = useState<Record<string, MilestoneApprovalStatus>>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -390,39 +389,10 @@ export default function ReviewerWorkspacePage() {
     return () => window.clearInterval(timer);
   }, [normalizedIsReviewer, refreshApprovalStatuses, rows.length]);
 
-  const statusFilterOptions = useMemo(() => {
-    const statuses = new Set<string>();
-
-    rows.forEach((row) => {
-      collectMilestonesByFilter(row, filter).forEach((milestone) => {
-        statuses.add(milestone.status);
-      });
-    });
-
-    return [
-      { value: 'all', label: 'Tất cả trạng thái' },
-      ...Array.from(statuses)
-        .sort((a, b) => getStatusLabel(a).localeCompare(getStatusLabel(b), 'vi'))
-        .map((status) => ({
-          value: status,
-          label: getStatusLabel(status),
-        })),
-    ];
-  }, [filter, rows]);
-
-  useEffect(() => {
-    if (statusFilter === 'all') return;
-    if (!statusFilterOptions.some((option) => option.value === statusFilter)) {
-      setStatusFilter('all');
-    }
-  }, [statusFilter, statusFilterOptions]);
-
   const filteredRows = useMemo(() => {
     return rows
       .map((row) => {
-        const milestones = collectMilestonesByFilter(row, filter).filter((milestone) => {
-          return statusFilter === 'all' ? true : milestone.status === statusFilter;
-        });
+        const milestones = collectMilestonesByFilter(row, filter);
 
         return {
           campaign: row.campaign,
@@ -430,7 +400,7 @@ export default function ReviewerWorkspacePage() {
         };
       })
       .filter((row) => row.milestones.length > 0);
-  }, [filter, rows, statusFilter]);
+  }, [filter, rows]);
 
   const handleApprove = useCallback(
     async (campaignId: number, milestoneId: number) => {
@@ -581,22 +551,6 @@ export default function ReviewerWorkspacePage() {
                       filter === option.value
                         ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-indigo-200'
                         : 'text-slate-600 hover:bg-white'
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {statusFilterOptions.map((option) => (
-                  <button
-                    key={option.value}
-                    onClick={() => setStatusFilter(option.value)}
-                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                      statusFilter === option.value
-                        ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
-                        : 'border-slate-300 bg-white text-slate-600 hover:border-slate-400'
                     }`}
                   >
                     {option.label}

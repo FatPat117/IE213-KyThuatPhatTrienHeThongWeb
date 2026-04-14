@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
-import { useAuth } from "@/lib";
+import { useReadContract } from "wagmi";
+import { contractConfig, useAuth } from "@/lib";
 import WalletConnectButton from "@/components/wallet/WalletConnectButton";
 
 function isLinkActive(href: string, pathname: string): boolean {
@@ -39,6 +40,20 @@ export default function Header() {
         ? true
         : Boolean((window as Window & { ethereum?: unknown }).ethereum);
     const isSignedIn = isClient ? Boolean(token && user?.wallet) : false;
+    const walletAddress = (user?.wallet || "").trim().toLowerCase();
+
+    const { data: isActiveReviewer } = useReadContract({
+        ...contractConfig,
+        functionName: "isActiveReviewer",
+        args: walletAddress ? [walletAddress as `0x${string}`] : undefined,
+        query: {
+            enabled: Boolean(walletAddress),
+            staleTime: 30_000,
+            refetchOnWindowFocus: true,
+        },
+    });
+
+    const canSeeReviewerLink = isSignedIn && Boolean(isActiveReviewer);
 
     // Public navigation always hiển thị trên header
     const publicLinks = [
@@ -58,9 +73,9 @@ export default function Header() {
         { href: "/settings", label: "Cài đặt" },
     ];
 
-    const visibleAccountLinks = isSignedIn
-        ? accountLinks
-        : accountLinks.filter((link) => link.href !== "/reviewer");
+    const visibleAccountLinks = accountLinks.filter(
+        (link) => link.href !== "/reviewer" || canSeeReviewerLink,
+    );
 
     return (
         <>
