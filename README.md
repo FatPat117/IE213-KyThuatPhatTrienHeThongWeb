@@ -53,4 +53,4 @@ forge script script/DeployFundingPlatformSepolia.s.sol --rpc-url $SEPOLIA_RPC_UR
 
 The contract is live on the Sepolia Testnet at:
 
-`0xCF6eBe1D6aD4d7d097B1cfB8d1eBB195b5710F78`
+`0x543c9F923CaCEAf5d2799b0dc84e9d8E440Df6F9`

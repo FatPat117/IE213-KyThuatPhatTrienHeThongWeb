@@ -1202,5 +1202,5 @@ docker compose up -d --build
 
 Theo `README.md` của repo, contract hiện tại đang live trên Sepolia tại địa chỉ:
 
-- `0xCF6eBe1D6aD4d7d097B1cfB8d1eBB195b5710F78`
+- `0x543c9F923CaCEAf5d2799b0dc84e9d8E440Df6F9`
 
