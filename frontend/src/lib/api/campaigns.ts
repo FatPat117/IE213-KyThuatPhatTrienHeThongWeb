@@ -1,6 +1,6 @@
 "use client";
 
-import { apiRequest } from "./client";
+import { API_BASE_URL, apiRequest } from "./client";
 import type { CampaignRecord } from "./types";
 
 export interface PublicCampaignItem {
@@ -77,6 +77,91 @@ interface PublicCampaignMilestonesResponse {
     milestones: PublicCampaignMilestone[];
 }
 
+interface CampaignMilestoneRecord {
+    milestoneId?: number;
+    milestoneIndex?: number;
+    title?: string;
+    description?: string;
+    allocationBps?: number;
+    financialTargetWei?: string;
+    amountWei?: string;
+    deadline?: string;
+    status?: string;
+    reportCids?: Array<{ cid?: string; submittedAt?: string }>;
+    approvedAt?: string | null;
+    approvedBy?: string;
+    disbursedAt?: string | null;
+}
+
+interface MilestoneServiceResponse {
+    success?: boolean;
+    status?: "success" | "error";
+    data?: CampaignMilestoneRecord[];
+    error?: string;
+    message?: string;
+}
+
+const CAMPAIGN_INDEX_STATUS_CACHE_TTL_MS = 15_000;
+const campaignIndexStatusCache = new Map<
+    number,
+    { indexed: boolean; expiresAt: number }
+>();
+
+function readCachedCampaignIndexStatus(id: number): boolean | null {
+    const cached = campaignIndexStatusCache.get(id);
+    if (!cached) return null;
+
+    if (Date.now() > cached.expiresAt) {
+        campaignIndexStatusCache.delete(id);
+        return null;
+    }
+
+    return cached.indexed;
+}
+
+function writeCampaignIndexStatusCache(id: number, indexed: boolean) {
+    campaignIndexStatusCache.set(id, {
+        indexed,
+        expiresAt: Date.now() + CAMPAIGN_INDEX_STATUS_CACHE_TTL_MS,
+    });
+}
+
+async function ensureCampaignIndexed(onChainId: number): Promise<void> {
+    const status = await getCampaignIndexStatus(onChainId);
+    if (!status.indexed) {
+        throw new Error("Campaign not yet indexed");
+    }
+}
+
+function mapMilestoneRecord(
+    item: CampaignMilestoneRecord,
+): PublicCampaignMilestone {
+    return {
+        milestoneId: Number(item.milestoneId ?? item.milestoneIndex ?? 0),
+        title: item.title || "",
+        description: item.description || "",
+        allocationBps: Number(item.allocationBps || 0),
+        amountWei: (item.financialTargetWei || item.amountWei || "0").toString(),
+        deadline: item.deadline || "",
+        status: item.status || "pending_funding",
+        reportCids: Array.isArray(item.reportCids)
+            ? item.reportCids
+                  .filter(
+                      (entry) =>
+                          typeof entry?.cid === "string" &&
+                          entry.cid.trim().length > 0,
+                  )
+                  .map((entry) => ({
+                      cid: (entry.cid || "").trim(),
+                      submittedAt: entry.submittedAt || "",
+                  }))
+            : [],
+        approvedAt: item.approvedAt || null,
+        approvedBy: item.approvedBy || "",
+        disbursedAt: item.disbursedAt || null,
+    };
+}
+
 async function getAllPublicCampaigns(): Promise<PublicCampaignItem[]> {
     const allItems: PublicCampaignItem[] = [];
     let page = 1;
@@ -97,6 +182,7 @@ export async function getCampaigns() {
 }
 
 export async function getCampaignById(id: number) {
+    await ensureCampaignIndexed(id);
     return apiRequest<CampaignRecord>(`/campaigns/${id}`);
 }
 
@@ -124,7 +210,21 @@ export async function updateCampaignMetadata(
 }
 
 export async function getCampaignIndexStatus(id: number) {
-    return apiRequest<{ indexed: boolean }>(`/campaigns/${id}/status`);
+    const normalizedId = Number(id);
+    if (!Number.isFinite(normalizedId)) {
+        return { indexed: false };
+    }
+
+    const cachedStatus = readCachedCampaignIndexStatus(normalizedId);
+    if (cachedStatus !== null) {
+        return { indexed: cachedStatus };
+    }
+
+    const response = await apiRequest<{ indexed: boolean }>(
+        `/campaigns/${normalizedId}/status`,
+    );
+    writeCampaignIndexStatusCache(normalizedId, Boolean(response.indexed));
+    return response;
 }
 
 export async function getPublicCampaigns(params?: {
@@ -152,9 +252,46 @@ export async function getPublicStats() {
 }
 
 export async function getPublicCampaignMilestones(onChainId: number) {
-    return apiRequest<PublicCampaignMilestonesResponse>(
-        `/campaigns/public/campaigns/${onChainId}/milestones`,
-    );
+    await ensureCampaignIndexed(onChainId);
+
+    try {
+        const response = await fetch(
+            `${API_BASE_URL}/milestones/campaigns/${onChainId}`,
+            {
+                cache: "no-store",
+                headers: {
+                    "Cache-Control": "no-cache",
+                    Pragma: "no-cache",
+                },
+            },
+        );
+        const payload = (await response.json()) as MilestoneServiceResponse;
+
+        if (!response.ok || payload.status !== "success") {
+            if (response.status === 404) {
+                throw new Error("Campaign not yet indexed");
+            }
+            throw new Error(payload.error || payload.message || "Request failed");
+        }
+
+        const rawMilestones = Array.isArray(payload.data) ? payload.data : [];
+        return {
+            campaignOnChainId: onChainId,
+            milestones: rawMilestones.map(mapMilestoneRecord),
+        };
+    } catch (error) {
+        const message =
+            error instanceof Error ? error.message.toLowerCase() : "";
+        if (message.includes("not yet indexed")) {
+            throw error;
+        }
+
+        // Backward compatible fallback for environments that still expose
+        // milestone timeline via campaign public endpoint.
+        return apiRequest<PublicCampaignMilestonesResponse>(
+            `/campaigns/public/campaigns/${onChainId}/milestones`,
+        );
+    }
 }
 
 export async function getMilestoneApprovalStatus(

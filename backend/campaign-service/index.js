@@ -5,7 +5,7 @@ const helmet = require("helmet");
 const morgan = require("morgan");
 
 const { connectDB } = require("./config/db");
-const { connectRabbitMQ } = require("./config/rabbitmq");
+const { connectRabbitMQ, getChannel } = require("./config/rabbitmq");
 const {
     startCampaignCreatedConsumer,
 } = require("./consumers/campaignCreated.consumer");
@@ -43,6 +43,10 @@ const errorHandler = require("./middlewares/errorHandler");
 
 const app = express();
 const PORT = process.env.PORT || 4002;
+const RABBITMQ_HEALTHCHECK_INTERVAL_MS = Number(
+    process.env.RABBITMQ_HEALTHCHECK_INTERVAL_MS || 5000,
+);
+let boundConsumerChannel = null;
 
 // ── Middlewares ──────────────────────────────────────────────
 app.use(helmet());
@@ -78,17 +82,44 @@ app.use(errorHandler);
 // ── Startup ──────────────────────────────────────────────────
 async function start() {
     await connectDB();
+
+    const bindConsumersToCurrentChannel = async () => {
+        const currentChannel = getChannel();
+        if (!currentChannel || currentChannel === boundConsumerChannel) {
+            return;
+        }
+
+        await startCampaignCreatedConsumer();
+        await startDonatedConsumer();
+        await startCampaignFailedConsumer();
+        await startFundingCompleteConsumer();
+        await startMilestoneFailedConsumer();
+        await startMilestoneDisbursedConsumer();
+        await startMilestoneApprovedConsumer();
+        await startMilestoneReportSubmittedConsumer();
+        await startCampaignStoppedConsumer();
+        await startMilestoneRefundedConsumer();
+        boundConsumerChannel = currentChannel;
+        console.log("[campaign-service] Consumers bound to active RabbitMQ channel");
+    };
+
     await connectRabbitMQ();
-    await startCampaignCreatedConsumer();
-    await startDonatedConsumer();
-    await startCampaignFailedConsumer();
-    await startFundingCompleteConsumer();
-    await startMilestoneFailedConsumer();
-    await startMilestoneDisbursedConsumer();
-    await startMilestoneApprovedConsumer();
-    await startMilestoneReportSubmittedConsumer();
-    await startCampaignStoppedConsumer();
-    await startMilestoneRefundedConsumer();
+    await bindConsumersToCurrentChannel();
+
+    setInterval(async () => {
+        try {
+            if (!getChannel()) {
+                await connectRabbitMQ();
+            }
+            await bindConsumersToCurrentChannel();
+        } catch (error) {
+            console.error(
+                "[campaign-service] RabbitMQ watchdog error:",
+                error.message,
+            );
+        }
+    }, RABBITMQ_HEALTHCHECK_INTERVAL_MS);
+
     startDeadlineCheckerJob();
     startReviewTimeoutJob();
 

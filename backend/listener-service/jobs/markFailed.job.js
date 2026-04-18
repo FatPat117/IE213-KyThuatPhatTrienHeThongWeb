@@ -42,7 +42,27 @@ async function runMarkFailedSweep() {
         return;
     }
 
-    const provider = new ethers.JsonRpcProvider(resolved.rpcUrl);
+    const providerCandidates = (resolved.rpcUrls || []).map((url, index) => ({
+        provider: new ethers.JsonRpcProvider(url, 11155111, {
+            staticNetwork: true,
+        }),
+        priority: index + 1,
+        weight: 1,
+        stallTimeout: 2000,
+    }));
+    const provider =
+        providerCandidates.length <= 1
+            ? providerCandidates[0]?.provider
+            : new ethers.FallbackProvider(providerCandidates, undefined, {
+                  quorum: 1,
+              });
+    if (!provider) {
+        console.warn(
+            "[listener-service] mark-failed job disabled (no RPC provider configured).",
+        );
+        return;
+    }
+
     const wallet = new ethers.Wallet(privateKey, provider);
     const readContract = new ethers.Contract(
         resolved.contractAddress,

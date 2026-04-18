@@ -186,18 +186,26 @@ export default function MilestoneTimeline({
                                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
                                     Đường dẫn bằng chứng
                                 </p>
-                                <div className="flex flex-wrap items-center gap-3 text-sm">
+                                <div className="flex flex-wrap items-center gap-2 text-sm">
                                     <Link
                                         href={`/campaigns/${campaignId}/milestones/upload?milestone=${milestone.milestoneId}`}
-                                        className="font-medium text-blue-600 hover:text-blue-700"
+                                        className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 font-semibold text-blue-700 hover:bg-blue-100"
                                     >
-                                        Tải minh chứng cho mốc này
+                                        Upload minh chứng
                                     </Link>
+                                    <a
+                                        href={`https://sepolia.etherscan.io/address/${contractAddress}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-1.5 font-semibold text-slate-700 hover:bg-slate-50"
+                                    >
+                                        Xem smart contract
+                                    </a>
                                     {ipfsLinks.map((item) => (
                                         <Link
                                             key={`${milestone.milestoneId}-${item.cid}`}
                                             href={`/campaigns/${campaignId}/milestones/upload?milestone=${milestone.milestoneId}&sourceCid=${encodeURIComponent(item.cid)}`}
-                                            className="font-medium text-blue-600 hover:text-blue-700"
+                                            className="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 font-medium text-emerald-700 hover:bg-emerald-100"
                                         >
                                             IPFS: {item.cid.slice(0, 16)}...
                                             (cập nhật minh chứng)
@@ -214,14 +222,6 @@ export default function MilestoneTimeline({
                                             Xem CID {item.cid.slice(0, 10)}...
                                         </a>
                                     ))}
-                                    <a
-                                        href={`https://sepolia.etherscan.io/address/${contractAddress}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="font-medium text-blue-600 hover:text-blue-700"
-                                    >
-                                        Smart contract trên Sepolia Explorer
-                                    </a>
                                 </div>
                             </div>
                         </article>

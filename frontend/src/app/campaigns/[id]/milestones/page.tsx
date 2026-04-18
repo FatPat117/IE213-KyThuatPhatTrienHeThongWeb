@@ -58,7 +58,10 @@ export default function CampaignMilestonesPage() {
                     ? err.message
                     : "Không thể tải milestones từ API";
             // Keep page usable even when campaign-service indexing lags behind on-chain data.
-            if (message.toLowerCase().includes("campaign not found")) {
+            if (
+                message.toLowerCase().includes("campaign not found") ||
+                message.toLowerCase().includes("not yet indexed")
+            ) {
                 setMilestones([]);
                 setMilestonesWarning(
                     "Campaign chưa được index đầy đủ ở backend, đang hiển thị timeline dựa trên dữ liệu on-chain.",
