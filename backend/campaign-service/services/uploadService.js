@@ -77,7 +77,7 @@ async function uploadToIPFS(fileBuffer, filename, metadata = {}) {
 
             console.warn(
                 `[uploadToIPFS] Attempt ${attempt + 1} failed: ${error.message}. ` +
-                    `Retrying in ${delay}ms...`,
+                `Retrying in ${delay}ms...`,
             );
 
             if (attempt < RETRY_CONFIG.maxRetries - 1) {
