@@ -4,7 +4,7 @@ import { sepolia } from 'wagmi/chains';
 
 const sepoliaRpcUrl = process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL;
 const defaultSepoliaRpcUrl = sepolia.rpcUrls.default.http[0];
-const rpcCandidates = [sepoliaRpcUrl, defaultSepoliaRpcUrl].filter(
+const rpcCandidates = [defaultSepoliaRpcUrl, sepoliaRpcUrl].filter(
     (url): url is string => Boolean(url)
 );
 

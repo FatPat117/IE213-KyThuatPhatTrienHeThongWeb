@@ -26,7 +26,7 @@ async function connectRabbitMQ() {
             attempt += 1;
             try {
                 connection = await amqplib.connect(url);
-                channel = await connection.createChannel();
+                channel = await connection.createConfirmChannel();
                 await channel.assertExchange(EXCHANGE, "topic", { durable: true });
                 console.log(
                     `[listener-service] RabbitMQ connected, exchange: ${EXCHANGE} (attempt ${attempt})`,
@@ -55,6 +55,49 @@ async function connectRabbitMQ() {
     }
 }
 
-function getChannel() { return channel; }
+function getChannel() {
+    return channel;
+}
 
-module.exports = { connectRabbitMQ, getChannel, EXCHANGE };
+async function publishWithRetry(
+    routingKey,
+    payload,
+    options = {
+        maxAttempts: Number(process.env.RABBITMQ_PUBLISH_MAX_ATTEMPTS || 0),
+        retryDelayMs: RETRY_DELAY_MS,
+    },
+) {
+    const maxAttempts = Number(options.maxAttempts || 0);
+    const unlimitedAttempts = maxAttempts <= 0;
+    const retryDelayMs = Number(options.retryDelayMs || RETRY_DELAY_MS);
+    const body = Buffer.from(JSON.stringify(payload));
+
+    for (let attempt = 1; unlimitedAttempts || attempt <= maxAttempts; attempt += 1) {
+        try {
+            const readyChannel = (await connectRabbitMQ()) || getChannel();
+            if (!readyChannel) {
+                throw new Error("RabbitMQ channel unavailable");
+            }
+
+            readyChannel.publish(EXCHANGE, routingKey, body, { persistent: true });
+            await readyChannel.waitForConfirms();
+            return true;
+        } catch (error) {
+            console.error(
+                `[listener-service] Publish failed (${routingKey}) attempt ${attempt}${
+                    unlimitedAttempts ? "" : `/${maxAttempts}`
+                }: ${error.message}`,
+            );
+
+            if (!unlimitedAttempts && attempt >= maxAttempts) {
+                return false;
+            }
+
+            await wait(retryDelayMs);
+        }
+    }
+
+    return false;
+}
+
+module.exports = { connectRabbitMQ, getChannel, publishWithRetry, EXCHANGE };

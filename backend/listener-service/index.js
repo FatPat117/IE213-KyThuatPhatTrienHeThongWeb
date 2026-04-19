@@ -1,5 +1,5 @@
 require("dotenv").config();
-const { connectRabbitMQ, getChannel, EXCHANGE } = require("./config/rabbitmq");
+const { connectRabbitMQ, publishWithRetry } = require("./config/rabbitmq");
 const { createContractInstance, CONTRACT_ABI } = require("./config/contract");
 const { startMarkFailedDailyJob } = require("./jobs/markFailed.job");
 const axios = require("axios");
@@ -14,22 +14,16 @@ function normalizeMeta(event) {
     };
 }
 
-function publish(routingKey, payload) {
-    const channel = getChannel();
-    if (!channel) {
-        console.warn(
-            `[listener-service] RabbitMQ channel unavailable. Skip publish: ${routingKey}`,
+async function publish(routingKey, payload) {
+    const published = await publishWithRetry(routingKey, payload);
+    if (!published) {
+        console.error(
+            `[listener-service] Failed to publish ${routingKey} after retries`,
         );
-        return;
+        return false;
     }
-
-    channel.publish(
-        EXCHANGE,
-        routingKey,
-        Buffer.from(JSON.stringify(payload)),
-        { persistent: true },
-    );
     console.log(`[listener-service] Published ${routingKey}`);
+    return true;
 }
 
 async function upsertTransactionFromEvent(payload, retries = 3) {
@@ -57,6 +51,158 @@ async function upsertTransactionFromEvent(payload, retries = 3) {
         `[listener-service] Could not upsert transaction after ${retries} retries: ${
             lastError?.message || "unknown error"
         }`,
+    );
+}
+
+function parseReplayStartBlock(rawValue) {
+    const value = (rawValue || "").toString().trim();
+    if (!value) return null;
+
+    if (value.startsWith("0x")) {
+        const parsed = Number.parseInt(value, 16);
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+async function replayCampaignCreatedEvents(contract) {
+    const fromBlock = parseReplayStartBlock(
+        process.env.LISTENER_REPLAY_FROM_BLOCK,
+    );
+    if (fromBlock === null) {
+        return;
+    }
+
+    const latestBlock = await contract.runner.provider.getBlockNumber();
+    if (fromBlock > latestBlock) {
+        console.warn(
+            `[listener-service] LISTENER_REPLAY_FROM_BLOCK=${fromBlock} is above latest block=${latestBlock}. Skip replay.`,
+        );
+        return;
+    }
+
+    console.log(
+        `[listener-service] Replaying CampaignCreated from block ${fromBlock} to ${latestBlock}...`,
+    );
+
+    const maxBlocksPerQuery = Math.max(
+        Number(process.env.RPC_LOGS_MAX_BLOCK_RANGE || 10),
+        1,
+    );
+    const maxBlockSpan = Math.max(maxBlocksPerQuery - 1, 0);
+    const logs = [];
+
+    for (
+        let rangeStart = fromBlock;
+        rangeStart <= latestBlock;
+        rangeStart += maxBlockSpan + 1
+    ) {
+        const rangeEnd = Math.min(rangeStart + maxBlockSpan, latestBlock);
+        const partial = await contract.queryFilter(
+            contract.filters.CampaignCreated(),
+            rangeStart,
+            rangeEnd,
+        );
+        logs.push(...partial);
+    }
+
+    for (const log of logs) {
+        const args = Array.isArray(log?.args) ? log.args : [];
+        const campaignId = args[0];
+        const creator = args[1];
+        const beneficiary = args[2];
+        const goal = args[3];
+        const fundingDeadline = args[4];
+        const milestoneCount = args[5];
+
+        if (
+            campaignId === undefined ||
+            !creator ||
+            !beneficiary ||
+            goal === undefined ||
+            fundingDeadline === undefined ||
+            milestoneCount === undefined
+        ) {
+            continue;
+        }
+
+        await publish("campaign.created", {
+            onChainId: campaignId.toString(),
+            creator,
+            beneficiary,
+            goalWei: goal.toString(),
+            deadline: fundingDeadline.toString(),
+            milestoneCount: milestoneCount.toString(),
+            txHash: log.transactionHash || "",
+            blockNumber: String(log.blockNumber || "0"),
+        });
+    }
+
+    console.log(
+        `[listener-service] Replayed CampaignCreated events: ${logs.length}`,
+    );
+}
+
+async function reconcileCampaignsFromChain(contract) {
+    const shouldReconcile =
+        (process.env.LISTENER_RECONCILE_CAMPAIGNS_ON_START || "false")
+            .trim()
+            .toLowerCase() === "true";
+    if (!shouldReconcile) {
+        return;
+    }
+
+    const campaignCount = Number(await contract.campaignCount());
+    if (!Number.isFinite(campaignCount) || campaignCount <= 0) {
+        return;
+    }
+
+    console.log(
+        `[listener-service] Reconciling campaigns from chain: 1..${campaignCount}`,
+    );
+
+    let publishedCount = 0;
+    for (let campaignId = 1; campaignId <= campaignCount; campaignId += 1) {
+        try {
+            const campaign = await contract.getCampaign(BigInt(campaignId));
+            const creator = (campaign?.creator || campaign?.[1] || "").toString();
+            const beneficiary = (campaign?.beneficiary || campaign?.[2] || "").toString();
+
+            if (!creator || !beneficiary) {
+                continue;
+            }
+
+            const goal =
+                campaign?.goal !== undefined ? campaign.goal : campaign?.[3] || 0n;
+            const deadline =
+                campaign?.deadline !== undefined ? campaign.deadline : campaign?.[6] || 0n;
+            const milestoneCount =
+                campaign?.milestoneCount !== undefined
+                    ? campaign.milestoneCount
+                    : campaign?.[9] || 0n;
+
+            await publish("campaign.created", {
+                onChainId: campaignId.toString(),
+                creator,
+                beneficiary,
+                goalWei: goal.toString(),
+                deadline: deadline.toString(),
+                milestoneCount: milestoneCount.toString(),
+                txHash: "",
+                blockNumber: "0",
+            });
+            publishedCount += 1;
+        } catch (error) {
+            console.warn(
+                `[listener-service] Reconcile skipped campaignId=${campaignId}: ${error?.message || error}`,
+            );
+        }
+    }
+
+    console.log(
+        `[listener-service] Reconcile completed. published campaign.created events: ${publishedCount}`,
     );
 }
 
@@ -109,7 +255,7 @@ async function startListener() {
             event,
         ) => {
             const meta = normalizeMeta(event);
-            publish("campaign.created", {
+            await publish("campaign.created", {
                 onChainId: campaignId.toString(),
                 creator,
                 beneficiary,
@@ -136,7 +282,7 @@ async function startListener() {
         async (campaignId, donor, amount, totalRaised, event) => {
             const meta = normalizeMeta(event);
             const amountWei = amount.toString();
-            publish("donation.received", {
+            await publish("donation.received", {
                 campaignOnChainId: campaignId.toString(),
                 campaignId: campaignId.toString(),
                 donorWallet: donor.toLowerCase(),
@@ -154,7 +300,7 @@ async function startListener() {
         "FundingComplete",
         async (campaignId, totalRaisedWei, event) => {
             const meta = normalizeMeta(event);
-            publish("campaign.funding.completed", {
+            await publish("campaign.funding.completed", {
                 campaignId: campaignId.toString(),
                 totalRaisedWei: totalRaisedWei.toString(),
                 txHash: meta.txHash,
@@ -168,7 +314,7 @@ async function startListener() {
         "MilestoneReportSubmitted",
         async (campaignId, milestoneId, cid, submittedBy, event) => {
             const meta = normalizeMeta(event);
-            publish("milestone.report.submitted", {
+            await publish("milestone.report.submitted", {
                 campaignId: campaignId.toString(),
                 milestoneId: milestoneId.toString(),
                 cid,
@@ -184,7 +330,7 @@ async function startListener() {
         "MilestoneApproved",
         async (campaignId, milestoneId, reviewer, ipfsCid, amount, event) => {
             const meta = normalizeMeta(event);
-            publish("milestone.approved", {
+            await publish("milestone.approved", {
                 campaignId: campaignId.toString(),
                 milestoneId: milestoneId.toString(),
                 reviewer: reviewer.toLowerCase(),
@@ -201,7 +347,7 @@ async function startListener() {
         "MilestoneDisbursed",
         async (campaignId, milestoneId, beneficiary, amount, event) => {
             const meta = normalizeMeta(event);
-            publish("milestone.disbursed", {
+            await publish("milestone.disbursed", {
                 campaignId: campaignId.toString(),
                 milestoneId: milestoneId.toString(),
                 beneficiary: beneficiary.toLowerCase(),
@@ -217,7 +363,7 @@ async function startListener() {
         "MilestoneFailed",
         async (campaignId, milestoneId, markedBy, amount, event) => {
             const meta = normalizeMeta(event);
-            publish("milestone.failed", {
+            await publish("milestone.failed", {
                 campaignId: campaignId.toString(),
                 milestoneId: milestoneId.toString(),
                 markedBy: markedBy.toLowerCase(),
@@ -255,14 +401,14 @@ async function startListener() {
             };
 
             if (parsedMilestoneId === FUNDING_FAILURE_MILESTONE_SENTINEL) {
-                publish("campaign.failed", {
+                await publish("campaign.failed", {
                     ...payload,
                     reason: "funding_deadline_not_reached_goal",
                 });
                 return;
             }
 
-            publish("campaign.stopped", payload);
+            await publish("campaign.stopped", payload);
         },
     );
 
@@ -282,7 +428,7 @@ async function startListener() {
             const isFundingRefund =
                 parsedMilestoneId === FUNDING_FAILURE_MILESTONE_SENTINEL;
 
-            publish("milestone.refunded", {
+            await publish("milestone.refunded", {
                 campaignId: campaignId.toString(),
                 campaignOnChainId: campaignId.toString(),
                 milestoneId: isFundingRefund ? null : milestoneIdText,
@@ -300,7 +446,7 @@ async function startListener() {
         "CertificateMinted",
         async (campaignId, owner, tokenId, event) => {
             const meta = normalizeMeta(event);
-            publish("certificate.minted", {
+            await publish("certificate.minted", {
                 campaignOnChainId: campaignId.toString(),
                 ownerWallet: owner.toLowerCase(),
                 tokenId: tokenId.toString(),
@@ -334,7 +480,7 @@ async function startListener() {
                 );
             }
 
-            publish("certificate.minted", {
+            await publish("certificate.minted", {
                 campaignOnChainId: campaignId,
                 ownerWallet: to.toLowerCase(),
                 tokenId: tokenId.toString(),
@@ -344,6 +490,20 @@ async function startListener() {
             });
         });
     }
+
+    // Run replay in background so live listeners are not blocked at startup.
+    void replayCampaignCreatedEvents(contract).catch((error) => {
+        console.error(
+            "[listener-service] Replay CampaignCreated failed:",
+            error?.message || error,
+        );
+    });
+    void reconcileCampaignsFromChain(contract).catch((error) => {
+        console.error(
+            "[listener-service] Reconcile campaigns failed:",
+            error?.message || error,
+        );
+    });
 
     contract.runner.provider.on("error", (err) => {
         console.error("[listener-service] Provider error:", err.message);
