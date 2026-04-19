@@ -5,8 +5,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { formatEther } from "viem";
 import {
+    getCampaignMetadataFromCache,
     isPlaceholderCampaignTitle,
     useBackendCampaign,
+    useAuth,
     useReadCampaign,
 } from "@/lib";
 import {
@@ -20,10 +22,13 @@ import {
     MilestoneTimeline,
 } from "@/components/campaign-milestones";
 import BackButton from "@/components/navigation/BackButton";
+import { useAccount } from "wagmi";
 
 export default function CampaignMilestonesPage() {
     const params = useParams();
     const id = Number(params?.id);
+    const { address } = useAccount();
+    const { token } = useAuth();
 
     const { campaign, isLoading, isError, error, refetch } = useReadCampaign(
         Number.isFinite(id) ? id : null,
@@ -79,9 +84,15 @@ export default function CampaignMilestonesPage() {
         loadMilestones();
     }, [loadMilestones]);
 
+    const cachedMetadata = useMemo(
+        () => (Number.isFinite(id) ? getCampaignMetadataFromCache(id) : null),
+        [id],
+    );
     const title = !isPlaceholderCampaignTitle(backendCampaign.data?.title, id)
         ? backendCampaign.data?.title
-        : campaign?.title || `Campaign #${Number.isFinite(id) ? id : "-"}`;
+        : cachedMetadata?.title ||
+          campaign?.title ||
+          `Campaign #${Number.isFinite(id) ? id : "-"}`;
 
     const fallbackMilestones = useMemo<PublicCampaignMilestone[]>(() => {
         if (!campaign) return [];
@@ -125,6 +136,11 @@ export default function CampaignMilestonesPage() {
 
     const milestonesToRender =
         milestones.length > 0 ? milestones : fallbackMilestones;
+    const canUploadEvidence =
+        Boolean(token) &&
+        Boolean(address) &&
+        Boolean(campaign?.creator) &&
+        campaign.creator.toLowerCase() === address.toLowerCase();
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
@@ -214,6 +230,7 @@ export default function CampaignMilestonesPage() {
                                 milestones={milestonesToRender}
                                 campaignId={campaign.id}
                                 contractAddress={contractConfig.address}
+                                canUploadEvidence={canUploadEvidence}
                             />
                         </div>
                     )}

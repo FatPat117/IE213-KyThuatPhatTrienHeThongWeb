@@ -8,6 +8,7 @@ interface MilestoneTimelineProps {
     milestones: PublicCampaignMilestone[];
     campaignId: number;
     contractAddress: string;
+    canUploadEvidence: boolean;
 }
 
 function formatDate(value: Date) {
@@ -95,6 +96,7 @@ export default function MilestoneTimeline({
     milestones,
     campaignId,
     contractAddress,
+    canUploadEvidence,
 }: MilestoneTimelineProps) {
     return (
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -187,12 +189,18 @@ export default function MilestoneTimeline({
                                     Đường dẫn bằng chứng
                                 </p>
                                 <div className="flex flex-wrap items-center gap-2 text-sm">
-                                    <Link
-                                        href={`/campaigns/${campaignId}/milestones/upload?milestone=${milestone.milestoneId}`}
-                                        className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 font-semibold text-blue-700 hover:bg-blue-100"
-                                    >
-                                        Upload minh chứng
-                                    </Link>
+                                    {canUploadEvidence ? (
+                                        <Link
+                                            href={`/campaigns/${campaignId}/milestones/upload?milestone=${milestone.milestoneId}`}
+                                            className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 font-semibold text-blue-700 hover:bg-blue-100"
+                                        >
+                                            Upload minh chứng
+                                        </Link>
+                                    ) : (
+                                        <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-100 px-3 py-1.5 font-semibold text-slate-500">
+                                            Chỉ creator được upload
+                                        </span>
+                                    )}
                                     <a
                                         href={`https://sepolia.etherscan.io/address/${contractAddress}`}
                                         target="_blank"

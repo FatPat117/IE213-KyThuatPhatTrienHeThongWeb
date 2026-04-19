@@ -8,6 +8,7 @@ import {
     contractConfig,
     createTransaction,
     getCampaignIndexStatus,
+    getReviewerAggregates,
     saveCampaignMetadataToCache,
     updateCampaignMetadata,
     useAuth,
@@ -59,6 +60,9 @@ export default function CreateCampaignPage() {
     >(undefined);
     const [milestoneMetadata, setMilestoneMetadata] = useState<
         Array<{ name: string; description: string }>
+    >([]);
+    const [reviewerOptions, setReviewerOptions] = useState<
+        Array<{ value: string; label: string }>
     >([]);
 
     const {
@@ -155,6 +159,52 @@ export default function CreateCampaignPage() {
                 ? "pending"
                 : "idle";
     const isFormBusy = isPending || isConfirming;
+
+    useEffect(() => {
+        let cancelled = false;
+        const run = async () => {
+            try {
+                const aggregates = await getReviewerAggregates();
+                if (cancelled) return;
+
+                const options = aggregates.map((item) => ({
+                    value: item.reviewerSafe,
+                    label: `${item.reviewerSafe.slice(0, 10)}...${item.reviewerSafe.slice(-6)} (${item.campaignCount} campaign)`,
+                }));
+                setReviewerOptions(options);
+            } catch {
+                if (!cancelled) {
+                    setReviewerOptions([]);
+                }
+            }
+        };
+
+        run();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!address) return;
+        const walletOption = {
+            value: address.toLowerCase(),
+            label: `Ví của bạn (${address.slice(0, 10)}...${address.slice(-6)})`,
+        };
+        setReviewerOptions((prev) => {
+            const exists = prev.some((item) => item.value === walletOption.value);
+            return exists ? prev : [walletOption, ...prev];
+        });
+    }, [address]);
+
+    useEffect(() => {
+        if (!formData.reviewerSafe && reviewerOptions.length > 0) {
+            setFormData((prev) => ({
+                ...prev,
+                reviewerSafe: reviewerOptions[0].value,
+            }));
+        }
+    }, [formData.reviewerSafe, reviewerOptions]);
 
     useEffect(() => {
         if (!submittedTxHash || !address) return;
@@ -356,6 +406,13 @@ export default function CreateCampaignPage() {
         }
         if (!address) {
             const msg = "Không tìm thấy địa chỉ ví. Vui lòng kết nối lại ví.";
+            setManualError(msg);
+            showErrorToast(msg);
+            return;
+        }
+        if (!token) {
+            const msg =
+                "Vui lòng ký xác thực ví trước khi tạo campaign để hệ thống lưu được tên và mô tả.";
             setManualError(msg);
             showErrorToast(msg);
             return;
@@ -601,6 +658,7 @@ export default function CreateCampaignPage() {
                     ) : (
                         <CreateCampaignForm
                             formData={formData}
+                            reviewerOptions={reviewerOptions}
                             formErrors={formErrors}
                             isBusy={isFormBusy}
                             status={transactionStatus}
