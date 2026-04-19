@@ -11,6 +11,7 @@ interface CreateCampaignFormProps {
     deadline: string;
     reviewerSafe: string;
   };
+  reviewerOptions: Array<{ value: string; label: string }>;
   formErrors: Record<string, string>;
   isBusy: boolean;
   status: 'idle' | 'pending' | 'confirming' | 'success' | 'error';
@@ -26,6 +27,7 @@ interface CreateCampaignFormProps {
  */
 export default function CreateCampaignForm({
   formData,
+  reviewerOptions,
   formErrors,
   isBusy,
   status,
@@ -141,21 +143,28 @@ export default function CreateCampaignForm({
         <label className="block text-sm font-semibold text-slate-900 mb-2">
           Reviewer Safe (địa chỉ ví kiểm duyệt) <span className="text-red-500">*</span>
         </label>
-        <input
-          type="text"
+        <select
           name="reviewerSafe"
+          aria-label="Chọn ví reviewerSafe"
           value={formData.reviewerSafe}
           onChange={(event) => onFieldChange('reviewerSafe', event.target.value)}
           disabled={isBusy}
           className={`w-full px-4 py-3 border-2 rounded-xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition disabled:bg-slate-100 text-slate-900 placeholder-slate-400 font-mono ${
             formErrors.reviewerSafe ? 'border-red-500 focus:ring-red-100 focus:border-red-500' : 'border-slate-200'
           }`}
-          placeholder="0x..."
-          maxLength={42}
-        />
+        >
+          {reviewerOptions.length === 0 && (
+            <option value="">Chưa có ví reviewer khả dụng</option>
+          )}
+          {reviewerOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
         {formErrors.reviewerSafe && <p className="mt-2 text-sm text-red-600">❌ {formErrors.reviewerSafe}</p>}
         <p className="mt-2 text-xs text-slate-500">
-          Địa chỉ này sẽ là người/đa chữ ký có quyền duyệt milestone trên blockchain.
+          Chọn ví reviewerSafe đã có trong hệ thống để hạn chế nhập sai địa chỉ quá dài.
         </p>
       </div>
 

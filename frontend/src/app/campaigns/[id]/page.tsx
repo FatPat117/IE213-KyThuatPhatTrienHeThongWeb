@@ -3,6 +3,7 @@
 import {
     contractConfig,
     createTransaction,
+    getCampaignMetadataFromCache,
     getDonationsByCampaign,
     isPlaceholderCampaignDescription,
     isPlaceholderCampaignTitle,
@@ -513,6 +514,10 @@ export default function CampaignDetailPage() {
     const canDonate = Boolean(
         isConnected && isSepolia && campaign && isCampaignActive,
     );
+    const cachedMetadata = useMemo(
+        () => (Number.isFinite(id) ? getCampaignMetadataFromCache(id) : null),
+        [id],
+    );
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
@@ -603,14 +608,14 @@ export default function CampaignDetailPage() {
                                             id,
                                         )
                                             ? backendCampaign.data?.title
-                                            : undefined
+                                            : cachedMetadata?.title
                                     }
                                     backendDescription={
                                         !isPlaceholderCampaignDescription(
                                             backendCampaign.data?.description,
                                         )
                                             ? backendCampaign.data?.description
-                                            : undefined
+                                            : cachedMetadata?.description
                                     }
                                     progress={progress}
                                 />

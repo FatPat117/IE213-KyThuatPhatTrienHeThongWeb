@@ -1,9 +1,10 @@
 'use client';
 
-import { useAuth } from '@/lib';
+import { useAuth, useReadCampaign } from '@/lib';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useMemo, useState, type FormEvent } from 'react';
+import { useAccount } from 'wagmi';
 
 const DEFAULT_API_BASE_URL = 'http://localhost:4000/api';
 
@@ -26,13 +27,15 @@ export default function MilestoneEvidenceUploadPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const { token } = useAuth();
+  const { address, isConnected } = useAccount();
 
   const idParam = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const campaignId = toSafeInteger(typeof idParam === 'string' ? idParam : undefined, NaN);
-  const initialMilestoneId = toSafeInteger(searchParams.get('milestone'), 0);
+  const initialMilestoneId = toSafeInteger(searchParams.get('milestone'), -1);
   const sourceCid = (searchParams.get('sourceCid') || '').trim();
+  const { campaign } = useReadCampaign(Number.isFinite(campaignId) ? campaignId : null);
 
-  const [milestoneId, setMilestoneId] = useState(initialMilestoneId > 0 ? initialMilestoneId : 0);
+  const [milestoneId] = useState(initialMilestoneId >= 0 ? initialMilestoneId : 0);
   const [title, setTitle] = useState('Báo cáo tiến độ');
   const [description, setDescription] = useState('Minh chứng tiến độ mốc giải ngân');
   const [evidenceType, setEvidenceType] = useState<'report' | 'photo' | 'video' | 'document'>('photo');
@@ -42,12 +45,29 @@ export default function MilestoneEvidenceUploadPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const apiBaseUrl = useMemo(() => normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_URL), []);
+  const isCreator =
+    Boolean(address) &&
+    Boolean(campaign?.creator) &&
+    campaign.creator.toLowerCase() === address.toLowerCase();
+  const canUpload = Boolean(token && isConnected && isCreator);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!Number.isFinite(campaignId)) {
       setErrorMessage('Campaign ID không hợp lệ.');
+      return;
+    }
+    if (!token) {
+      setErrorMessage('Bạn cần đăng nhập ví để upload minh chứng.');
+      return;
+    }
+    if (!isConnected || !address) {
+      setErrorMessage('Vui lòng kết nối ví trước khi upload.');
+      return;
+    }
+    if (!isCreator) {
+      setErrorMessage('Chỉ ví creator của campaign mới được upload minh chứng.');
       return;
     }
     if (!Number.isFinite(milestoneId) || milestoneId < 0) {
@@ -124,7 +144,12 @@ export default function MilestoneEvidenceUploadPage() {
 
         {!token && (
           <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            Bạn chưa đăng nhập ví. Một số campaign có thể từ chối upload nếu thiếu token xác thực.
+            Bạn chưa đăng nhập ví. Cần ký xác thực để hệ thống phân quyền upload minh chứng.
+          </div>
+        )}
+        {token && campaign && !isCreator && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            Ví hiện tại không phải creator của campaign này nên không có quyền upload minh chứng.
           </div>
         )}
 
@@ -149,11 +174,14 @@ export default function MilestoneEvidenceUploadPage() {
               <span className="mb-1 block text-sm font-semibold text-slate-700">Milestone ID</span>
               <input
                 type="number"
-                min={0}
                 value={milestoneId}
-                onChange={(event) => setMilestoneId(Number(event.target.value))}
+                readOnly
+                disabled
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500/20 focus:border-blue-500 focus:ring"
               />
+              <span className="mt-1 block text-xs text-slate-500">
+                Mã mốc lấy từ timeline, chỉ hiển thị để đối chiếu.
+              </span>
             </label>
             <label className="block">
               <span className="mb-1 block text-sm font-semibold text-slate-700">Loại bằng chứng</span>
@@ -202,7 +230,7 @@ export default function MilestoneEvidenceUploadPage() {
 
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || !canUpload}
             className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
           >
             {isSubmitting ? 'Đang upload...' : 'Upload minh chứng'}

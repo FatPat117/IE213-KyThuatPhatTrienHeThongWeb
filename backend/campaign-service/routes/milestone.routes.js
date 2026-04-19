@@ -1,5 +1,6 @@
 const express = require("express");
 const multer = require("multer");
+const requireAuth = require("../middlewares/requireAuth");
 const {
     uploadProgressEvidence,
     getContributionAllocation,
@@ -74,6 +75,7 @@ const upload = multer({
  */
 router.post(
     "/:campaignOnChainId/:milestoneIndex/evidence",
+    requireAuth,
     uploadProgressEvidence,
 );
 

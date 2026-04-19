@@ -133,7 +133,10 @@ async function updateCampaignMetadata(req, res, next) {
             });
         }
 
-        if (campaign.creator !== walletAddress) {
+        const normalizedCreator = (campaign.creator || "")
+            .toString()
+            .toLowerCase();
+        if (normalizedCreator !== walletAddress) {
             return errorRes(
                 res,
                 "Only campaign creator can update metadata",
