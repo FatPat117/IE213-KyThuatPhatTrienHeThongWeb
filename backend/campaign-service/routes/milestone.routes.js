@@ -74,7 +74,6 @@ const upload = multer({
  */
 router.post(
     "/:campaignOnChainId/:milestoneIndex/evidence",
-    upload.single("file"),
     uploadProgressEvidence,
 );
 

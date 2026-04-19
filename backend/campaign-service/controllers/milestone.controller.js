@@ -28,7 +28,7 @@ const { publishMilestoneFailed } = require("../utils/publishMilestoneFailed");
 const uploadProgressEvidence = async (req, res) => {
     try {
         const { campaignOnChainId, milestoneIndex } = req.params;
-        const { title, description, evidenceType = "report" } = req.body;
+        const { title, description, evidenceType = "report", cid, filename, fileSize } = req.body;
         const creatorAddress = req.headers["x-wallet-address"];
 
         // Validation
@@ -40,19 +40,19 @@ const uploadProgressEvidence = async (req, res) => {
             });
         }
 
+        if (!cid) {
+            return res.status(400).json({
+                status: "error",
+                code: "MISSING_CID",
+                message: "CID is required. Please upload file to IPFS first.",
+            });
+        }
+
         if (!creatorAddress) {
             return res.status(403).json({
                 status: "error",
                 code: "PERMISSION_DENIED",
                 message: "x-wallet-address header required",
-            });
-        }
-
-        if (!req.file) {
-            return res.status(400).json({
-                status: "error",
-                code: "NO_FILE",
-                message: "No file provided",
             });
         }
 
@@ -148,20 +148,11 @@ const uploadProgressEvidence = async (req, res) => {
 
         // Upload to IPFS
         console.log(
-            `[milestoneController.uploadProgressEvidence] Uploading to IPFS: ` +
-                `file=${req.file.originalname}, campaign=${campaignOnChainId}, milestone=${milestoneIndex}`,
+            `[milestoneController.uploadProgressEvidence] Saving evidence metadata: ` +
+            `campaign=${campaignOnChainId}, milestone=${milestoneIndex}, cid=${cid}`,
         );
 
-        const ipfsResult = await uploadService.uploadToIPFS(
-            req.file.buffer,
-            req.file.originalname,
-            {
-                campaignOnChainId,
-                milestoneIndex,
-                title,
-                evidenceType,
-            },
-        );
+        const pinataGatewayUrl = process.env.PINATA_GATEWAY_URL || "https://gateway.pinata.cloud";
 
         // Save ProgressReport to DB
         const progressReport = new ProgressReport({
@@ -172,12 +163,12 @@ const uploadProgressEvidence = async (req, res) => {
             creatorAddress,
             title,
             description,
-            contentHash: ipfsResult.cid,
-            ipfsUrl: ipfsResult.ipfsUrl,
-            pinataUrl: ipfsResult.pinataUrl,
+            contentHash: cid,
+            ipfsUrl: `ipfs://${cid}`,
+            pinataUrl: `${pinataGatewayUrl}/ipfs/${cid}`,
             evidenceType,
-            filename: req.file.originalname,
-            fileSize: req.file.size,
+            filename: filename || cid,
+            fileSize: fileSize || 0,
             submittedAt: new Date(),
             status: "submitted",
         });
@@ -186,7 +177,7 @@ const uploadProgressEvidence = async (req, res) => {
 
         console.log(
             `[milestoneController.uploadProgressEvidence] SUCCESS: ` +
-                `progressReportId=${progressReport._id}, cid=${ipfsResult.cid}`,
+            `progressReportId=${progressReport._id}, cid=${cid}`,
         );
 
         return res.status(200).json({
@@ -198,9 +189,9 @@ const uploadProgressEvidence = async (req, res) => {
                 creatorAddress,
                 title,
                 description,
-                contentHash: ipfsResult.cid,
-                ipfsUrl: ipfsResult.ipfsUrl,
-                pinataUrl: ipfsResult.pinataUrl,
+                contentHash: cid,
+                ipfsUrl: progressReport.ipfsUrl,
+                pinataUrl: progressReport.pinataUrl,
                 evidenceType,
                 submittedAt: progressReport.submittedAt,
                 status: "submitted",
@@ -359,7 +350,7 @@ const getRefundInfo = async (req, res) => {
 
         console.log(
             `[milestoneController.getRefundInfo] campaign=${campaignId}, ` +
-                `milestone=${milestoneId}, donor=${donorAddress}, eligible=${eligibility.eligible}`,
+            `milestone=${milestoneId}, donor=${donorAddress}, eligible=${eligibility.eligible}`,
         );
 
         return res.status(200).json({
@@ -439,7 +430,7 @@ const prepareRefund = async (req, res) => {
 
         console.log(
             `[milestoneController.prepareRefund] SUCCESS: ` +
-                `prepareRequestId=${refundPayload.prepareRequestId}`,
+            `prepareRequestId=${refundPayload.prepareRequestId}`,
         );
 
         return res.status(200).json({
@@ -762,13 +753,13 @@ const rejectMilestone = async (req, res) => {
 
         const cascadeResult = published
             ? {
-                  queued: true,
-                  message:
-                      "MilestoneFailed event published. Cascade will be handled by consumer.",
-              }
+                queued: true,
+                message:
+                    "MilestoneFailed event published. Cascade will be handled by consumer.",
+            }
             : await refundService.handleCampaignCascadeFailure(
-                  Number(campaignOnChainId),
-              );
+                Number(campaignOnChainId),
+            );
 
         return res.status(200).json({
             status: "success",
@@ -965,7 +956,7 @@ const createMilestoneForCampaign = async (req, res) => {
             callerRole !== "admin" &&
             (!callerWallet ||
                 campaign.creator?.toLowerCase() !==
-                    callerWallet.toLowerCase())
+                callerWallet.toLowerCase())
         ) {
             return res.status(403).json({
                 status: "error",
@@ -1148,7 +1139,7 @@ const updateMilestone = async (req, res) => {
             callerRole !== "admin" &&
             (!callerWallet ||
                 campaign.creator?.toLowerCase() !==
-                    callerWallet.toLowerCase())
+                callerWallet.toLowerCase())
         ) {
             return res.status(403).json({
                 status: "error",
@@ -1233,7 +1224,7 @@ const deleteMilestone = async (req, res) => {
             callerRole !== "admin" &&
             (!callerWallet ||
                 campaign.creator?.toLowerCase() !==
-                    callerWallet.toLowerCase())
+                callerWallet.toLowerCase())
         ) {
             return res.status(403).json({
                 status: "error",
