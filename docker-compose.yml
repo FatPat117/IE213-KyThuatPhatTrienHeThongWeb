@@ -77,6 +77,8 @@ services:
             - MONGO_URI=${MONGO_URI_USERS}
             - JWT_SECRET=${JWT_SECRET}
             - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
+            - INITIAL_ADMIN_WALLET=${INITIAL_ADMIN_WALLET}
+            - ADMIN_WALLETS=${ADMIN_WALLETS}
         volumes:
             - ./backend/auth-service:/app
             - /app/node_modules

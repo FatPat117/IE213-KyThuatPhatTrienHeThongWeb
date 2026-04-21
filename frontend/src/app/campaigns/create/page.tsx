@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { decodeEventLog, parseEther } from "viem";
-import { useAccount, useChainId, useWaitForTransactionReceipt } from "wagmi";
+import {
+    useAccount,
+    useChainId,
+    useReadContract,
+    useWaitForTransactionReceipt,
+} from "wagmi";
 import {
     contractConfig,
     createTransaction,
@@ -20,6 +25,7 @@ import CreateCampaignGuardCard from "@/components/campaign-create/CreateCampaign
 import CreateCampaignHeader from "@/components/campaign-create/CreateCampaignHeader";
 import CreateCampaignSuccessCard from "@/components/campaign-create/CreateCampaignSuccessCard";
 import MilestoneBuilder from "@/components/campaign-create/MilestoneBuilder";
+import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 
 const SEPOLIA_CHAIN_ID = 11155111;
 
@@ -64,6 +70,22 @@ export default function CreateCampaignPage() {
     const [reviewerOptions, setReviewerOptions] = useState<
         Array<{ value: string; label: string }>
     >([]);
+    const normalizedReviewerSafe = formData.reviewerSafe.trim().toLowerCase();
+    const reviewerSafeLooksValid = /^0x[a-f0-9]{40}$/.test(normalizedReviewerSafe);
+    const {
+        data: isReviewerActive,
+        isLoading: isCheckingReviewerSafe,
+    } = useReadContract({
+        ...contractConfig,
+        functionName: "isActiveReviewer",
+        args: reviewerSafeLooksValid
+            ? [normalizedReviewerSafe as `0x${string}`]
+            : undefined,
+        query: {
+            enabled: reviewerSafeLooksValid,
+            staleTime: 30_000,
+        },
+    });
 
     const {
         createCampaign,
@@ -78,6 +100,7 @@ export default function CreateCampaignPage() {
         hash: submittedTxHash,
     });
     const isTxReverted = receipt?.status === "reverted";
+    useRegisterWalletTxOverlay(isPending || isConfirming);
 
     const etherscanLink = useMemo(() => {
         if (!submittedTxHash) return null;
@@ -132,6 +155,9 @@ export default function CreateCampaignPage() {
         }
         if (msg.includes("insufficient funds")) {
             return "Không đủ ETH để trả phí gas. Vui lòng kiểm tra số dư.";
+        }
+        if (msg.includes("reviewer not approved")) {
+            return "ReviewerSafe chưa được duyệt on-chain. Vui lòng chọn reviewer đã được add vào contract trước.";
         }
         if (msg.includes("gas limit too high")) {
             return "Ước lượng gas vượt giới hạn block. Vui lòng thử lại, hệ thống sẽ dùng gas an toàn.";
@@ -372,6 +398,9 @@ export default function CreateCampaignPage() {
             errors.reviewerSafe = "Vui lòng nhập địa chỉ reviewerSafe";
         } else if (!/^0x[a-f0-9]{40}$/.test(reviewerSafe)) {
             errors.reviewerSafe = "Địa chỉ reviewerSafe không hợp lệ";
+        } else if (isReviewerActive === false) {
+            errors.reviewerSafe =
+                "ReviewerSafe chưa được duyệt on-chain. Hãy chọn ví reviewer đã được phê duyệt.";
         }
 
         setFormErrors(errors);
@@ -418,6 +447,19 @@ export default function CreateCampaignPage() {
             return;
         }
         if (!validateForm()) return;
+        if (isCheckingReviewerSafe) {
+            const msg = "Đang kiểm tra reviewerSafe trên blockchain, vui lòng thử lại sau vài giây.";
+            setManualError(msg);
+            showErrorToast(msg);
+            return;
+        }
+        if (isReviewerActive === false) {
+            const msg =
+                "ReviewerSafe chưa được duyệt on-chain nên không thể tạo campaign.";
+            setManualError(msg);
+            showErrorToast(msg);
+            return;
+        }
         setMetadataSynced(false);
         setMetadataSyncError(null);
         setIsMetadataSyncing(false);

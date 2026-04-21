@@ -661,3 +661,95 @@ export function useMintCertificate() {
         error,
     };
 }
+
+/** On-chain proofCids per milestone index (0-based). */
+export function useReadMilestonesOnChain(
+    campaignId: number | null | undefined,
+    milestoneCount: number,
+) {
+    const enabled =
+        campaignId !== null &&
+        campaignId !== undefined &&
+        campaignId > 0 &&
+        milestoneCount > 0;
+
+    const contracts = useMemo(
+        () =>
+            Array.from({ length: milestoneCount }, (_, i) => ({
+                ...contractConfig,
+                functionName: "getMilestone" as const,
+                args: [BigInt(campaignId as number), BigInt(i)] as const,
+            })),
+        [campaignId, milestoneCount],
+    );
+
+    const { data, isLoading, refetch } = useReadContracts({
+        contracts,
+        query: {
+            enabled,
+            staleTime: 15_000,
+        },
+    });
+
+    const proofCidsByIndex = useMemo(() => {
+        const out = new Map<number, string[]>();
+        if (!data) return out;
+        (
+            data as Array<{
+                result?: { proofCids?: readonly string[] };
+            }>
+        ).forEach((item, idx) => {
+            const cids = item.result?.proofCids;
+            out.set(idx, Array.isArray(cids) ? [...cids] : []);
+        });
+        return out;
+    }, [data]);
+
+    return { proofCidsByIndex, isLoading, refetch };
+}
+
+/** campaignReviewerSafe(campaignId) for all campaigns 1..count */
+export function useReadCampaignReviewersBatch(campaignCount: number) {
+    const contracts = useMemo(
+        () =>
+            Array.from({ length: campaignCount }, (_, i) => ({
+                ...contractConfig,
+                functionName: "campaignReviewerSafe" as const,
+                args: [BigInt(i + 1)] as const,
+            })),
+        [campaignCount],
+    );
+
+    const { data, isLoading, refetch } = useReadContracts({
+        contracts,
+        query: {
+            enabled:
+                CROWDFUNDING_CONTRACT_ADDRESS !==
+                    "0x0000000000000000000000000000000000000000" &&
+                campaignCount > 0,
+            staleTime: 30_000,
+        },
+    });
+
+    const reviewersByCampaignId = useMemo(() => {
+        const map = new Map<number, Address>();
+        if (!data) return map;
+        (
+            data as Array<{
+                result?: Address;
+            }>
+        ).forEach((item, i) => {
+            const addr = item.result;
+            if (
+                addr &&
+                typeof addr === "string" &&
+                addr !== "0x0000000000000000000000000000000000000000"
+            ) {
+                map.set(i + 1, addr as Address);
+            }
+        });
+        return map;
+    }, [data]);
+
+    return { reviewersByCampaignId, isLoading, refetch };
+}

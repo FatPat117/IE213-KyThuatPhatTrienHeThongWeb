@@ -81,7 +81,11 @@ export {
     getReviewerAggregates,
     updateCampaignMetadata,
 } from "./api/campaigns";
-export { getDonationsByCampaign, getDonationsByWallet } from "./api/donations";
+export {
+    getDonationsByCampaign,
+    getDonationsByCampaignAndWallet,
+    getDonationsByWallet,
+} from "./api/donations";
 export { createTransaction, getTransactionsByWallet } from "./api/transactions";
 export {
     requestNonce,

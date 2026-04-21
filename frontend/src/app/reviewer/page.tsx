@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { formatEther } from "viem";
-import { useAccount } from "wagmi";
+import { useAccount, useWaitForTransactionReceipt } from "wagmi";
 import {
     getMilestoneApprovalStatus,
     getPublicCampaignMilestones,
@@ -16,6 +16,7 @@ import type {
     PublicCampaignItem,
     PublicCampaignMilestone,
 } from "@/lib/api/campaigns";
+import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 
 type ReviewFilter = "all" | "pending" | "processed";
 
@@ -275,8 +276,13 @@ export default function ReviewerWorkspacePage() {
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
     const [approvingKey, setApprovingKey] = useState<string | null>(null);
+    const [approvingTxHash, setApprovingTxHash] = useState<`0x${string}` | undefined>(undefined);
     const [rejectingKey, setRejectingKey] = useState<string | null>(null);
     const [actionMessage, setActionMessage] = useState<string | null>(null);
+    const { isLoading: isApproveConfirming } = useWaitForTransactionReceipt({
+        hash: approvingTxHash,
+    });
+    useRegisterWalletTxOverlay(Boolean(approvingKey) || isApproveConfirming);
 
     const assignedCampaignCount = useMemo(
         () =>
@@ -301,12 +307,13 @@ export default function ReviewerWorkspacePage() {
             const campaignsResponse = await getPublicCampaigns({
                 page: 1,
                 limit: 100,
+                reviewerSafe: walletAddress || undefined,
                 sort: "updatedAt",
                 order: "desc",
             });
             const campaigns = campaignsResponse.items.filter((campaign) => {
                 const safe = (campaign.reviewerSafe || "").trim().toLowerCase();
-                return /^0x[a-f0-9]{40}$/.test(safe);
+                return /^0x[a-f0-9]{40}$/.test(safe) && safe === walletAddress;
             });
 
             const milestonesResults = await Promise.allSettled(
@@ -365,7 +372,7 @@ export default function ReviewerWorkspacePage() {
             setIsRefreshing(false);
             setIsLoading(false);
         }
-    }, []);
+    }, [walletAddress]);
 
     const refreshApprovalStatuses = useCallback(async () => {
         if (!token || rows.length === 0) return;
@@ -446,7 +453,7 @@ export default function ReviewerWorkspacePage() {
 
             if (!campaignReviewerSafe) {
                 setActionMessage(
-                    "Campaign chưa có reviewerSafe nên không thể gửi approve on-chain.",
+                    "Chiến dịch chưa có reviewerSafe nên không thể gửi duyệt on-chain.",
                 );
                 return;
             }
@@ -464,6 +471,7 @@ export default function ReviewerWorkspacePage() {
 
             try {
                 const txHash = await approveMilestone(campaignId, milestoneId);
+                setApprovingTxHash(txHash as `0x${string}`);
 
                 setActionMessage(`Đã gửi giao dịch phê duyệt: ${txHash}`);
                 await refreshApprovalStatuses();
@@ -503,7 +511,7 @@ export default function ReviewerWorkspacePage() {
 
             if (!campaignReviewerSafe) {
                 setActionMessage(
-                    "Campaign chưa có reviewerSafe nên không thể gửi từ chối on-chain.",
+                    "Chiến dịch chưa có reviewerSafe nên không thể gửi từ chối on-chain.",
                 );
                 return;
             }
@@ -549,7 +557,7 @@ export default function ReviewerWorkspacePage() {
                         <div className="max-w-3xl">
                             <div className="flex flex-wrap items-center gap-2">
                                 <span className="rounded-full bg-indigo-100 px-4 py-1 text-xs font-bold uppercase tracking-[0.12em] text-indigo-600">
-                                    Reviewer Dashboard
+                                    Khu vực reviewer
                                 </span>
                                 <span className="rounded-full bg-emerald-100 px-4 py-1 text-xs font-bold text-emerald-700">
                                     {normalizedIsReviewer
@@ -559,7 +567,7 @@ export default function ReviewerWorkspacePage() {
                             </div>
 
                             <h1 className="mt-4 text-3xl font-extrabold leading-[1.15] tracking-tight text-slate-900 md:text-[3.2rem]">
-                                Không gian kiểm duyệt viên
+                                Chiến dịch của tôi (Reviewer)
                             </h1>
 
                             <p className="mt-4 max-w-2xl text-lg leading-8 text-slate-600">
@@ -574,11 +582,11 @@ export default function ReviewerWorkspacePage() {
                                         "Chưa kết nối"}
                                 </p>
                                 <p>
-                                    Reviewer profile:{" "}
+                                    Hồ sơ reviewer:{" "}
                                     {reviewerName || "Chưa có tên hiển thị"}
                                 </p>
                                 <p>
-                                    Campaigns assigned to this wallet:{" "}
+                                    Số campaign gán cho ví này:{" "}
                                     {assignedCampaignCount}
                                 </p>
                             </div>
@@ -677,14 +685,14 @@ export default function ReviewerWorkspacePage() {
                                             <div>
                                                 <h2 className="text-2xl font-bold text-slate-900">
                                                     {row.campaign.title ||
-                                                        `Campaign #${row.campaign.onChainId}`}
+                                                        `Chiến dịch #${row.campaign.onChainId}`}
                                                 </h2>
                                                 <p className="mt-1 text-sm text-slate-600">
-                                                    Campaign ID: #
+                                                    Mã campaign: #
                                                     {row.campaign.onChainId}
                                                 </p>
                                                 <p className="mt-1 text-sm text-slate-600">
-                                                    Reviewer Safe:{" "}
+                                                    Ví reviewer safe:{" "}
                                                     {row.campaign
                                                         .reviewerSafe ||
                                                         "Chưa cài đặt"}
@@ -694,7 +702,7 @@ export default function ReviewerWorkspacePage() {
                                                 href={`/campaigns/${row.campaign.onChainId}/milestones`}
                                                 className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
                                             >
-                                                Xem timeline
+                                                Xem dòng thời gian
                                             </Link>
                                         </div>
                                     </div>

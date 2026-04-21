@@ -401,9 +401,14 @@
             "internalType": "uint256"
           },
           {
-            "name": "proofIpfsCid",
-            "type": "string",
-            "internalType": "string"
+            "name": "proofCids",
+            "type": "string[]",
+            "internalType": "string[]"
+          },
+          {
+            "name": "proofSubmissionCount",
+            "type": "uint256",
+            "internalType": "uint256"
           },
           {
             "name": "status",
@@ -610,9 +615,14 @@
             "internalType": "uint256"
           },
           {
-            "name": "proofIpfsCid",
-            "type": "string",
-            "internalType": "string"
+            "name": "proofCids",
+            "type": "string[]",
+            "internalType": "string[]"
+          },
+          {
+            "name": "proofSubmissionCount",
+            "type": "uint256",
+            "internalType": "uint256"
           },
           {
             "name": "status",
@@ -779,9 +789,14 @@
         "internalType": "uint256"
       },
       {
-        "name": "proofIpfsCid",
-        "type": "string",
-        "internalType": "string"
+        "name": "proofCids",
+        "type": "string[]",
+        "internalType": "string[]"
+      },
+      {
+        "name": "proofSubmissionCount",
+        "type": "uint256",
+        "internalType": "uint256"
       },
       {
         "name": "status",

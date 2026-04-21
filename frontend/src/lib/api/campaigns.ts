@@ -231,6 +231,7 @@ export async function getPublicCampaigns(params?: {
     page?: number;
     limit?: number;
     status?: string;
+    reviewerSafe?: string;
     sort?: "createdAt" | "updatedAt" | "deadline";
     order?: "asc" | "desc";
 }) {
@@ -238,6 +239,7 @@ export async function getPublicCampaigns(params?: {
     if (params?.page) query.set("page", String(params.page));
     if (params?.limit) query.set("limit", String(params.limit));
     if (params?.status) query.set("status", params.status);
+    if (params?.reviewerSafe) query.set("reviewerSafe", params.reviewerSafe);
     if (params?.sort) query.set("sort", params.sort);
     if (params?.order) query.set("order", params.order);
 

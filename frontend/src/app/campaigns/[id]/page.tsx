@@ -5,6 +5,7 @@ import {
     createTransaction,
     getCampaignMetadataFromCache,
     getDonationsByCampaign,
+    getDonationsByCampaignAndWallet,
     isPlaceholderCampaignDescription,
     isPlaceholderCampaignTitle,
     toAuthUserProfile,
@@ -36,6 +37,7 @@ import CreatorActionsPanel from "@/components/campaign-detail/CreatorActionsPane
 import DonatePanel from "@/components/campaign-detail/DonatePanel";
 import RefundAndMintPanel from "@/components/campaign-detail/RefundAndMintPanel";
 import BackButton from "@/components/navigation/BackButton";
+import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 
 interface DonationEvent {
     campaignId: number;
@@ -125,6 +127,19 @@ export default function CampaignDetailPage() {
     } = useWaitForTransactionReceipt({
         hash: markAsFailedHash,
     });
+    useRegisterWalletTxOverlay(
+        isPending ||
+            isConfirming ||
+            disbursePending ||
+            disburseConfirming ||
+            fundingRefundPending ||
+            milestoneRefundPending ||
+            refundConfirming ||
+            mintPending ||
+            mintConfirming ||
+            markAsFailedPending ||
+            markAsFailedConfirming,
+    );
 
     const { data: hasMintedCertificate } = useReadContract({
         ...contractConfig,
@@ -184,6 +199,23 @@ export default function CampaignDetailPage() {
             } catch {
                 // Backend can lag behind indexer; keep loading from on-chain logs.
             }
+            if (address) {
+                try {
+                    const mine = await getDonationsByCampaignAndWallet(id, address);
+                    merged.push(
+                        ...mine.map((item) => ({
+                            campaignId: item.campaignOnChainId,
+                            donor: item.donorWallet,
+                            amount: BigInt(item.amount),
+                            transactionHash: item.txHash,
+                            timestamp: new Date(item.donatedAt).getTime(),
+                        })),
+                    );
+                    hasAtLeastOneSource = true;
+                } catch {
+                    // Keep all-campaign snapshot if donor scoped query fails.
+                }
+            }
 
             if (publicClient) {
                 try {
@@ -237,7 +269,7 @@ export default function CampaignDetailPage() {
         };
 
         loadInitialDonations();
-    }, [donationReloadNonce, id, publicClient]);
+    }, [address, donationReloadNonce, id, publicClient]);
 
     // Check if user is creator
     const isCreator =

@@ -292,6 +292,9 @@ async function getPublicCampaigns(req, res, next) {
         if (req.query.status) {
             query.status = req.query.status;
         }
+        if (req.query.reviewerSafe) {
+            query.reviewerSafe = String(req.query.reviewerSafe).trim().toLowerCase();
+        }
 
         const totalItems = await Campaign.countDocuments(query);
         const totalPages = Math.max(Math.ceil(totalItems / limit), 1);

@@ -103,6 +103,7 @@ export default function CampaignMilestonesPage() {
             campaignCreatedAt: backendCampaign.data?.createdAt,
             progressPercent: progress,
             goalWei: campaign.goal,
+            totalRaisedWei: campaign.raised,
             milestoneCount: campaign.milestoneCount,
             campaignStatusLabel: campaign.statusLabel,
             currentMilestoneId: campaign.currentMilestoneId,
@@ -231,6 +232,7 @@ export default function CampaignMilestonesPage() {
                                 campaignId={campaign.id}
                                 contractAddress={contractConfig.address}
                                 canUploadEvidence={canUploadEvidence}
+                                raisedWei={campaign.raised}
                             />
                         </div>
                     )}

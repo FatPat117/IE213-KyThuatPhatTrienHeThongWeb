@@ -76,6 +76,7 @@ const upload = multer({
 router.post(
     "/:campaignOnChainId/:milestoneIndex/evidence",
     requireAuth,
+    upload.single("file"),
     uploadProgressEvidence,
 );
 

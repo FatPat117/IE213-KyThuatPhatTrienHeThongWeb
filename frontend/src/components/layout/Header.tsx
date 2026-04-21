@@ -59,9 +59,12 @@ export default function Header() {
     const publicLinks = [
         { href: "/campaigns", label: "Chiến dịch" },
         { href: "/leaderboard", label: "Bảng xếp hạng" },
-        { href: "/transparency", label: "Transparency" },
+        { href: "/transparency", label: "Minh bạch" },
         { href: "/status", label: "Trạng thái" },
     ];
+    const navLinks = canSeeReviewerLink
+        ? [...publicLinks, { href: "/reviewer", label: "Khu vực reviewer" }]
+        : publicLinks;
 
     // Các trang cá nhân gom vào nhóm "Tài khoản" để header gọn hơn
     const accountLinks = [
@@ -127,7 +130,7 @@ export default function Header() {
 
                     {/* Desktop Navigation Links */}
                     <div className="hidden lg:flex items-center gap-2">
-                        {publicLinks.map((link) => {
+                        {navLinks.map((link) => {
                             const active = isLinkActive(
                                 link.href,
                                 pathname ?? "",
@@ -219,7 +222,7 @@ export default function Header() {
                 {isMobileMenuOpen && (
                     <div className="lg:hidden border-t border-slate-200/50 bg-gradient-to-b from-slate-50 to-white">
                         <div className="px-4 py-4 space-y-2">
-                            {publicLinks.map((link) => {
+                            {navLinks.map((link) => {
                                 const active = isLinkActive(
                                     link.href,
                                     pathname ?? "",

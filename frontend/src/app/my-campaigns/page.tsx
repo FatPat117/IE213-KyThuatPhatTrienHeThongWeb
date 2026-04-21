@@ -134,12 +134,20 @@ export default function MyCampaignsPage() {
         <div className="mb-6">
           <BackButton fallbackHref="/" />
         </div>
-        <header className="mb-8">
-          <h1 className="text-4xl font-bold text-slate-900">Chiến dịch bạn đã tạo</h1>
-          <p className="text-slate-600 mt-2">Dữ liệu đồng bộ từ backend campaign-service.</p>
-          <p className="text-xs text-slate-500 mt-2">
-            Rút tiền thực hiện trong trang chi tiết từng campaign sau khi chiến dịch kết thúc và đạt mục tiêu.
-          </p>
+        <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-4xl font-bold text-slate-900">Chiến dịch bạn đã tạo</h1>
+            <p className="mt-2 text-slate-600">Dữ liệu đồng bộ từ backend campaign-service.</p>
+            <p className="mt-2 text-xs text-slate-500">
+              Rút tiền thực hiện trong trang chi tiết từng campaign sau khi chiến dịch kết thúc và đạt mục tiêu.
+            </p>
+          </div>
+          <Link
+            href="/campaigns/create"
+            className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 hover:shadow-md"
+          >
+            + Tạo campaign mới
+          </Link>
         </header>
 
         {(campaignsQuery.isLoading || onChainQuery.isLoading) && (
@@ -214,6 +222,14 @@ export default function MyCampaignsPage() {
                             : campaign.status === 'ended'
                             ? 'bg-slate-400'
                             : 'bg-red-500';
+                        const statusLabel =
+                          campaign.status === 'active'
+                            ? 'đang diễn ra'
+                            : campaign.status === 'ended'
+                            ? 'đã kết thúc'
+                            : campaign.status === 'failed'
+                            ? 'thất bại'
+                            : 'đã hủy';
 
                         return (
                           <div
@@ -230,13 +246,13 @@ export default function MyCampaignsPage() {
                               <span
                                 className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold capitalize ${statusStyles}`}
                               >
-                                {campaign.status}
+                                {statusLabel}
                               </span>
                             </div>
 
                             {/* Body */}
                             <p className="mb-4 line-clamp-3 text-sm text-slate-600">
-                              {campaign.description || 'No description'}
+                              {campaign.description || 'Chưa có mô tả'}
                             </p>
 
                             <div className="mb-4 space-y-2">
