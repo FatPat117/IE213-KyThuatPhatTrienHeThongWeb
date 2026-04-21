@@ -10,6 +10,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
     uint256 public constant DEFAULT_GOAL_WEI = 1 ether;
 
     enum CampaignStatus {
+        PendingApproval,
         Active,
         InProgress,
         Completed,
@@ -45,7 +46,8 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         uint256 id;
         uint16 allocationBps;
         uint256 deadline;
-        string proofIpfsCid;
+        string[] proofCids;
+        uint256 proofSubmissionCount;
         MilestoneStatus status;
         address approvedBy;
         uint256 approvedAt;
@@ -60,10 +62,11 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
     mapping(uint256 => mapping(uint256 => Milestone)) public milestones;
     mapping(uint256 => mapping(address => uint256)) public donations;
     mapping(uint256 => address) public campaignReviewerSafe;
+    mapping(address => bool) public reviewerSafes;
+    address[] private _reviewerSafeList;
     mapping(uint256 => mapping(uint256 => mapping(address => bool)))
         public refundClaimed;
-    mapping(uint256 => mapping(uint256 => uint256))
-        public totalRefundedPerMilestone;
+    mapping(uint256 => mapping(address => bool)) public milestoneRefundClaimed;
     mapping(uint256 => mapping(address => bool)) public hasMintedCertificate;
     mapping(uint256 => uint256) public tokenToCampaign;
     mapping(address => uint256[]) public certificatesOf;
@@ -76,6 +79,8 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         uint256 fundingDeadline,
         uint256 milestoneCount
     );
+
+    event CampaignApproved(uint256 indexed campaignId, address approvedBy);
 
     event Donated(
         uint256 indexed campaignId,
@@ -90,8 +95,11 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         uint256 indexed campaignId,
         uint256 indexed milestoneId,
         string ipfsCid,
-        address submittedBy
+        address submittedBy,
+        uint256 submissionCount
     );
+
+    event MilestoneUnlocked(uint256 indexed campaignId, uint256 indexed milestoneId);
 
     event MilestoneApproved(
         uint256 indexed campaignId,
@@ -133,6 +141,9 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         address indexed owner,
         uint256 indexed tokenId
     );
+
+    event ReviewerSafeAdded(address indexed safe);
+    event ReviewerSafeRemoved(address indexed safe);
 
     constructor() ERC721("SchoolCertificate", "SCERT") Ownable(msg.sender) {}
 
@@ -203,6 +214,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         require(beneficiary != address(0), "Invalid beneficiary");
         require(goalWei > 0, "Invalid goal");
         require(reviewerSafe != address(0), "Invalid reviewer");
+        require(reviewerSafes[reviewerSafe], "Reviewer not approved");
         require(fundingDeadline > block.timestamp, "Invalid funding deadline");
         require(allocationBps.length > 0, "At least one milestone is required");
         require(allocationBps.length == deadlines.length, "Array length mismatch");
@@ -228,7 +240,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
             totalDisbursed: 0,
             deadline: fundingDeadline,
             withdrawn: false,
-            status: CampaignStatus.Active,
+            status: CampaignStatus.PendingApproval,
             milestoneCount: allocationBps.length,
             currentMilestoneId: 0
         });
@@ -240,7 +252,8 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
                 id: i,
                 allocationBps: allocationBps[i],
                 deadline: deadlines[i],
-                proofIpfsCid: "",
+                proofCids: new string[](0),
+                proofSubmissionCount: 0,
                 status: MilestoneStatus.PendingFunding,
                 approvedBy: address(0),
                 approvedAt: 0,
@@ -257,6 +270,35 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
             fundingDeadline,
             allocationBps.length
         );
+    }
+
+    function addReviewerSafe(address safe) external onlyOwner {
+        require(safe != address(0), "Invalid reviewer");
+        require(!reviewerSafes[safe], "Reviewer already approved");
+
+        reviewerSafes[safe] = true;
+        _reviewerSafeList.push(safe);
+        emit ReviewerSafeAdded(safe);
+    }
+
+    function removeReviewerSafe(address safe) external onlyOwner {
+        require(reviewerSafes[safe], "Reviewer not approved");
+
+        reviewerSafes[safe] = false;
+        emit ReviewerSafeRemoved(safe);
+
+        uint256 count = _reviewerSafeList.length;
+        for (uint256 i = 0; i < count; i++) {
+            if (_reviewerSafeList[i] == safe) {
+                _reviewerSafeList[i] = _reviewerSafeList[count - 1];
+                _reviewerSafeList.pop();
+                break;
+            }
+        }
+    }
+
+    function getReviewerSafes() external view returns (address[] memory) {
+        return _reviewerSafeList;
     }
 
     function donate(
@@ -287,23 +329,16 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         if (firstMilestone.status != MilestoneStatus.PendingFunding) return;
 
         uint256 amount = getMilestoneAmount(campaignId, 0);
-        firstMilestone.status = MilestoneStatus.Disbursed;
+        firstMilestone.status = MilestoneStatus.PendingVerification;
         firstMilestone.disbursedAt = block.timestamp;
         campaign.totalDisbursed += amount;
 
-        (bool success, ) = campaign.beneficiary.call{value: amount}("");
+        (bool success, ) = payable(campaign.creator).call{value: amount}("");
         require(success, "Initial disbursement transfer failed");
 
-        emit MilestoneDisbursed(campaignId, 0, campaign.beneficiary, amount);
+        emit MilestoneDisbursed(campaignId, 0, campaign.creator, amount);
 
-        if (campaign.milestoneCount == 1) {
-            campaign.currentMilestoneId = 1;
-            campaign.status = CampaignStatus.Completed;
-            return;
-        }
-
-        campaign.currentMilestoneId = 1;
-        milestones[campaignId][1].status = MilestoneStatus.PendingVerification;
+        campaign.currentMilestoneId = 0;
     }
 
     function submitMilestoneProof(
@@ -331,14 +366,26 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         require(block.timestamp <= milestone.deadline, "Milestone deadline has passed");
         require(bytes(ipfsCid).length > 0, "IPFS CID cannot be empty");
 
-        milestone.proofIpfsCid = ipfsCid;
-        emit MilestoneReportSubmitted(campaignId, milestoneId, ipfsCid, msg.sender);
+        milestone.proofCids.push(ipfsCid);
+        milestone.proofSubmissionCount += 1;
+        emit MilestoneReportSubmitted(
+            campaignId,
+            milestoneId,
+            ipfsCid,
+            msg.sender,
+            milestone.proofSubmissionCount
+        );
     }
 
     function approveMilestone(
         uint256 campaignId,
         uint256 milestoneId
-    ) external campaignExists(campaignId) milestoneExists(campaignId, milestoneId) {
+    )
+        external
+        nonReentrant
+        campaignExists(campaignId)
+        milestoneExists(campaignId, milestoneId)
+    {
         Campaign storage campaign = campaigns[campaignId];
         Milestone storage milestone = milestones[campaignId][milestoneId];
 
@@ -352,19 +399,51 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
             milestone.status == MilestoneStatus.PendingVerification,
             "Milestone not pending verification"
         );
-        require(bytes(milestone.proofIpfsCid).length > 0, "No proof submitted yet");
+        require(milestone.proofCids.length > 0, "No proof submitted yet");
 
         milestone.status = MilestoneStatus.Approved;
         milestone.approvedBy = msg.sender;
         milestone.approvedAt = block.timestamp;
 
+        uint256 currentAmount = getMilestoneAmount(campaignId, milestoneId);
         emit MilestoneApproved(
             campaignId,
             milestoneId,
             msg.sender,
-            milestone.proofIpfsCid,
-            getMilestoneAmount(campaignId, milestoneId)
+            milestone.proofCids[milestone.proofCids.length - 1],
+            currentAmount
         );
+
+        if (milestone.disbursedAt == 0) {
+            milestone.disbursedAt = block.timestamp;
+        }
+        milestone.status = MilestoneStatus.Disbursed;
+
+        uint256 nextMilestone = milestoneId + 1;
+        if (nextMilestone >= campaign.milestoneCount) {
+            campaign.currentMilestoneId = campaign.milestoneCount;
+            campaign.status = CampaignStatus.Completed;
+            return;
+        }
+
+        uint256 nextAmount = getMilestoneAmount(campaignId, nextMilestone);
+        (bool success, ) = payable(campaign.creator).call{value: nextAmount}("");
+        require(success, "Transfer failed");
+
+        Milestone storage next = milestones[campaignId][nextMilestone];
+        next.status = MilestoneStatus.PendingVerification;
+        next.disbursedAt = block.timestamp;
+
+        campaign.totalDisbursed += nextAmount;
+        campaign.currentMilestoneId = nextMilestone;
+
+        emit MilestoneDisbursed(
+            campaignId,
+            nextMilestone,
+            campaign.creator,
+            nextAmount
+        );
+        emit MilestoneUnlocked(campaignId, nextMilestone);
     }
 
     function disburseMilestone(
@@ -372,40 +451,10 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         uint256 milestoneId
     )
         external
-        nonReentrant
         campaignExists(campaignId)
         milestoneExists(campaignId, milestoneId)
     {
-        Campaign storage campaign = campaigns[campaignId];
-        Milestone storage milestone = milestones[campaignId][milestoneId];
-
-        require(campaign.status == CampaignStatus.InProgress, "Campaign not in progress");
-        require(
-            milestoneId == campaign.currentMilestoneId,
-            "Only current milestone can be disbursed"
-        );
-        require(milestone.status == MilestoneStatus.Approved, "Milestone not approved");
-
-        uint256 amount = getMilestoneAmount(campaignId, milestoneId);
-        milestone.status = MilestoneStatus.Disbursed;
-        milestone.disbursedAt = block.timestamp;
-        campaign.totalDisbursed += amount;
-
-        (bool success, ) = campaign.beneficiary.call{value: amount}("");
-        require(success, "Disbursement transfer failed");
-
-        emit MilestoneDisbursed(campaignId, milestoneId, campaign.beneficiary, amount);
-
-        uint256 nextMilestone = milestoneId + 1;
-        campaign.currentMilestoneId = nextMilestone;
-
-        if (nextMilestone >= campaign.milestoneCount) {
-            campaign.status = CampaignStatus.Completed;
-            return;
-        }
-
-        milestones[campaignId][nextMilestone].status = MilestoneStatus
-            .PendingVerification;
+        revert("Disbursement handled in approveMilestone");
     }
 
     function markMilestoneFailed(
@@ -447,6 +496,19 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         emit CampaignStopped(campaignId, campaign.totalRaised, type(uint256).max);
     }
 
+    function adminApprove(
+        uint256 campaignId
+    ) external onlyOwner campaignExists(campaignId) {
+        Campaign storage campaign = campaigns[campaignId];
+        require(
+            campaign.status == CampaignStatus.PendingApproval,
+            "Campaign not pending approval"
+        );
+
+        campaign.status = CampaignStatus.Active;
+        emit CampaignApproved(campaignId, msg.sender);
+    }
+
     function claimMilestoneRefund(
         uint256 campaignId,
         uint256 milestoneId
@@ -459,13 +521,10 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         Campaign storage campaign = campaigns[campaignId];
         Milestone storage milestone = milestones[campaignId][milestoneId];
 
+        require(milestone.status == MilestoneStatus.Failed, "Milestone not failed");
+        require(campaign.status == CampaignStatus.PartialFailed, "Campaign not partial failed");
         require(
-            milestone.status == MilestoneStatus.Failed ||
-                milestone.status == MilestoneStatus.Refunded,
-            "Milestone not failed"
-        );
-        require(
-            !refundClaimed[campaignId][milestoneId][msg.sender],
+            !milestoneRefundClaimed[campaignId][msg.sender],
             "Refund already claimed"
         );
 
@@ -473,22 +532,11 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         require(donorShare > 0, "No donation to refund");
         require(campaign.totalRaised > 0, "Campaign has no raised amount");
 
-        refundClaimed[campaignId][milestoneId][msg.sender] = true;
+        milestoneRefundClaimed[campaignId][msg.sender] = true;
 
-        uint256 milestonePool = getMilestoneAmount(campaignId, milestoneId);
-        uint256 computedRefund = (donorShare * milestonePool) / campaign.totalRaised;
-        uint256 alreadyRefunded = totalRefundedPerMilestone[campaignId][milestoneId];
-        uint256 remainingPool = milestonePool - alreadyRefunded;
-        uint256 refundAmount = computedRefund < remainingPool
-            ? computedRefund
-            : remainingPool;
-
-        require(refundAmount > 0, "Nothing left in refund pool");
-
-        totalRefundedPerMilestone[campaignId][milestoneId] += refundAmount;
-        if (milestone.status == MilestoneStatus.Failed) {
-            milestone.status = MilestoneStatus.Refunded;
-        }
+        uint256 remainingETH = campaign.totalRaised - campaign.totalDisbursed;
+        uint256 refundAmount = (donorShare * remainingETH) / campaign.totalRaised;
+        require(refundAmount > 0, "Nothing to refund");
 
         (bool success, ) = msg.sender.call{value: refundAmount}("");
         require(success, "Refund transfer failed");
