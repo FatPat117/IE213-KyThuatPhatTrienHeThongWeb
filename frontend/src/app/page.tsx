@@ -17,7 +17,12 @@ import {
     ContractStatsDisplay,
     CampaignListDisplay,
 } from "@/components/contract/ContractReadComponent";
-import { getReviewerAggregates, getUserProfile, useReadReviewerSafes } from "@/lib";
+import {
+    getReviewerAggregates,
+    getUserProfile,
+    useReadAllCampaigns,
+    useReadCampaignReviewersBatch,
+} from "@/lib";
 
 const SEPOLIA_CHAIN_ID = 11155111;
 const EMPTY_SUBSCRIBE = () => () => {};
@@ -71,19 +76,25 @@ function HomeContent() {
     const [reviewerUpdatedAt, setReviewerUpdatedAt] = useState<string | null>(
         null,
     );
-    const {
-        reviewerSafes: onChainReviewerSafes,
-        refetch: refetchOnChainReviewerSafes,
-    } = useReadReviewerSafes();
+    const { campaigns } = useReadAllCampaigns();
+    const { reviewersByCampaignId } = useReadCampaignReviewersBatch(
+        campaigns.length,
+    );
     const reviewerSafesRef = useRef<string[]>([]);
-    const refetchOnChainReviewerSafesRef = useRef(refetchOnChainReviewerSafes);
+
+    const onChainAssignedReviewerSafes = useMemo(() => {
+        return Array.from(
+            new Set(
+                Array.from(reviewersByCampaignId.values())
+                    .map((item) => item.trim().toLowerCase())
+                    .filter((item) => /^0x[a-f0-9]{40}$/.test(item)),
+            ),
+        );
+    }, [reviewersByCampaignId]);
 
     useEffect(() => {
-        reviewerSafesRef.current = onChainReviewerSafes;
-    }, [onChainReviewerSafes]);
-    useEffect(() => {
-        refetchOnChainReviewerSafesRef.current = refetchOnChainReviewerSafes;
-    }, [refetchOnChainReviewerSafes]);
+        reviewerSafesRef.current = onChainAssignedReviewerSafes;
+    }, [onChainAssignedReviewerSafes]);
 
     const buildCardsFromSafes = useCallback(
         async (safes: string[]): Promise<ReviewerCard[]> => {
@@ -127,8 +138,17 @@ function HomeContent() {
             setReviewerError(null);
 
             const aggregates = await getReviewerAggregates();
+            const onChainSet = new Set(reviewerSafesRef.current);
             let reviewerCards = await Promise.all(
-                aggregates.map(async (aggregate) => {
+                aggregates
+                    .filter((aggregate) =>
+                        onChainSet.size > 0
+                            ? onChainSet.has(
+                                  aggregate.reviewerSafe.trim().toLowerCase(),
+                              )
+                            : true,
+                    )
+                    .map(async (aggregate) => {
                     let profile: Awaited<
                         ReturnType<typeof getUserProfile>
                     > | null = null;
@@ -156,14 +176,12 @@ function HomeContent() {
                 }),
             );
             if (reviewerCards.length === 0) {
-                await refetchOnChainReviewerSafesRef.current();
                 reviewerCards = await buildCardsFromSafes(reviewerSafesRef.current);
             }
 
             setReviewers(reviewerCards);
             setReviewerUpdatedAt(new Date().toLocaleTimeString("vi-VN"));
         } catch {
-            await refetchOnChainReviewerSafesRef.current();
             const fallbackCards = await buildCardsFromSafes(reviewerSafesRef.current);
             setReviewers(fallbackCards);
             if (fallbackCards.length > 0) {

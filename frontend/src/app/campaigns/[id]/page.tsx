@@ -204,7 +204,10 @@ export default function CampaignDetailPage() {
             }
             if (address) {
                 try {
-                    const mine = await getDonationsByCampaignAndWallet(id, address);
+                    const mine = await getDonationsByCampaignAndWallet(
+                        id,
+                        address,
+                    );
                     merged.push(
                         ...mine.map((item) => ({
                             campaignId: item.campaignOnChainId,
@@ -247,7 +250,9 @@ export default function CampaignDetailPage() {
 
                         while (toBlock > 0n && scannedWindows < maxWindows) {
                             const fromBlock =
-                                toBlock > windowSize ? toBlock - windowSize : 0n;
+                                toBlock > windowSize
+                                    ? toBlock - windowSize
+                                    : 0n;
                             const chunkLogs = await publicClient.getLogs({
                                 address: contractConfig.address,
                                 event: donatedEvent,
@@ -729,7 +734,8 @@ export default function CampaignDetailPage() {
                                         </h3>
                                         <div className="flex items-center gap-3">
                                             <span className="text-sm font-medium text-slate-600">
-                                                {donations.length} lượt quyên góp
+                                                {donations.length} lượt quyên
+                                                góp
                                             </span>
                                             <button
                                                 onClick={handleReloadDonations}
@@ -999,7 +1005,8 @@ export default function CampaignDetailPage() {
                                         </p>
                                     </div>
                                     <p className="text-xs text-slate-500">
-                                        Mọi giao dịch diễn ra trên Ethereum Sepolia
+                                        Mọi giao dịch diễn ra trên Ethereum
+                                        Sepolia
                                     </p>
                                 </div>
                             </div>

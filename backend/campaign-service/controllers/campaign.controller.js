@@ -1,4 +1,5 @@
 const axios = require("axios");
+const { getAddress } = require("ethers");
 const campaignService = require("../services/campaign.service");
 const { Campaign, Milestone, Donation } = require("../models");
 const { successRes, errorRes } = require("../utils/response");
@@ -294,7 +295,9 @@ async function getPublicCampaigns(req, res, next) {
             query.status = req.query.status;
         }
         if (req.query.reviewerSafe) {
-            query.reviewerSafe = String(req.query.reviewerSafe).trim().toLowerCase();
+            query.reviewerSafe = String(req.query.reviewerSafe)
+                .trim()
+                .toLowerCase();
         }
 
         const totalItems = await Campaign.countDocuments(query);
@@ -458,12 +461,19 @@ async function getMilestoneApprovalStatus(req, res, next) {
             return errorRes(res, "Campaign not found", 404);
         }
 
-        const safeAddress = (campaign.reviewerSafe || "").toLowerCase();
+        const safeAddress = (campaign.reviewerSafe || "").trim();
         if (!safeAddress) {
             return errorRes(res, "Campaign reviewerSafe is not set", 404);
         }
 
-        const safeApiUrl = `https://safe-transaction-sepolia.safe.global/api/v1/safes/${safeAddress}/multisig-transactions/`;
+        let checksumSafe;
+        try {
+            checksumSafe = getAddress(safeAddress);
+        } catch {
+            return errorRes(res, "Campaign reviewerSafe is invalid", 400);
+        }
+
+        const safeApiUrl = `https://safe-transaction-sepolia.safe.global/api/v1/safes/${checksumSafe}/multisig-transactions/`;
 
         const response = await axios.get(safeApiUrl, {
             timeout: 15_000,
@@ -483,7 +493,7 @@ async function getMilestoneApprovalStatus(req, res, next) {
 
         if (!pendingTx) {
             return successRes(res, {
-                safeAddress,
+                safeAddress: checksumSafe,
                 required: 0,
                 confirmed: 0,
                 executed: false,
@@ -500,7 +510,7 @@ async function getMilestoneApprovalStatus(req, res, next) {
             .filter((owner) => typeof owner === "string");
 
         return successRes(res, {
-            safeAddress,
+            safeAddress: checksumSafe,
             required: Number(
                 pendingTx.confirmationsRequired ||
                     pendingTx.confirmations_required ||

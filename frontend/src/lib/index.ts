@@ -24,6 +24,7 @@ export {
     useReadContractOwner,
     useReadFilteredCampaigns,
     useReadReviewerSafes,
+    useReadReviewerSafesOnChain,
     useReadTotalRaised,
     useRemoveReviewerSafe,
     useRefundDonation,

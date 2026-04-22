@@ -1,14 +1,14 @@
 "use client";
 
 import { useMemo } from "react";
-import { useReadReviewerSafes } from "@/lib";
+import { useReadReviewerSafesOnChain } from "@/lib";
 
 function shorten(value: string) {
     return `${value.slice(0, 8)}...${value.slice(-6)}`;
 }
 
 export default function ReviewerSafePage() {
-    const { reviewerSafes, isLoading, error } = useReadReviewerSafes();
+    const { reviewerSafes, isLoading, error } = useReadReviewerSafesOnChain();
     const items = useMemo(
         () => reviewerSafes.filter((item) => /^0x[a-f0-9]{40}$/.test(item)),
         [reviewerSafes],

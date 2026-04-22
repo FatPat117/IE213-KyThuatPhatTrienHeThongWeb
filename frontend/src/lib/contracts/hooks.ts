@@ -606,6 +606,45 @@ export function useReadReviewerSafes() {
     };
 }
 
+export function useReadReviewerSafesOnChain() {
+    const {
+        data: reviewerSafesOnChain,
+        isLoading,
+        isError,
+        error,
+        refetch,
+    } = useReadContract({
+        address: CROWDFUNDING_CONTRACT_ADDRESS,
+        abi: REVIEWER_REGISTRY_ABI,
+        functionName: "getReviewerSafes",
+        query: {
+            staleTime: 30_000,
+            refetchOnWindowFocus: false,
+            refetchOnMount: true,
+            enabled:
+                CROWDFUNDING_CONTRACT_ADDRESS !==
+                "0x0000000000000000000000000000000000000000",
+        },
+    });
+
+    const reviewerSafes = useMemo(() => {
+        const onChainList = Array.isArray(reviewerSafesOnChain)
+            ? reviewerSafesOnChain
+                  .map((item) => item.toLowerCase())
+                  .filter((item) => /^0x[a-f0-9]{40}$/.test(item))
+            : [];
+        return Array.from(new Set(onChainList));
+    }, [reviewerSafesOnChain]);
+
+    return {
+        reviewerSafes,
+        isLoading,
+        isError,
+        error: error?.message || null,
+        refetch,
+    };
+}
+
 export function useReadContractOwner() {
     const { data, isLoading, isError, error, refetch } = useReadContract({
         ...contractConfig,

@@ -1,11 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   getDisbursedMilestoneCount,
   getCampaignMetadataFromCache,
   isPlaceholderCampaignTitle,
+  useBackendCampaigns,
   useContractStats,
   useReadAllCampaigns,
 } from '@/lib';
@@ -166,7 +167,76 @@ export function ContractStatsDisplay() {
  * Danh sách chiến dịch (read-only)
  */
 export function CampaignListDisplay() {
-  const { campaigns, isLoading, isError, error, refetch } = useReadAllCampaigns();
+  const {
+    campaigns: onChainCampaigns,
+    isLoading: isOnChainLoading,
+    isError: isOnChainError,
+    error: onChainError,
+    refetch: refetchOnChain,
+  } = useReadAllCampaigns();
+  const {
+    data: backendCampaigns,
+    isLoading: isBackendLoading,
+    error: backendError,
+    refetch: refetchBackend,
+  } = useBackendCampaigns();
+
+  const campaigns = useMemo(() => {
+    const campaignMap = new Map<
+      number,
+      {
+        id: number;
+        title: string;
+        creator: string;
+        goal: bigint;
+        raised: bigint;
+        completed: boolean;
+      }
+    >();
+
+    backendCampaigns.forEach((campaign) => {
+      campaignMap.set(campaign.onChainId, {
+        id: campaign.onChainId,
+        title: campaign.title || `Chiến dịch #${campaign.onChainId}`,
+        creator: campaign.creator,
+        goal: BigInt(campaign.goal || '0'),
+        raised: BigInt(campaign.raised || '0'),
+        completed: Boolean(campaign.status === 'completed'),
+      });
+    });
+
+    onChainCampaigns.forEach((campaign) => {
+      const existing = campaignMap.get(campaign.id);
+      if (existing) {
+        campaignMap.set(campaign.id, {
+          ...existing,
+          creator: campaign.creator || existing.creator,
+          goal: campaign.goal,
+          raised: campaign.raised,
+          completed: campaign.completed,
+        });
+        return;
+      }
+
+      campaignMap.set(campaign.id, {
+        id: campaign.id,
+        title: `Chiến dịch #${campaign.id}`,
+        creator: campaign.creator,
+        goal: campaign.goal,
+        raised: campaign.raised,
+        completed: campaign.completed,
+      });
+    });
+
+    return Array.from(campaignMap.values()).sort((a, b) => b.id - a.id);
+  }, [backendCampaigns, onChainCampaigns]);
+
+  const isLoading = isOnChainLoading || isBackendLoading;
+  const isError = isOnChainError || Boolean(backendError);
+  const error = onChainError || backendError || null;
+  const refetch = async () => {
+    await Promise.all([refetchOnChain(), refetchBackend()]);
+  };
 
   if (isLoading) {
     return (
