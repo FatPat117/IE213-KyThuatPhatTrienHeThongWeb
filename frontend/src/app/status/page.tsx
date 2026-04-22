@@ -158,27 +158,27 @@ export default function SystemStatusPage() {
             // 5. Smart Contract Check
             if (CROWDFUNDING_CONTRACT_ADDRESS === '0x0000000000000000000000000000000000000000') {
                 newChecks.push({
-                    name: 'Smart Contract',
+                    name: 'Hợp đồng thông minh',
                     status: 'error',
                     message: 'Chưa có contract',
                     details: 'Chưa cấu hình địa chỉ contract. Hãy deploy và cập nhật trong contractConfig.ts',
                 });
             } else if (countError) {
                 newChecks.push({
-                    name: 'Smart Contract',
+                    name: 'Hợp đồng thông minh',
                     status: 'error',
                     message: 'Đọc contract thất bại',
                     details: 'Không thể đọc contract. Có thể chưa deploy hoặc sai địa chỉ.',
                 });
             } else if (countLoading) {
                 newChecks.push({
-                    name: 'Smart Contract',
+                    name: 'Hợp đồng thông minh',
                     status: 'loading',
                     message: 'Đang đọc contract...',
                 });
             } else {
                 newChecks.push({
-                    name: 'Smart Contract',
+                    name: 'Hợp đồng thông minh',
                     status: 'success',
                     message: 'Contract hoạt động',
                     details: `Địa chỉ: ${CROWDFUNDING_CONTRACT_ADDRESS.slice(0, 6)}...${CROWDFUNDING_CONTRACT_ADDRESS.slice(-4)}`,
@@ -234,7 +234,7 @@ export default function SystemStatusPage() {
                 <div className="mb-8">
                     <p className="mb-1 text-sm font-semibold uppercase tracking-wider text-indigo-600">Trạng thái hệ thống</p>
                     <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-                        Health check
+                        Kiểm tra hệ thống
                     </h1>
                     <p className="mt-2 text-slate-600">
                         Kiểm tra ví, mạng, RPC và contract theo thời gian thực.

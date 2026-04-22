@@ -14,21 +14,21 @@ export function WalletExampleComponent() {
     <div className="space-y-4">
       {/* Example 1: Display wallet status */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h3 className="font-semibold text-blue-900 mb-3">Wallet Status</h3>
+        <h3 className="font-semibold text-blue-900 mb-3">Trạng thái ví</h3>
         <div className="space-y-2 text-sm text-blue-800">
           <p>
-            <span className="font-medium">Connected:</span>{' '}
-            {walletStatus.isConnected ? '✓ Yes' : '✗ No'}
+            <span className="font-medium">Đã kết nối:</span>{' '}
+            {walletStatus.isConnected ? '✓ Có' : '✗ Không'}
           </p>
           <p>
-            <span className="font-medium">Address:</span>{' '}
-            {walletStatus.shortenedAddress || 'Not connected'}
+            <span className="font-medium">Địa chỉ:</span>{' '}
+            {walletStatus.shortenedAddress || 'Chưa kết nối'}
           </p>
           <p>
-            <span className="font-medium">Network:</span>{' '}
+            <span className="font-medium">Mạng:</span>{' '}
             {walletStatus.isSepoliaNetwork
               ? '✓ Sepolia'
-              : '✗ Wrong Network'}
+              : '✗ Sai mạng'}
           </p>
         </div>
       </div>
@@ -46,7 +46,7 @@ export function WalletExampleComponent() {
             validation.isValid ? 'text-green-900' : 'text-red-900'
           }`}
         >
-          {validation.isValid ? '✓ Wallet Valid' : '✗ Validation Errors'}
+          {validation.isValid ? '✓ Ví hợp lệ' : '✗ Có lỗi xác thực'}
         </h3>
         {validation.errors.length > 0 && (
           <ul
@@ -71,8 +71,8 @@ export function WalletExampleComponent() {
         }`}
       >
         {validation.isValid
-          ? 'Ready to Send Transaction'
-          : 'Connect Wallet to Continue'}
+          ? 'Sẵn sàng gửi giao dịch'
+          : 'Kết nối ví để tiếp tục'}
       </button>
     </div>
   );

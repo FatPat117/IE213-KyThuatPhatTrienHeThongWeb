@@ -1,5 +1,6 @@
 const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const { Campaign, CampaignDonorShare } = require("../models");
+const notificationService = require("../services/notification.service");
 
 const QUEUE =
     process.env.RABBITMQ_QUEUE_FUNDING_COMPLETE ||
@@ -158,6 +159,16 @@ async function handleFundingCompleteEvent(event) {
     campaign.totalRaisedWei = normalizedTotalRaisedWei;
     campaign.raised = normalizedTotalRaisedWei;
     await campaign.save();
+    if (campaign.creator) {
+        await notificationService.createNotification({
+            recipientWallet: campaign.creator,
+            type: "funding_complete",
+            title: "Campaign đã đủ vốn",
+            message: "Campaign của bạn đã đủ vốn.",
+            campaignOnChainId,
+            txHash: transactionHash || "",
+        });
+    }
 
     console.log(
         `[fundingCompleteConsumer] Success tx=${transactionHash || "n/a"} campaign=${campaignOnChainId} donors=${donorShares.length}`,

@@ -129,7 +129,7 @@ function writeCampaignIndexStatusCache(id: number, indexed: boolean) {
 async function ensureCampaignIndexed(onChainId: number): Promise<void> {
     const status = await getCampaignIndexStatus(onChainId);
     if (!status.indexed) {
-        throw new Error("Campaign not yet indexed");
+            throw new Error("Chiến dịch chưa được index");
     }
 }
 
@@ -271,7 +271,7 @@ export async function getPublicCampaignMilestones(onChainId: number) {
 
         if (!response.ok || payload.status !== "success") {
             if (response.status === 404) {
-                throw new Error("Campaign not yet indexed");
+                throw new Error("Chiến dịch chưa được index");
             }
             throw new Error(payload.error || payload.message || "Request failed");
         }
@@ -284,7 +284,10 @@ export async function getPublicCampaignMilestones(onChainId: number) {
     } catch (error) {
         const message =
             error instanceof Error ? error.message.toLowerCase() : "";
-        if (message.includes("not yet indexed")) {
+        if (
+            message.includes("not yet indexed") ||
+            message.includes("chưa được index")
+        ) {
             throw error;
         }
 
@@ -305,6 +308,43 @@ export async function getMilestoneApprovalStatus(
         `/campaigns/${onChainId}/milestones/${milestoneId}/approval-status`,
         { token },
     );
+}
+
+export async function rejectMilestone(
+    campaignOnChainId: number,
+    milestoneId: number,
+    token: string,
+    reason: string,
+) {
+    return apiRequest<{
+        campaignOnChainId: number;
+        milestoneIndex: number;
+        milestoneStatus: string;
+        retriesLeft?: number;
+        reason: string;
+    }>(`/milestones/${campaignOnChainId}/${milestoneId}/reject`, {
+        method: "POST",
+        token,
+        body: JSON.stringify({ reason }),
+    });
+}
+
+export async function resubmitMilestone(
+    campaignOnChainId: number,
+    milestoneId: number,
+    token: string,
+    evidenceCid?: string,
+) {
+    return apiRequest<{
+        campaignOnChainId: number;
+        milestoneIndex: number;
+        milestoneStatus: string;
+        evidenceCid?: string;
+    }>(`/milestones/${campaignOnChainId}/${milestoneId}/resubmit`, {
+        method: "PUT",
+        token,
+        body: JSON.stringify(evidenceCid ? { evidenceCid } : {}),
+    });
 }
 
 export async function getDisbursedMilestoneCount(): Promise<number> {

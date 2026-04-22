@@ -18,9 +18,9 @@ function statusStyles(status?: 'pending' | 'success' | 'failed') {
 }
 
 function statusLabel(status?: 'pending' | 'success' | 'failed') {
-  if (status === 'success') return 'success';
-  if (status === 'failed') return 'failed';
-  return 'pending';
+  if (status === 'success') return 'thành công';
+  if (status === 'failed') return 'thất bại';
+  return 'đang xử lý';
 }
 
 /**

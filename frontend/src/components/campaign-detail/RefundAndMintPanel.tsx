@@ -95,7 +95,7 @@ export default function RefundAndMintPanel({
                 ? '⏳ Đợi xác nhận từ ví...'
                 : mintConfirming
                   ? '🔄 Đang xác nhận...'
-                  : '🎖️ Mint Certificate'}
+                  : '🎖️ Mint chứng chỉ'}
           </button>
           {showMintPrompt && (
             <div className="mt-4 rounded-xl border border-emerald-200 bg-white/95 p-4 text-emerald-900">
@@ -133,7 +133,7 @@ export default function RefundAndMintPanel({
           {mintConfirmed && mintHash && (
             <>
               <div className="rounded-lg bg-green-500 px-4 py-3 text-sm font-medium text-white mt-4">
-                ✓ Mint certificate thành công!
+                ✓ Mint chứng chỉ thành công!
               </div>
               <Link
                 href="/certificates"

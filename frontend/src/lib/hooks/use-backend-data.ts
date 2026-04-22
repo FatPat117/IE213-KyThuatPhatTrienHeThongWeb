@@ -10,6 +10,7 @@ import type {
 import {
     getCampaignById,
     getCampaigns,
+    getDonationsByCampaignAndWallet,
     getDonationsByWallet,
     getTransactionsByWallet,
 } from "@/lib";
@@ -87,6 +88,7 @@ export function useBackendCampaign(
 
 export function useBackendDonations(
     wallet: string | null,
+    campaignId?: number | null,
 ): QueryState<DonationRecord[]> {
     const [data, setData] = useState<DonationRecord[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -100,6 +102,15 @@ export function useBackendDonations(
         try {
             setIsLoading(true);
             setError(null);
+            if (Number.isFinite(campaignId)) {
+                setData(
+                    await getDonationsByCampaignAndWallet(
+                        Number(campaignId),
+                        wallet,
+                    ),
+                );
+                return;
+            }
             setData(await getDonationsByWallet(wallet));
         } catch (err) {
             setError(
@@ -108,7 +119,7 @@ export function useBackendDonations(
         } finally {
             setIsLoading(false);
         }
-    }, [wallet]);
+    }, [campaignId, wallet]);
 
     useEffect(() => {
         fetchData();

@@ -1,6 +1,7 @@
 const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const { Campaign, Milestone } = require("../models");
 const { recordTransaction } = require("../utils/recordTransaction");
+const notificationService = require("../services/notification.service");
 
 const QUEUE =
     process.env.RABBITMQ_QUEUE_MILESTONE_APPROVED || "milestone.approved.queue";
@@ -60,6 +61,17 @@ async function startMilestoneApprovedConsumer() {
             ) {
                 campaign.status = "completed";
                 await campaign.save();
+            }
+            if (campaign?.creator) {
+                await notificationService.createNotification({
+                    recipientWallet: campaign.creator,
+                    type: "milestone_approved",
+                    title: "Milestone đã được duyệt",
+                    message:
+                        "Milestone được duyệt, bạn có thể tiếp tục triển khai mốc tiếp theo.",
+                    campaignOnChainId,
+                    txHash: payload.txHash || "",
+                });
             }
 
             await recordTransaction({

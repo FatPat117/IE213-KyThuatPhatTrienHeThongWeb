@@ -195,7 +195,7 @@ export function CampaignListDisplay() {
           const cached = getCampaignMetadataFromCache(campaign.id);
           const effectiveTitle = !isPlaceholderCampaignTitle(campaign.title, campaign.id)
             ? campaign.title
-            : cached?.title || `Campaign #${campaign.id}`;
+            : cached?.title || `Chiến dịch #${campaign.id}`;
 
           return (
             <Link
@@ -280,7 +280,7 @@ export function CampaignListDisplay() {
 export function ContractReadingExample() {
   return (
     <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-6">
-      <h3 className="font-semibold text-indigo-900 mb-4">📚 Contract Reading Example</h3>
+      <h3 className="font-semibold text-indigo-900 mb-4">📚 Ví dụ đọc dữ liệu contract</h3>
       <pre className="bg-white border border-indigo-200 rounded p-3 overflow-x-auto text-xs text-gray-700">
         {`// Import hooks
 import {

@@ -320,13 +320,13 @@ export default function DashboardPage() {
                     >
                       <div>
                         <p className="text-sm font-semibold text-slate-900">
-                          Certificate #{c.tokenId}
+                          Chứng chỉ #{c.tokenId}
                         </p>
                         <p className="text-xs text-slate-500">
                           Campaign #{c.campaignOnChainId}
                         </p>
                         <p className="text-xs text-slate-500">
-                          Minted:{' '}
+                          Mint lúc:{' '}
                           {new Date(c.mintedAt).toLocaleDateString('vi-VN')}
                         </p>
                       </div>
@@ -334,7 +334,7 @@ export default function DashboardPage() {
                         href="/certificates"
                         className="text-xs font-semibold text-blue-600 hover:text-blue-700"
                       >
-                        Xem
+                        Mở
                       </Link>
                     </div>
                   ))}

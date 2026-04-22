@@ -1,6 +1,8 @@
 const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const { Milestone } = require("../models");
+const { Campaign } = require("../models");
 const { recordTransaction } = require("../utils/recordTransaction");
+const notificationService = require("../services/notification.service");
 
 const QUEUE =
     process.env.RABBITMQ_QUEUE_MILESTONE_REPORT_SUBMITTED ||
@@ -60,6 +62,17 @@ async function startMilestoneReportSubmittedConsumer() {
                 { campaignOnChainId, milestoneId },
                 update,
             );
+            const campaign = await Campaign.findOne({ onChainId: campaignOnChainId });
+            if (campaign?.reviewerSafe) {
+                await notificationService.createNotification({
+                    recipientWallet: campaign.reviewerSafe,
+                    type: "milestone_report_submitted",
+                    title: "Có bằng chứng mới cần xét duyệt",
+                    message: "Creator vừa nộp minh chứng mới cho milestone.",
+                    campaignOnChainId,
+                    txHash: payload.txHash || "",
+                });
+            }
 
             await recordTransaction({
                 txHash: payload.txHash,

@@ -1,31 +1,39 @@
 'use client';
 
-import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
-import { formatEther, parseAbiItem } from 'viem';
-import { useAccount, usePublicClient } from 'wagmi';
 import DonationHistoryList from '@/components/donations/DonationHistoryList';
 import DonationSummaryCards from '@/components/donations/DonationSummaryCards';
 import BackButton from '@/components/navigation/BackButton';
 import TransactionHistoryModal from '@/components/transactions/TransactionHistoryModal';
-import type { DonationRecord } from '@/lib/api/types';
 import {
-  contractConfig,
-  getCampaignMetadataFromCache,
-  isPlaceholderCampaignTitle,
-  useBackendCampaigns,
-  useBackendDonations,
-  useBackendTransactions,
+    contractConfig,
+    getCampaignMetadataFromCache,
+    isPlaceholderCampaignTitle,
+    useBackendCampaigns,
+    useBackendDonations,
+    useBackendTransactions,
 } from '@/lib';
+import type { DonationRecord } from '@/lib/api/types';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
+import { formatEther, parseAbiItem } from 'viem';
+import { useAccount, usePublicClient } from 'wagmi';
 
 export default function MyDonationsPage() {
+  const searchParams = useSearchParams();
   const { address, isConnected, chain } = useAccount();
   const publicClient = usePublicClient({ chainId: contractConfig.chainId });
   const [showTxModal, setShowTxModal] = useState(false);
   const [onChainDonations, setOnChainDonations] = useState<DonationRecord[]>([]);
   const [allOnChainDonations, setAllOnChainDonations] = useState<DonationRecord[]>([]);
   const [isOnChainLoading, setIsOnChainLoading] = useState(false);
-  const donationQuery = useBackendDonations(address ?? null);
+  const campaignIdFilter = useMemo(() => {
+    const raw = searchParams.get('campaignId');
+    if (!raw) return null;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }, [searchParams]);
+  const donationQuery = useBackendDonations(address ?? null, campaignIdFilter);
   const transactionQuery = useBackendTransactions(address ?? null);
   const campaignsQuery = useBackendCampaigns();
 
@@ -90,7 +98,7 @@ export default function MyDonationsPage() {
       const cached = getCampaignMetadataFromCache(campaign.onChainId);
       const effectiveTitle = !isPlaceholderCampaignTitle(campaign.title, campaign.onChainId)
         ? campaign.title
-        : cached?.title || `Campaign #${campaign.onChainId}`;
+        : cached?.title || `Chiến dịch #${campaign.onChainId}`;
       map.set(campaign.onChainId, effectiveTitle);
     });
     return map;
@@ -119,7 +127,7 @@ export default function MyDonationsPage() {
       transactionQuery.data.map((tx) => ({
         txHash: tx.txHash,
         campaignId: tx.campaignOnChainId ?? undefined,
-        campaignName: tx.campaignOnChainId ? `Campaign #${tx.campaignOnChainId}` : 'Unknown campaign',
+        campaignName: tx.campaignOnChainId ? `Chiến dịch #${tx.campaignOnChainId}` : 'Chiến dịch không xác định',
         status: tx.status,
         timestamp: new Date(tx.updatedAt || tx.createdAt).getTime(),
       })),
@@ -157,7 +165,7 @@ export default function MyDonationsPage() {
             <BackButton fallbackHref="/" />
             <div>
               <h1 className="text-3xl font-bold text-slate-900">Lịch sử quyên góp</h1>
-              <p className="text-lg text-slate-600">Minh bạch từ backend indexer + blockchain events Donated</p>
+              <p className="text-lg text-slate-600">Minh bạch từ backend indexer + sự kiện on-chain Donated</p>
             </div>
           </div>
         </div>
@@ -189,18 +197,23 @@ export default function MyDonationsPage() {
               onClick={() => setShowTxModal(true)}
               className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
             >
-              Xem transaction log
+              Xem nhật ký giao dịch
             </button>
           </div>
+          {campaignIdFilter && (
+            <p className="mb-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+              Đang lọc theo campaign #{campaignIdFilter}.
+            </p>
+          )}
 
           {transactionQuery.error && (
             <p className="mb-4 text-xs text-amber-700">
-              Không thể tải transaction log đầy đủ. Trạng thái donation hiển thị theo dữ liệu đã index.
+              Không thể tải đầy đủ nhật ký giao dịch. Trạng thái quyên góp hiển thị theo dữ liệu đã index.
             </p>
           )}
           {effectiveDonations.length > donationQuery.data.length && onChainDonations.length > 0 && (
             <p className="mb-4 text-xs text-blue-700">
-              Đang bổ sung donation từ on-chain để bù phần backend index chưa đồng bộ kịp.
+              Đang bổ sung quyên góp từ on-chain để bù phần backend index chưa đồng bộ kịp.
             </p>
           )}
 
@@ -232,7 +245,7 @@ export default function MyDonationsPage() {
           <div className="mb-6">
             <h2 className="text-xl font-bold text-slate-900">Lịch sử quyên góp toàn hệ thống</h2>
             <p className="mt-1 text-xs text-slate-600">
-              Dữ liệu on-chain công khai cho mọi campaign. Bạn có thể xem donor, campaign, số tiền và lời nhắn (nếu có).
+              Dữ liệu on-chain công khai cho mọi campaign. Bạn có thể xem nhà tài trợ, campaign, số tiền và lời nhắn (nếu có).
             </p>
           </div>
           {isOnChainLoading && (

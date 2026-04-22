@@ -65,7 +65,7 @@ function CampaignsPageContent() {
                     id: campaign.onChainId,
                     title: !isPlaceholderCampaignTitle(campaign.title, campaign.onChainId)
                         ? campaign.title
-                        : (cached?.title || `Campaign #${campaign.onChainId}`),
+                        : (cached?.title || `Chiến dịch #${campaign.onChainId}`),
                     description: !isPlaceholderCampaignDescription(campaign.description)
                         ? campaign.description
                         : (cached?.description || ""),
@@ -111,8 +111,8 @@ function CampaignsPageContent() {
                 const cached = getCampaignMetadataFromCache(campaign.id);
                 campaignMap.set(campaign.id, {
                     id: campaign.id,
-                    title: cached?.title || `Campaign #${campaign.id}`,
-                    description: cached?.description || "Campaign data is stored on-chain without off-chain metadata.",
+                    title: cached?.title || `Chiến dịch #${campaign.id}`,
+                    description: cached?.description || "Dữ liệu chiến dịch hiện chỉ có on-chain, chưa có metadata off-chain.",
                     creator: campaign.creator,
                     goal: campaign.goal,
                     raised: campaign.raised,
@@ -173,9 +173,9 @@ function CampaignsPageContent() {
                 {/* Status Bar */}
                 {!isConnected && (
                     <div className="mb-6 rounded-lg border border-blue-300 bg-blue-50 p-4">
-                        <p className="text-sm font-semibold text-blue-900">👁️ Chế độ xem (read-only)</p>
+                        <p className="text-sm font-semibold text-blue-900">👁️ Chế độ xem (chỉ đọc)</p>
                         <p className="text-xs text-blue-800 mt-1">
-                            Bạn đang xem dữ liệu ở chế độ read-only. Kết nối ví để tạo chiến dịch và quyên góp.
+                            Bạn đang xem dữ liệu ở chế độ chỉ đọc. Kết nối ví để tạo chiến dịch và quyên góp.
                         </p>
                     </div>
                 )}
@@ -195,7 +195,7 @@ function CampaignsPageContent() {
                         <div>
                             <div className="inline-flex items-center gap-2 mb-3">
                                 <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">
-                                    🔗 Dữ liệu On-Chain
+                                    🔗 Dữ liệu on-chain
                                 </span>
                             </div>
                             <h1 className="text-4xl font-bold text-slate-900 mb-3">Tất cả chiến dịch</h1>
@@ -284,6 +284,7 @@ function CampaignsPageContent() {
                             <select
                                 value={filterStatus}
                                 onChange={(e) => setFilterStatus(e.target.value as "all" | "active" | "ended")}
+                                aria-label="Lọc theo trạng thái chiến dịch"
                                 className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2 text-slate-900 focus:border-blue-600 focus:outline-none transition"
                             >
                                 <option value="all">Tất cả</option>
@@ -300,6 +301,7 @@ function CampaignsPageContent() {
                                 onChange={(e) =>
                                     setSortBy(e.target.value as "newest" | "mostfunded" | "trending")
                                 }
+                                aria-label="Sắp xếp danh sách chiến dịch"
                                 className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2 text-slate-900 focus:border-blue-600 focus:outline-none transition"
                             >
                                 <option value="newest">Mới nhất</option>
@@ -415,10 +417,10 @@ function CampaignsPageContent() {
                                             </div>
                                             <div className="min-w-0 flex-1 flex-col gap-1">
                                                 <h3 className="line-clamp-2 text-lg font-bold leading-snug text-slate-900 transition group-hover:text-blue-600">
-                                                    {campaign.title || `Campaign #${campaign.id}`}
+                                                    {campaign.title || `Chiến dịch #${campaign.id}`}
                                                 </h3>
                                                 <p className="min-w-0 truncate text-xs text-slate-500">
-                                                    by {campaign.creator.slice(0, 6)}...{campaign.creator.slice(-4)}
+                                                    bởi {campaign.creator.slice(0, 6)}...{campaign.creator.slice(-4)}
                                                 </p>
                                             </div>
                                         </div>
@@ -483,7 +485,7 @@ function CampaignsPageContent() {
                                     {/* On-chain Badge */}
                                     <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                                            On-Chain ✓
+                                            Trên chuỗi ✓
                                         </span>
                                     </div>
                                 </Link>

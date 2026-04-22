@@ -16,7 +16,7 @@ import {
     ContractStatsDisplay,
     CampaignListDisplay,
 } from "@/components/contract/ContractReadComponent";
-import { getReviewerAggregates, getUserProfile } from "@/lib";
+import { getReviewerAggregates, getUserProfile, useReadReviewerSafes } from "@/lib";
 
 const SEPOLIA_CHAIN_ID = 11155111;
 const EMPTY_SUBSCRIBE = () => () => {};
@@ -70,6 +70,46 @@ function HomeContent() {
     const [reviewerUpdatedAt, setReviewerUpdatedAt] = useState<string | null>(
         null,
     );
+    const {
+        reviewerSafes: onChainReviewerSafes,
+        refetch: refetchOnChainReviewerSafes,
+    } = useReadReviewerSafes();
+
+    const buildCardsFromSafes = useCallback(
+        async (safes: string[]): Promise<ReviewerCard[]> => {
+            const normalized = Array.from(
+                new Set(
+                    safes
+                        .map((item) => item.trim().toLowerCase())
+                        .filter((item) => /^0x[a-f0-9]{40}$/.test(item)),
+                ),
+            );
+            const cards = await Promise.all(
+                normalized.map(async (safe) => {
+                    let profile: Awaited<ReturnType<typeof getUserProfile>> | null =
+                        null;
+                    try {
+                        profile = await getUserProfile(safe);
+                    } catch {
+                        profile = null;
+                    }
+                    return {
+                        id: safe,
+                        name: profile?.displayName?.trim() || shortenAddress(safe),
+                        role: "Kiểm duyệt viên đa chữ ký",
+                        org: "Ví kiểm duyệt trong danh sách on-chain",
+                        image: profile?.avatarUrl?.trim() || "",
+                        board: "Hội đồng kiểm duyệt on-chain",
+                        safeAddress: safe,
+                        campaignCount: 0,
+                        totalDisbursedEth: "0.0000",
+                    };
+                }),
+            );
+            return cards;
+        },
+        [],
+    );
 
     const refreshReviewers = useCallback(async () => {
         try {
@@ -77,7 +117,7 @@ function HomeContent() {
             setReviewerError(null);
 
             const aggregates = await getReviewerAggregates();
-            const reviewerCards = await Promise.all(
+            let reviewerCards = await Promise.all(
                 aggregates.map(async (aggregate) => {
                     let profile: Awaited<
                         ReturnType<typeof getUserProfile>
@@ -105,20 +145,31 @@ function HomeContent() {
                     } as ReviewerCard;
                 }),
             );
+            if (reviewerCards.length === 0) {
+                await refetchOnChainReviewerSafes();
+                reviewerCards = await buildCardsFromSafes(onChainReviewerSafes);
+            }
 
             setReviewers(reviewerCards);
             setReviewerUpdatedAt(new Date().toLocaleTimeString("vi-VN"));
         } catch (error) {
-            setReviewerError(
-                error instanceof Error
-                    ? error.message
-                    : "Không thể tải danh sách kiểm duyệt viên",
-            );
+            await refetchOnChainReviewerSafes();
+            const fallbackCards = await buildCardsFromSafes(onChainReviewerSafes);
+            setReviewers(fallbackCards);
+            if (fallbackCards.length > 0) {
+                setReviewerError(
+                    "Không tải được dữ liệu reviewer từ backend, đã chuyển sang danh sách on-chain.",
+                );
+            } else {
+                setReviewerError(
+                    "Chưa tải được danh sách reviewer. Vui lòng thử lại sau.",
+                );
+            }
         } finally {
             setIsLoadingReviewers(false);
             setIsRefreshingReviewers(false);
         }
-    }, []);
+    }, [buildCardsFromSafes, onChainReviewerSafes, refetchOnChainReviewerSafes]);
 
     useEffect(() => {
         refreshReviewers();
@@ -142,7 +193,7 @@ function HomeContent() {
                     <div className="flex flex-col gap-8">
                         <div className="flex flex-wrap items-center gap-2">
                             <span className="rounded-full bg-indigo-500/10 px-3.5 py-1 text-xs font-semibold uppercase tracking-wider text-indigo-600">
-                                Blockchain-powered
+                                Vận hành bằng blockchain
                             </span>
                             {!safeIsConnected && (
                                 <span className="rounded-full bg-amber-500/10 px-3.5 py-1 text-xs font-semibold text-amber-700">
@@ -340,8 +391,8 @@ function HomeContent() {
 
                     {!isLoadingReviewers && reviewers.length === 0 && (
                         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-sm text-amber-700">
-                            Chưa có dữ liệu reviewerSafe từ hệ thống campaign để
-                            hiển thị kiểm duyệt viên.
+                            Hiện chưa có reviewer safe khả dụng để hiển thị.
+                            Vui lòng thử làm mới sau.
                         </div>
                     )}
 
@@ -569,7 +620,7 @@ function HomeContent() {
                                 Công nghệ
                             </p>
                             <p className="mt-2 text-xl font-bold text-slate-900">
-                                Smart contracts
+                                Hợp đồng thông minh
                             </p>
                             <p className="mt-1 text-sm text-slate-600">
                                 Tự động hóa trên Solidity
@@ -649,7 +700,7 @@ function HomeContent() {
                                 href="/transparency"
                                 className="text-sm text-slate-600 transition hover:text-indigo-600"
                             >
-                                Transparency
+                                Minh bạch
                             </Link>
                             <Link
                                 href="/campaigns/create"

@@ -7,6 +7,7 @@ import { useWaitForTransactionReceipt } from "wagmi";
 import { useAccount } from "wagmi";
 import {
     getPublicCampaignMilestones,
+    resubmitMilestone,
     useAuth,
     useReadCampaign,
     useSubmitMilestoneProof,
@@ -80,6 +81,7 @@ export default function MilestoneEvidenceUploadPage() {
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [resultMessage, setResultMessage] = useState<string | null>(null);
     const [milestoneHistory, setMilestoneHistory] = useState<string[]>([]);
+    const [milestoneStatus, setMilestoneStatus] = useState<string>("");
 
     const apiBaseUrl = useMemo(
         () => normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_URL),
@@ -97,6 +99,7 @@ export default function MilestoneEvidenceUploadPage() {
             try {
                 const data = await getPublicCampaignMilestones(campaignId);
                 const milestone = data.milestones.find((m) => m.milestoneId === milestoneId);
+                setMilestoneStatus((milestone?.status || "").toLowerCase());
                 const fromBackend = (milestone?.reportCids || []).map((x) => x.cid);
                 const fromChain = proofCidsByIndex.get(milestoneIndexOnChain) || [];
                 const seen = new Set<string>();
@@ -111,6 +114,7 @@ export default function MilestoneEvidenceUploadPage() {
             } catch {
                 const fromChain = proofCidsByIndex.get(milestoneIndexOnChain) || [];
                 setMilestoneHistory(fromChain);
+                setMilestoneStatus("");
             }
         };
         loadHistory();
@@ -193,6 +197,24 @@ export default function MilestoneEvidenceUploadPage() {
                 error instanceof Error
                     ? error.message
                     : "Không thể submit minh chứng on-chain",
+            );
+        }
+    };
+
+    const handleResubmitOffChain = async () => {
+        if (!Number.isFinite(campaignId)) return setErrorMessage("Campaign ID không hợp lệ.");
+        if (!token) return setErrorMessage("Bạn cần đăng nhập ví để nộp lại minh chứng.");
+        if (!uploadedCid) return setErrorMessage("Chưa có CID để nộp lại.");
+        setErrorMessage(null);
+        try {
+            await resubmitMilestone(campaignId, milestoneId, token, uploadedCid);
+            setResultMessage(
+                "Đã chuyển milestone sang trạng thái submitted (resubmit off-chain). Tiếp tục xác nhận on-chain ở bước 2.",
+            );
+            setMilestoneStatus("submitted");
+        } catch (error) {
+            setErrorMessage(
+                error instanceof Error ? error.message : "Không thể resubmit milestone",
             );
         }
     };
@@ -303,6 +325,16 @@ export default function MilestoneEvidenceUploadPage() {
                                 ? "Đang chờ xác nhận..."
                                 : "2) Xác nhận submit on-chain"}
                         </button>
+                        {milestoneStatus === "resubmittable" && (
+                            <button
+                                type="button"
+                                disabled={!uploadedCid || isUploadingFile}
+                                onClick={handleResubmitOffChain}
+                                className="rounded-lg border border-amber-300 bg-amber-50 px-5 py-2.5 text-sm font-semibold text-amber-800 disabled:opacity-60"
+                            >
+                                Resubmit off-chain
+                            </button>
+                        )}
                     </div>
 
                     {uploadedCid ? (

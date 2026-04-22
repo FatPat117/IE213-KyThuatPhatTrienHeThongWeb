@@ -370,13 +370,13 @@ export default function CampaignDetailPage() {
             return "Sai mạng. Vui lòng chuyển sang Sepolia.";
         }
         if (msg.includes("deadline not reached")) {
-            return "Campaign chưa tới deadline nên chưa thể đánh dấu Failed.";
+            return "Campaign chưa tới hạn nên chưa thể đánh dấu thất bại.";
         }
         if (msg.includes("has reached its goal")) {
-            return "Campaign đã đạt mục tiêu nên không thể đánh dấu Failed.";
+            return "Campaign đã đạt mục tiêu nên không thể đánh dấu thất bại.";
         }
         if (msg.includes("not active")) {
-            return "Campaign không còn ở trạng thái Active.";
+            return "Campaign không còn ở trạng thái đang hoạt động.";
         }
         if (msg.includes("milestone not approved")) {
             return "Milestone hiện tại chưa được reviewer phê duyệt nên chưa thể giải ngân.";
@@ -445,7 +445,7 @@ export default function CampaignDetailPage() {
     const handleMintCertificate = async (displayName: string) => {
         if (!Number.isFinite(id)) return;
         if (!address) {
-            setMintFlowError("Vui lòng kết nối ví trước khi mint certificate.");
+            setMintFlowError("Vui lòng kết nối ví trước khi mint chứng chỉ.");
             return;
         }
         if (!token) {
@@ -495,7 +495,7 @@ export default function CampaignDetailPage() {
             const friendly = getFriendlyError(err as { message?: string });
             showErrorToast(
                 friendly ||
-                    "Không thể cập nhật trạng thái Failed. Vui lòng thử lại.",
+                    "Không thể cập nhật trạng thái thất bại. Vui lòng thử lại.",
             );
         }
     };
@@ -503,7 +503,7 @@ export default function CampaignDetailPage() {
     useEffect(() => {
         if (markAsFailedConfirmed) {
             refetch();
-            showSuccessToast("Đã cập nhật campaign sang trạng thái Failed.");
+            showSuccessToast("Đã cập nhật campaign sang trạng thái thất bại.");
         }
     }, [markAsFailedConfirmed, refetch]);
 
@@ -565,7 +565,7 @@ export default function CampaignDetailPage() {
                             <div>
                                 <div className="inline-flex items-center gap-2 mb-1">
                                     <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">
-                                        Campaign #
+                                        Chiến dịch #
                                         {Number.isFinite(id) ? id : "-"}
                                     </span>
                                 </div>
@@ -604,7 +604,7 @@ export default function CampaignDetailPage() {
                             onClick={() => refetch()}
                             className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700 transition"
                         >
-                            Try Again
+                            Thử lại
                         </button>
                     </div>
                 )}
@@ -660,11 +660,7 @@ export default function CampaignDetailPage() {
                                         </h3>
                                         <div className="flex items-center gap-3">
                                             <span className="text-sm font-medium text-slate-600">
-                                                {donations.length} recent
-                                                donation
-                                                {donations.length !== 1
-                                                    ? "s"
-                                                    : ""}
+                                                {donations.length} lượt quyên góp
                                             </span>
                                             <button
                                                 onClick={handleReloadDonations}
@@ -743,8 +739,7 @@ export default function CampaignDetailPage() {
                                                                 rel="noopener noreferrer"
                                                                 className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
                                                             >
-                                                                View Transaction
-                                                                →
+                                                                Xem giao dịch →
                                                             </a>
                                                         </div>
                                                     ),
@@ -816,10 +811,10 @@ export default function CampaignDetailPage() {
                                     <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
                                         <p className="text-sm font-semibold text-amber-900 mb-2">
                                             Campaign đã quá deadline nhưng chưa
-                                            cập nhật Failed
+                                            cập nhật thất bại
                                         </p>
                                         <p className="text-xs text-amber-800 mb-4">
-                                            Bấm để ghi nhận trạng thái Failed
+                                            Bấm để ghi nhận trạng thái thất bại
                                             on-chain, sau đó donor có thể
                                             refund.
                                         </p>
@@ -835,7 +830,7 @@ export default function CampaignDetailPage() {
                                                 ? "⏳ Đợi xác nhận từ ví..."
                                                 : markAsFailedConfirming
                                                   ? "🔄 Đang xác nhận..."
-                                                  : "Cập nhật trạng thái Failed"}
+                                                  : "Cập nhật trạng thái thất bại"}
                                         </button>
                                         {markAsFailedError && (
                                             <p className="mt-3 text-xs text-red-700">
@@ -930,11 +925,11 @@ export default function CampaignDetailPage() {
                                     <div className="flex items-center justify-center gap-2 mb-1">
                                         <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                                         <p className="text-xs font-semibold text-slate-600">
-                                            SEPOLIA TESTNET
+                                            MẠNG THỬ NGHIỆM SEPOLIA
                                         </p>
                                     </div>
                                     <p className="text-xs text-slate-500">
-                                        All transactions are on Ethereum Sepolia
+                                        Mọi giao dịch diễn ra trên Ethereum Sepolia
                                     </p>
                                 </div>
                             </div>

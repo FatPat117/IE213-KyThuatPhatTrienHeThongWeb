@@ -677,6 +677,20 @@ const rejectMilestone = async (req, res) => {
             });
         }
 
+        const assignedReviewerSafe = (campaign.reviewerSafe || "")
+            .trim()
+            .toLowerCase();
+        if (
+            !assignedReviewerSafe ||
+            assignedReviewerSafe !== reviewerWallet.toLowerCase()
+        ) {
+            return res.status(403).json({
+                status: "error",
+                code: "PERMISSION_DENIED",
+                message: "Only assigned reviewerSafe can reject this milestone",
+            });
+        }
+
         const milestone = await Milestone.findOne({
             campaignId: campaign._id,
             milestoneIndex: Number(milestoneIndex),

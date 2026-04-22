@@ -112,13 +112,13 @@ export default function CampaignInfoPanel({
                 <p className="text-slate-600 leading-relaxed">
                     {backendDescription ||
                         campaign.description ||
-                        "This campaign is powered by smart contracts for transparent fundraising."}
+                        "Chiến dịch này sử dụng hợp đồng thông minh để gây quỹ minh bạch."}
                 </p>
             </div>
 
             <div className="rounded-xl bg-slate-50 p-4 mb-6">
                 <p className="text-sm font-medium text-slate-600 mb-1">
-                    Campaign Creator
+                    Người tạo campaign
                 </p>
                 <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600" />
@@ -132,7 +132,7 @@ export default function CampaignInfoPanel({
                         rel="noopener noreferrer"
                         className="ml-auto text-xs font-medium text-blue-600 hover:text-blue-700"
                     >
-                        View on Explorer →
+                        Xem trên explorer →
                     </a>
                 </div>
             </div>
@@ -140,7 +140,7 @@ export default function CampaignInfoPanel({
             <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="rounded-xl bg-blue-50 border border-blue-100 p-5">
                     <p className="text-sm font-medium text-blue-600 mb-2">
-                        Funding Goal
+                        Mục tiêu gây quỹ
                     </p>
                     <p className="text-2xl font-bold text-slate-900">
                         {formatEthAmount(goalEth)}{" "}
@@ -151,7 +151,7 @@ export default function CampaignInfoPanel({
                 </div>
                 <div className="rounded-xl bg-green-50 border border-green-100 p-5">
                     <p className="text-sm font-medium text-green-600 mb-2">
-                        Total Raised
+                        Tổng đã huy động
                     </p>
                     <p className="text-2xl font-bold text-slate-900">
                         {formatEthAmount(raisedEth)}{" "}
@@ -165,7 +165,7 @@ export default function CampaignInfoPanel({
             <div>
                 <div className="flex items-center justify-between text-sm mb-2">
                     <span className="font-semibold text-slate-900">
-                        {progress.toFixed(1)}% Funded
+                        Đã đạt {progress.toFixed(1)}%
                     </span>
                     <span className="text-slate-600">
                         {formatEthAmount(raisedEth)} /{" "}

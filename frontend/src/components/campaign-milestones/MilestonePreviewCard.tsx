@@ -58,28 +58,28 @@ function getStatusLabel(status: string): string {
     switch (status) {
         case "disbursed":
         case "completed":
-            return "Disbursed";
+            return "Đã giải ngân";
         case "submitted":
-            return "Proof submitted";
+            return "Đã nộp minh chứng";
         case "pending_verification":
-            return "Pending review";
+            return "Chờ xét duyệt";
         case "in_progress":
-            return "In progress";
+            return "Đang thực hiện";
         case "deadline_exceeded":
         case "delayed":
-            return "Deadline exceeded";
+            return "Quá hạn";
         case "verification_failed":
-            return "Review rejected";
+            return "Bị từ chối duyệt";
         case "failed":
-            return "Failed";
+            return "Thất bại";
         case "cancelled":
-            return "Stopped";
+            return "Đã dừng";
         case "upcoming":
-            return "Upcoming";
+            return "Sắp tới";
         case "pending_funding":
-            return "Awaiting funding";
+            return "Chờ đủ vốn";
         default:
-            return "No report yet";
+            return "Chưa có báo cáo";
     }
 }
 

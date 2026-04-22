@@ -6,6 +6,8 @@ export {
     contractConfig,
 } from "./contracts/config";
 export {
+    useAddReviewerSafe,
+    useAdminApproveCampaign,
     useApproveMilestone,
     useClaimFundingRefund,
     useClaimMilestoneRefund,
@@ -19,8 +21,11 @@ export {
     useReadAllCampaigns,
     useReadCampaign,
     useReadCampaignCount,
+    useReadContractOwner,
     useReadFilteredCampaigns,
+    useReadReviewerSafes,
     useReadTotalRaised,
+    useRemoveReviewerSafe,
     useRefundDonation,
     useSubmitMilestoneProof,
     useWithdrawFunds,
@@ -78,6 +83,8 @@ export {
     getPublicCampaignMilestones,
     getPublicCampaigns,
     getPublicStats,
+    rejectMilestone,
+    resubmitMilestone,
     getReviewerAggregates,
     updateCampaignMetadata,
 } from "./api/campaigns";

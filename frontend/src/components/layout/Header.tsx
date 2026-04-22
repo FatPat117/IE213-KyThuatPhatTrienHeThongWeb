@@ -4,8 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
 import { useReadContract } from "wagmi";
-import { contractConfig, useAuth } from "@/lib";
+import { contractConfig, useAuth, useReadContractOwner } from "@/lib";
 import WalletConnectButton from "@/components/wallet/WalletConnectButton";
+import NotificationBell from "@/components/layout/NotificationBell";
 
 function isLinkActive(href: string, pathname: string): boolean {
     if (href === "/campaigns") {
@@ -25,6 +26,7 @@ export default function Header() {
     const pathname = usePathname();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const { token, user } = useAuth();
+    const { owner } = useReadContractOwner();
 
     // Stable SSR/CSR hydration gate:
     // - server snapshot: false
@@ -53,33 +55,54 @@ export default function Header() {
         },
     });
 
-    const canSeeReviewerLink = isSignedIn && Boolean(isActiveReviewer);
+    const isReviewer = isSignedIn && Boolean(isActiveReviewer);
+    const roleFromAuth = (user?.role || "").toString().trim().toLowerCase();
+    const adminWallets = (process.env.NEXT_PUBLIC_ADMIN_WALLETS || "")
+        .split(",")
+        .map((item) => item.trim().toLowerCase())
+        .filter((item) => /^0x[a-f0-9]{40}$/.test(item));
+    const isAdminByOwner =
+        Boolean(walletAddress) && Boolean(owner) && walletAddress === owner;
+    const isAdminByRole = roleFromAuth === "admin";
+    const isAdminByConfig =
+        Boolean(walletAddress) && adminWallets.includes(walletAddress);
+    const isAdmin = isSignedIn && (isAdminByOwner || isAdminByRole || isAdminByConfig);
 
-    // Public navigation always hiển thị trên header
-    const publicLinks = [
+    const publicLinks: Array<{ href: string; label: string }> = [
+        { href: "/", label: "Trang chủ" },
         { href: "/campaigns", label: "Chiến dịch" },
-        { href: "/leaderboard", label: "Bảng xếp hạng" },
-        { href: "/transparency", label: "Minh bạch" },
-        { href: "/status", label: "Trạng thái" },
+        { href: "/reviewer-safe", label: "Reviewer Safe" },
     ];
-    const navLinks = canSeeReviewerLink
-        ? [...publicLinks, { href: "/reviewer", label: "Khu vực reviewer" }]
-        : publicLinks;
+    const roleLinks: Array<{ href: string; label: string }> = [];
+    if (isSignedIn && !isAdmin) {
+        roleLinks.push({ href: "/my-campaigns", label: "Campaign của tôi" });
+    }
+    if (isReviewer && !isAdmin) {
+        roleLinks.push({ href: "/reviewer", label: "Campaign cần duyệt (reviewer)" });
+    }
+    if (isAdmin) {
+        roleLinks.push({ href: "/admin/campaigns", label: "Duyệt campaign" });
+        roleLinks.push({ href: "/admin/reviewers", label: "Quản lý Reviewer" });
+    }
+    const navLinks = [...publicLinks, ...roleLinks];
 
     // Các trang cá nhân gom vào nhóm "Tài khoản" để header gọn hơn
     const accountLinks = [
-        { href: "/dashboard", label: "Tổng quan" },
-        { href: "/reviewer", label: "Kiểm duyệt" },
-        { href: "/my-campaigns", label: "Chiến dịch của tôi" },
-        { href: "/campaigns/create", label: "Tạo mới campaign" },
+        { href: "/my-campaigns", label: "Campaign của tôi" },
+        { href: "/campaigns/create", label: "Tạo campaign mới" },
         { href: "/donations", label: "Quyên góp của tôi" },
-        { href: "/certificates", label: "Chứng chỉ của tôi" },
         { href: "/settings", label: "Cài đặt" },
     ];
-
-    const visibleAccountLinks = accountLinks.filter(
-        (link) => link.href !== "/reviewer" || canSeeReviewerLink,
-    );
+    const visibleAccountLinks = isAdmin
+        ? [
+              { href: "/admin/campaigns", label: "Duyệt campaign" },
+              { href: "/admin/reviewers", label: "Quản lý Reviewer" },
+              { href: "/donations", label: "Quyên góp của tôi" },
+              { href: "/settings", label: "Cài đặt" },
+          ]
+        : isReviewer
+          ? [...accountLinks, { href: "/reviewer", label: "Campaign cần duyệt (reviewer)" }]
+          : accountLinks;
 
     return (
         <>
@@ -154,6 +177,7 @@ export default function Header() {
 
                     {/* Right Section - Wallet Button + Account Dropdown */}
                     <div className="flex items-center gap-3">
+                        {isSignedIn && <NotificationBell token={token} />}
                         {isSignedIn ? (
                             <div className="relative hidden md:block group">
                                 <WalletConnectButton />

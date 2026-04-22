@@ -75,6 +75,7 @@ async function updateCampaignStatus(req, res, next) {
         }
 
         const allowed = [
+            "pending_approval",
             "active",
             "in_progress",
             "completed",

@@ -26,6 +26,7 @@ type CampaignTuple = {
 };
 
 export type CampaignStatusLabel =
+    | "pending_approval"
     | "active"
     | "in_progress"
     | "completed"
@@ -34,14 +35,16 @@ export type CampaignStatusLabel =
     | "cancelled";
 
 const ZERO = BigInt(0);
-const ACTIVE_STATUS = 0;
-const IN_PROGRESS_STATUS = 1;
-const COMPLETED_STATUS = 2;
-const PARTIAL_FAILED_STATUS = 3;
-const FAILED_STATUS = 4;
-const CANCELLED_STATUS = 5;
+const PENDING_APPROVAL_STATUS = 0;
+const ACTIVE_STATUS = 1;
+const IN_PROGRESS_STATUS = 2;
+const COMPLETED_STATUS = 3;
+const PARTIAL_FAILED_STATUS = 4;
+const FAILED_STATUS = 5;
+const CANCELLED_STATUS = 6;
 
 const STATUS_MAP: Record<number, CampaignStatusLabel> = {
+    [PENDING_APPROVAL_STATUS]: "pending_approval",
     [ACTIVE_STATUS]: "active",
     [IN_PROGRESS_STATUS]: "in_progress",
     [COMPLETED_STATUS]: "completed",
@@ -88,9 +91,9 @@ function normalizeCampaign(
 
     return {
         id,
-        title: `Campaign #${id}`,
+        title: `Chiến dịch #${id}`,
         description:
-            "Campaign data is stored on-chain without off-chain metadata.",
+            "Dữ liệu chiến dịch hiện chỉ có on-chain, chưa có metadata off-chain.",
         creator: (raw?.creator ??
             "0x0000000000000000000000000000000000000000") as Address,
         beneficiary: (raw?.beneficiary ??
@@ -106,7 +109,8 @@ function normalizeCampaign(
         milestoneCount: Number(raw?.milestoneCount ?? 0n),
         currentMilestoneId: Number(raw?.currentMilestoneId ?? 0n),
         completed: isTerminalStatus(status),
-        isActive: status === ACTIVE_STATUS,
+        isActive:
+            status === ACTIVE_STATUS || status === PENDING_APPROVAL_STATUS,
         isInProgress: status === IN_PROGRESS_STATUS,
     };
 }
@@ -466,6 +470,86 @@ export function useCreateCampaign() {
         isPending,
         error,
     };
+}
+
+export function useReadReviewerSafes() {
+    const { data, isLoading, isError, error, refetch } = useReadContract({
+        ...contractConfig,
+        functionName: "getReviewerSafes",
+        query: {
+            staleTime: 30_000,
+            refetchOnWindowFocus: true,
+        },
+    });
+
+    return {
+        reviewerSafes: Array.isArray(data)
+            ? (data as string[]).map((item) => item.toLowerCase())
+            : [],
+        isLoading,
+        isError,
+        error: error?.message || null,
+        refetch,
+    };
+}
+
+export function useReadContractOwner() {
+    const { data, isLoading, isError, error, refetch } = useReadContract({
+        ...contractConfig,
+        functionName: "owner",
+        query: {
+            staleTime: 30_000,
+            refetchOnWindowFocus: true,
+        },
+    });
+
+    return {
+        owner: ((data as string) || "").toLowerCase(),
+        isLoading,
+        isError,
+        error: error?.message || null,
+        refetch,
+    };
+}
+
+export function useAdminApproveCampaign() {
+    const { writeContractAsync, data, isPending, error } = useWriteContract();
+
+    const adminApproveCampaign = (campaignId: number) =>
+        writeContractAsync({
+            ...contractConfig,
+            functionName: "adminApprove",
+            args: [BigInt(campaignId)],
+        });
+
+    return {
+        adminApproveCampaign,
+        hash: data,
+        isPending,
+        error,
+    };
+}
+
+export function useAddReviewerSafe() {
+    const { writeContractAsync, data, isPending, error } = useWriteContract();
+    const addReviewerSafe = (safe: Address) =>
+        writeContractAsync({
+            ...contractConfig,
+            functionName: "addReviewerSafe",
+            args: [safe],
+        });
+    return { addReviewerSafe, hash: data, isPending, error };
+}
+
+export function useRemoveReviewerSafe() {
+    const { writeContractAsync, data, isPending, error } = useWriteContract();
+    const removeReviewerSafe = (safe: Address) =>
+        writeContractAsync({
+            ...contractConfig,
+            functionName: "removeReviewerSafe",
+            args: [safe],
+        });
+    return { removeReviewerSafe, hash: data, isPending, error };
 }
 
 export function useWithdrawFunds() {

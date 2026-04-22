@@ -8,6 +8,7 @@ import {
     getMilestoneApprovalStatus,
     getPublicCampaignMilestones,
     getPublicCampaigns,
+    rejectMilestone,
     useApproveMilestone,
     useAuth,
 } from "@/lib";
@@ -27,9 +28,7 @@ type ReviewerCampaignRow = {
 };
 
 const PENDING_STATUSES = new Set([
-    "submitted",
     "pending_verification",
-    "resubmittable",
 ]);
 const PROCESSED_STATUSES = new Set([
     "approved",
@@ -527,14 +526,41 @@ export default function ReviewerWorkspacePage() {
             setActionMessage(null);
 
             try {
+                if (!token) {
+                    setActionMessage("Bạn cần đăng nhập để gửi từ chối milestone.");
+                    return;
+                }
+                const reasonInput = window.prompt(
+                    "Nhập lý do từ chối (tối thiểu 10 ký tự):",
+                );
+                const reason = (reasonInput || "").trim();
+                if (reason.length < 10) {
+                    setActionMessage("Lý do từ chối cần ít nhất 10 ký tự.");
+                    return;
+                }
+
+                await rejectMilestone(campaignId, milestoneId, token, reason);
+                setActionMessage("Đã ghi nhận từ chối milestone. Creator có thể nộp lại minh chứng.");
+                await loadReviewerCampaigns();
+                await refreshApprovalStatuses();
+            } catch (error) {
                 setActionMessage(
-                    "Tính năng từ chối on-chain sẽ được mở khi smart contract hỗ trợ reject milestone.",
+                    error instanceof Error
+                        ? error.message
+                        : "Không thể từ chối milestone",
                 );
             } finally {
                 setRejectingKey(null);
             }
         },
-        [isConnected, rows, walletAddress],
+        [
+            isConnected,
+            loadReviewerCampaigns,
+            refreshApprovalStatuses,
+            rows,
+            token,
+            walletAddress,
+        ],
     );
 
     if (isLoading) {

@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { formatEther } from 'viem';
 import { useAccount } from 'wagmi';
 import {
+  getPublicCampaignMilestones,
   getCampaignMetadataFromCache,
   isPlaceholderCampaignDescription,
   isPlaceholderCampaignTitle,
@@ -23,6 +24,7 @@ export default function MyCampaignsPage() {
   const { address, isConnected, chain } = useAccount();
   const campaignsQuery = useBackendCampaigns();
   const onChainQuery = useReadAllCampaigns();
+  const [milestoneStatusByCampaignId, setMilestoneStatusByCampaignId] = useState<Record<number, string>>({});
 
   const mergedCampaigns = useMemo(() => {
     const map = new Map<
@@ -76,7 +78,7 @@ export default function MyCampaignsPage() {
         map.set(campaign.id, {
           onChainId: campaign.id,
           title: cached?.title || `Campaign #${campaign.id}`,
-          description: cached?.description || 'Campaign data is stored on-chain without off-chain metadata.',
+          description: cached?.description || 'Dữ liệu campaign hiện chỉ có on-chain, chưa có metadata off-chain.',
           creator: campaign.creator,
           goal: campaign.goal.toString(),
           raised: campaign.raised.toString(),
@@ -95,6 +97,50 @@ export default function MyCampaignsPage() {
       ),
     [address, mergedCampaigns]
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadMilestoneStatuses = async () => {
+      const mine = mergedCampaigns.filter(
+        (campaign) => !!address && campaign.creator.toLowerCase() === address.toLowerCase()
+      );
+      if (!mine.length) {
+        setMilestoneStatusByCampaignId({});
+        return;
+      }
+
+      const entries = await Promise.all(
+        mine.map(async (campaign) => {
+          try {
+            const milestoneData = await getPublicCampaignMilestones(campaign.onChainId);
+            const m0 = milestoneData.milestones.find((item) => item.milestoneId === 0);
+            const raw = (m0?.status || '').toLowerCase();
+            const isFunded = BigInt(campaign.raised || '0') >= BigInt(campaign.goal || '0');
+            if (raw === 'pending_verification' || raw === 'submitted') {
+              return [campaign.onChainId, 'Chờ xác nhận'] as const;
+            }
+            if (raw === 'pending_funding' && isFunded) {
+              return [campaign.onChainId, 'Đang thi công'] as const;
+            }
+            return [campaign.onChainId, ''] as const;
+          } catch {
+            return [campaign.onChainId, ''] as const;
+          }
+        })
+      );
+
+      if (!cancelled) {
+        setMilestoneStatusByCampaignId(
+          Object.fromEntries(entries.filter(([, value]) => Boolean(value)))
+        );
+      }
+    };
+
+    loadMilestoneStatuses();
+    return () => {
+      cancelled = true;
+    };
+  }, [address, mergedCampaigns]);
 
   if (!isConnected) {
     return (
@@ -279,8 +325,13 @@ export default function MyCampaignsPage() {
                                 ? 'Đang diễn ra - chưa thể rút tiền'
                                 : campaign.status === 'ended'
                                 ? 'Đủ điều kiện rút tiền trong trang chi tiết'
-                                : 'Chiến dịch failed - không thể rút, donor sẽ yêu cầu refund'}
+                                : 'Chiến dịch thất bại - không thể rút, nhà tài trợ sẽ yêu cầu hoàn tiền'}
                             </p>
+                            {milestoneStatusByCampaignId[campaign.onChainId] && (
+                              <p className="mt-2 text-xs font-semibold text-blue-700">
+                                M0: {milestoneStatusByCampaignId[campaign.onChainId]}
+                              </p>
+                            )}
 
                             {/* Footer */}
                             <div className="mt-4">

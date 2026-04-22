@@ -13,11 +13,11 @@ import {
     contractConfig,
     createTransaction,
     getCampaignIndexStatus,
-    getReviewerAggregates,
     saveCampaignMetadataToCache,
     updateCampaignMetadata,
     useAuth,
     useCreateCampaign,
+    useReadReviewerSafes,
 } from "@/lib";
 import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
 import CreateCampaignForm from "@/components/campaign-create/CreateCampaignForm";
@@ -70,6 +70,7 @@ export default function CreateCampaignPage() {
     const [reviewerOptions, setReviewerOptions] = useState<
         Array<{ value: string; label: string }>
     >([]);
+    const reviewerSafesQuery = useReadReviewerSafes();
     const normalizedReviewerSafe = formData.reviewerSafe.trim().toLowerCase();
     const reviewerSafeLooksValid = /^0x[a-f0-9]{40}$/.test(normalizedReviewerSafe);
     const {
@@ -187,41 +188,18 @@ export default function CreateCampaignPage() {
     const isFormBusy = isPending || isConfirming;
 
     useEffect(() => {
-        let cancelled = false;
-        const run = async () => {
-            try {
-                const aggregates = await getReviewerAggregates();
-                if (cancelled) return;
-
-                const options = aggregates.map((item) => ({
-                    value: item.reviewerSafe,
-                    label: `${item.reviewerSafe.slice(0, 10)}...${item.reviewerSafe.slice(-6)} (${item.campaignCount} campaign)`,
-                }));
-                setReviewerOptions(options);
-            } catch {
-                if (!cancelled) {
-                    setReviewerOptions([]);
-                }
-            }
-        };
-
-        run();
-        return () => {
-            cancelled = true;
-        };
-    }, []);
-
-    useEffect(() => {
-        if (!address) return;
-        const walletOption = {
-            value: address.toLowerCase(),
-            label: `Ví của bạn (${address.slice(0, 10)}...${address.slice(-6)})`,
-        };
-        setReviewerOptions((prev) => {
-            const exists = prev.some((item) => item.value === walletOption.value);
-            return exists ? prev : [walletOption, ...prev];
-        });
-    }, [address]);
+        const options = Array.from(
+            new Set(
+                reviewerSafesQuery.reviewerSafes
+                    .map((safe) => safe.toLowerCase().trim())
+                    .filter((safe) => /^0x[a-f0-9]{40}$/.test(safe)),
+            ),
+        ).map((safe) => ({
+            value: safe,
+            label: `${safe.slice(0, 10)}...${safe.slice(-6)}`,
+        }));
+        setReviewerOptions(options);
+    }, [reviewerSafesQuery.reviewerSafes]);
 
     useEffect(() => {
         if (!formData.reviewerSafe && reviewerOptions.length > 0) {

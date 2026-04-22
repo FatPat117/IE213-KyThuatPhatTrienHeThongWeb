@@ -12,7 +12,7 @@ import {
 function formatEthFromWei(wei: string): string {
     try {
         const eth = Number(formatEther(BigInt(wei || "0")));
-        return eth.toLocaleString("en-US", {
+        return eth.toLocaleString("vi-VN", {
             minimumFractionDigits: 2,
             maximumFractionDigits: 4,
         });
@@ -25,7 +25,7 @@ function formatDate(value?: string): string {
     if (!value) return "-";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "-";
-    return date.toLocaleString("en-US", {
+    return date.toLocaleString("vi-VN", {
         year: "numeric",
         month: "short",
         day: "2-digit",
@@ -56,19 +56,19 @@ function statusBadgeClass(status: string): string {
 function statusLabel(status: string): string {
     switch (status) {
         case "active":
-            return "Active";
+            return "Đang hoạt động";
         case "in_progress":
-            return "In Progress";
+            return "Đang thi công";
         case "completed":
-            return "Completed";
+            return "Đã hoàn thành";
         case "partial_failed":
-            return "Partially Failed";
+            return "Thất bại một phần";
         case "failed":
-            return "Failed";
+            return "Thất bại";
         case "cancelled":
-            return "Cancelled";
+            return "Đã hủy";
         default:
-            return status || "Unknown";
+            return status || "Không xác định";
     }
 }
 
@@ -99,7 +99,7 @@ export default function TransparencyPage() {
                 setCampaignsError(
                     error instanceof Error
                         ? error.message
-                        : "Unable to load public campaigns",
+                        : "Không thể tải danh sách chiến dịch công khai",
                 );
             } finally {
                 if (!alive) return;
@@ -119,27 +119,27 @@ export default function TransparencyPage() {
         () => [
             {
                 key: "active",
-                label: "Active",
+                label: "Đang hoạt động",
                 count: stats?.activeCampaigns ?? 0,
             },
             {
                 key: "in_progress",
-                label: "In Progress",
+                label: "Đang thi công",
                 count: stats?.inProgressCampaigns ?? 0,
             },
             {
                 key: "completed",
-                label: "Completed",
+                label: "Đã hoàn thành",
                 count: stats?.completedCampaigns ?? 0,
             },
             {
                 key: "partial_failed",
-                label: "Partially Failed",
+                label: "Thất bại một phần",
                 count: stats?.partialFailedCampaigns ?? 0,
             },
             {
                 key: "failed",
-                label: "Failed",
+                label: "Thất bại",
                 count: stats?.failedCampaigns ?? 0,
             },
         ],
@@ -151,31 +151,31 @@ export default function TransparencyPage() {
             <main className="mx-auto w-full max-w-6xl space-y-8 px-6 py-12 md:px-10">
                 <header className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
                     <p className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-indigo-700">
-                        Public Transparency
+                        Minh bạch công khai
                     </p>
                     <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900 md:text-4xl">
-                        Funding Flow Transparency Board
+                        Bảng minh bạch dòng tiền
                     </h1>
                     <p className="mt-3 max-w-3xl text-sm leading-relaxed text-slate-600 md:text-base">
-                        This page aggregates publicly indexed campaign data so
-                        donors can quickly verify funding activity, disbursement
-                        progress, and campaign outcomes.
+                        Trang này tổng hợp dữ liệu chiến dịch đã index công khai để
+                        nhà tài trợ kiểm tra nhanh hoạt động gây quỹ, tiến độ
+                        giải ngân và kết quả cuối cùng.
                     </p>
                     <p className="mt-3 text-xs font-medium text-slate-500">
-                        Last refreshed: {formatDate(stats?.updatedAt)}
+                        Cập nhật lần cuối: {formatDate(stats?.updatedAt)}
                     </p>
                     <div className="mt-6 flex flex-wrap gap-3">
                         <Link
                             href="/campaigns"
                             className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-blue-300 hover:text-blue-700"
                         >
-                            Browse Campaigns
+                            Xem danh sách chiến dịch
                         </Link>
                         <Link
                             href="/leaderboard"
                             className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-blue-300 hover:text-blue-700"
                         >
-                            View Leaderboard
+                            Xem bảng xếp hạng
                         </Link>
                     </div>
                 </header>
@@ -189,7 +189,7 @@ export default function TransparencyPage() {
                 <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Total Campaigns
+                            Tổng số chiến dịch
                         </p>
                         <p className="mt-2 text-3xl font-bold text-slate-900">
                             {stats?.totalCampaigns ?? 0}
@@ -197,7 +197,7 @@ export default function TransparencyPage() {
                     </article>
                     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Total Raised
+                            Tổng vốn đã huy động
                         </p>
                         <p className="mt-2 text-3xl font-bold text-slate-900">
                             {formatEthFromWei(stats?.totalRaisedWei || "0")} ETH
@@ -205,7 +205,7 @@ export default function TransparencyPage() {
                     </article>
                     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Total Disbursed
+                            Tổng vốn đã giải ngân
                         </p>
                         <p className="mt-2 text-3xl font-bold text-slate-900">
                             {formatEthFromWei(stats?.totalDisbursedWei || "0")}{" "}
@@ -214,7 +214,7 @@ export default function TransparencyPage() {
                     </article>
                     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Unique Donors
+                            Số nhà tài trợ duy nhất
                         </p>
                         <p className="mt-2 text-3xl font-bold text-slate-900">
                             {stats?.uniqueDonors ?? 0}
@@ -224,7 +224,7 @@ export default function TransparencyPage() {
 
                 <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                     <h2 className="text-lg font-bold text-slate-900">
-                        Campaign Status Breakdown
+                        Phân bố trạng thái chiến dịch
                     </h2>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                         {statusCards.map((item) => (
@@ -247,11 +247,11 @@ export default function TransparencyPage() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                             <h2 className="text-lg font-bold text-slate-900">
-                                Latest Public Campaign Snapshots
+                                Các chiến dịch công khai mới nhất
                             </h2>
                             <p className="mt-1 text-sm text-slate-600">
-                                Sorted by latest indexed update from
-                                campaign-service.
+                                Sắp xếp theo lần cập nhật index gần nhất từ
+                                dịch vụ campaign-service.
                             </p>
                         </div>
                     </div>
@@ -275,7 +275,7 @@ export default function TransparencyPage() {
                         !campaignsError &&
                         campaigns.length === 0 && (
                             <p className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
-                                No campaigns are indexed yet.
+                                Chưa có chiến dịch nào được index.
                             </p>
                         )}
 
@@ -287,22 +287,22 @@ export default function TransparencyPage() {
                                     <thead>
                                         <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
                                             <th className="px-3 py-2 font-semibold">
-                                                Campaign
+                                                Chiến dịch
                                             </th>
                                             <th className="px-3 py-2 font-semibold">
-                                                Status
+                                                Trạng thái
                                             </th>
                                             <th className="px-3 py-2 font-semibold">
-                                                Raised
+                                                Đã huy động
                                             </th>
                                             <th className="px-3 py-2 font-semibold">
-                                                Disbursed
+                                                Đã giải ngân
                                             </th>
                                             <th className="px-3 py-2 font-semibold">
-                                                Deadline
+                                                Hạn chót
                                             </th>
                                             <th className="px-3 py-2 font-semibold">
-                                                Details
+                                                Chi tiết
                                             </th>
                                         </tr>
                                     </thead>
@@ -315,7 +315,7 @@ export default function TransparencyPage() {
                                                 <td className="px-3 py-3">
                                                     <p className="font-semibold text-slate-900">
                                                         {campaign.title ||
-                                                            `Campaign #${campaign.onChainId}`}
+                                                            `Chiến dịch #${campaign.onChainId}`}
                                                     </p>
                                                     <p className="mt-1 text-xs text-slate-500">
                                                         ID #{campaign.onChainId}
@@ -352,7 +352,7 @@ export default function TransparencyPage() {
                                                         href={`/campaigns/${campaign.onChainId}`}
                                                         className="text-xs font-semibold text-blue-600 hover:text-blue-700"
                                                     >
-                                                        Open Campaign →
+                                                        Mở chiến dịch →
                                                     </Link>
                                                 </td>
                                             </tr>
