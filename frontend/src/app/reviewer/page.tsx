@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { formatEther } from "viem";
 import { useAccount, useWaitForTransactionReceipt } from "wagmi";
@@ -77,6 +77,7 @@ const PRIMARY_FILTER_OPTIONS: Array<{ value: ReviewFilter; label: string }> = [
     { value: "pending", label: "Đang chờ duyệt" },
     { value: "processed", label: "Đã xử lý" },
 ];
+const REVIEWER_CAMPAIGN_PAGE_SIZE = 10;
 
 function collectMilestonesByFilter(
     row: ReviewerCampaignRow,
@@ -272,12 +273,16 @@ export default function ReviewerWorkspacePage() {
     >({});
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [currentPage, setCurrentPage] = useState(0);
+    const [hasMoreCampaigns, setHasMoreCampaigns] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
     const [approvingKey, setApprovingKey] = useState<string | null>(null);
     const [approvingTxHash, setApprovingTxHash] = useState<`0x${string}` | undefined>(undefined);
     const [rejectingKey, setRejectingKey] = useState<string | null>(null);
     const [actionMessage, setActionMessage] = useState<string | null>(null);
+    const loadMoreRef = useRef<HTMLDivElement | null>(null);
     const { isLoading: isApproveConfirming } = useWaitForTransactionReceipt({
         hash: approvingTxHash,
     });
@@ -298,14 +303,22 @@ export default function ReviewerWorkspacePage() {
     const reviewerName =
         user?.displayName?.trim() || shortenAddress(walletAddress);
 
-    const loadReviewerCampaigns = useCallback(async () => {
+    const loadReviewerCampaigns = useCallback(async (options?: { reset?: boolean; page?: number }) => {
+        const reset = options?.reset ?? false;
+        const targetPage = options?.page ?? 1;
+
         try {
+            if (reset) {
+                setIsLoading(true);
+            } else {
+                setIsLoadingMore(true);
+            }
             setIsRefreshing(true);
             setErrorMessage(null);
 
             const campaignsResponse = await getPublicCampaigns({
-                page: 1,
-                limit: 100,
+                page: targetPage,
+                limit: REVIEWER_CAMPAIGN_PAGE_SIZE,
                 reviewerSafe: walletAddress || undefined,
                 sort: "updatedAt",
                 order: "desc",
@@ -359,7 +372,35 @@ export default function ReviewerWorkspacePage() {
                 );
             });
 
-            setRows(nextRows);
+            setRows((prev) => {
+                if (reset) return nextRows;
+
+                const mergedMap = new Map<number, ReviewerCampaignRow>();
+                prev.forEach((row) => {
+                    mergedMap.set(row.campaign.onChainId, row);
+                });
+                nextRows.forEach((row) => {
+                    mergedMap.set(row.campaign.onChainId, row);
+                });
+
+                return Array.from(mergedMap.values()).sort((a, b) => {
+                    if (
+                        b.pendingMilestones.length !== a.pendingMilestones.length
+                    ) {
+                        return (
+                            b.pendingMilestones.length - a.pendingMilestones.length
+                        );
+                    }
+                    return (
+                        new Date(b.campaign.createdAt).getTime() -
+                        new Date(a.campaign.createdAt).getTime()
+                    );
+                });
+            });
+            setCurrentPage(targetPage);
+            setHasMoreCampaigns(
+                targetPage < (campaignsResponse.pagination?.totalPages || 1),
+            );
             setLastUpdatedAt(new Date().toLocaleTimeString("vi-VN"));
         } catch (error) {
             setErrorMessage(
@@ -369,6 +410,7 @@ export default function ReviewerWorkspacePage() {
             );
         } finally {
             setIsRefreshing(false);
+            setIsLoadingMore(false);
             setIsLoading(false);
         }
     }, [walletAddress]);
@@ -410,8 +452,28 @@ export default function ReviewerWorkspacePage() {
     }, [rows, token]);
 
     useEffect(() => {
-        loadReviewerCampaigns();
+        setRows([]);
+        setCurrentPage(0);
+        setHasMoreCampaigns(false);
+        loadReviewerCampaigns({ reset: true, page: 1 });
     }, [loadReviewerCampaigns]);
+
+    useEffect(() => {
+        const node = loadMoreRef.current;
+        if (!node || isLoading || isLoadingMore || !hasMoreCampaigns) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                const first = entries[0];
+                if (!first?.isIntersecting) return;
+                loadReviewerCampaigns({ page: currentPage + 1 });
+            },
+            { rootMargin: "240px 0px" },
+        );
+
+        observer.observe(node);
+        return () => observer.disconnect();
+    }, [currentPage, hasMoreCampaigns, isLoading, isLoadingMore, loadReviewerCampaigns]);
 
     useEffect(() => {
         if (!normalizedIsReviewer || rows.length === 0) return;
@@ -626,7 +688,13 @@ export default function ReviewerWorkspacePage() {
                                 </button>
                                 <button
                                     onClick={async () => {
-                                        await loadReviewerCampaigns();
+                                        setRows([]);
+                                        setCurrentPage(0);
+                                        setHasMoreCampaigns(false);
+                                        await loadReviewerCampaigns({
+                                            reset: true,
+                                            page: 1,
+                                        });
                                         await refreshApprovalStatuses();
                                     }}
                                     disabled={isRefreshing}
@@ -907,6 +975,17 @@ export default function ReviewerWorkspacePage() {
                         );
                     })}
                 </div>
+                <div ref={loadMoreRef} className="h-2 w-full" />
+                {isLoadingMore && (
+                    <p className="py-2 text-center text-sm text-slate-500">
+                        Đang tải thêm chiến dịch...
+                    </p>
+                )}
+                {!isLoading && !isLoadingMore && !hasMoreCampaigns && rows.length > 0 && (
+                    <p className="py-2 text-center text-xs text-slate-500">
+                        Đã tải hết danh sách chiến dịch của reviewer.
+                    </p>
+                )}
             </main>
         </div>
     );

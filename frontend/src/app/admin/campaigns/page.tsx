@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatEther } from "viem";
 import { useAccount, useWaitForTransactionReceipt } from "wagmi";
 import { useAuth, useBackendCampaigns } from "@/lib";
+import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
 import {
     useAdminApproveCampaign,
     useReadAllCampaigns,
@@ -18,11 +19,25 @@ export default function AdminCampaignApprovalsPage() {
     const { owner } = useReadContractOwner();
     const { campaigns, isLoading, refetch } = useReadAllCampaigns();
     const backendCampaigns = useBackendCampaigns();
+    const backendRefetch = backendCampaigns.refetch;
     const { reviewersByCampaignId } = useReadCampaignReviewersBatch(campaigns.length);
     const { adminApproveCampaign, isPending } = useAdminApproveCampaign();
     const [txHash, setTxHash] = useState<`0x${string}` | undefined>(undefined);
+    const lastSyncedTxHashRef = useRef<`0x${string}` | undefined>(undefined);
+    const lastNotifiedSuccessTxHashRef = useRef<`0x${string}` | undefined>(
+        undefined,
+    );
+    const lastNotifiedFailureTxHashRef = useRef<`0x${string}` | undefined>(
+        undefined,
+    );
     const [actionError, setActionError] = useState<string | null>(null);
-    const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash: txHash });
+    const {
+        isLoading: isConfirming,
+        isSuccess: isConfirmed,
+        isError: isConfirmError,
+        error: confirmError,
+        data: receipt,
+    } = useWaitForTransactionReceipt({ hash: txHash });
     useRegisterWalletTxOverlay(isPending || isConfirming);
 
     const normalizedWallet = (address || "").toLowerCase();
@@ -51,10 +66,45 @@ export default function AdminCampaignApprovalsPage() {
     }, [backendCampaigns.data]);
 
     useEffect(() => {
-        if (isConfirming || !txHash) return;
+        if (isConfirming || !txHash || txHash === lastSyncedTxHashRef.current)
+            return;
         refetch();
-        backendCampaigns.refetch();
-    }, [backendCampaigns.refetch, isConfirming, refetch, txHash]);
+        backendRefetch();
+        lastSyncedTxHashRef.current = txHash;
+    }, [backendRefetch, isConfirming, refetch, txHash]);
+
+    useEffect(() => {
+        if (
+            !txHash ||
+            !isConfirmed ||
+            txHash === lastNotifiedSuccessTxHashRef.current
+        )
+            return;
+        if (receipt?.status === "success") {
+            showSuccessToast("Duyệt campaign thành công.");
+            lastNotifiedSuccessTxHashRef.current = txHash;
+        }
+    }, [isConfirmed, receipt?.status, txHash]);
+
+    useEffect(() => {
+        if (!txHash || txHash === lastNotifiedFailureTxHashRef.current) return;
+
+        if (receipt?.status === "reverted") {
+            const message = "Giao dịch duyệt campaign đã bị revert.";
+            showErrorToast(message);
+            lastNotifiedFailureTxHashRef.current = txHash;
+            return;
+        }
+
+        if (isConfirmError) {
+            const message =
+                confirmError instanceof Error
+                    ? confirmError.message
+                    : "Không thể xác nhận giao dịch duyệt campaign.";
+            showErrorToast(message);
+            lastNotifiedFailureTxHashRef.current = txHash;
+        }
+    }, [confirmError, isConfirmError, receipt?.status, txHash]);
 
     if (!isAdmin) {
         return (
@@ -74,6 +124,16 @@ export default function AdminCampaignApprovalsPage() {
                     Danh sách campaign đang ở trạng thái chờ duyệt.
                 </p>
                 {isLoading ? <p className="mt-4 text-sm">Đang tải...</p> : null}
+                {txHash && isConfirming ? (
+                    <p className="mt-4 text-sm text-blue-700">
+                        Đã gửi giao dịch duyệt. Đang chờ xác nhận on-chain...
+                    </p>
+                ) : null}
+                {txHash && isConfirmed && receipt?.status === "success" ? (
+                    <p className="mt-4 text-sm text-emerald-700">
+                        Campaign đã được duyệt thành công.
+                    </p>
+                ) : null}
                 {actionError ? <p className="mt-4 text-sm text-red-600">{actionError}</p> : null}
                 <div className="mt-4 space-y-3">
                     {pendingItems.map((item) => (

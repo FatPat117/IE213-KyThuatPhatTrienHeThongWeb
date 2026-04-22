@@ -58,6 +58,8 @@ export default function WalletConnectButton() {
       }
       if (normalized.includes('user rejected') || normalized.includes('user denied')) {
         setErrorMessage('Bạn cần ký xác thực để tiếp tục sử dụng tính năng.');
+      } else if (normalized.includes('request timeout')) {
+        setErrorMessage('Backend xác thực đang phản hồi chậm. Vui lòng thử lại.');
       } else {
         setErrorMessage(rawMessage);
       }
@@ -94,15 +96,25 @@ export default function WalletConnectButton() {
       setErrorMessage(null);
 
       if (isConnected && address) {
-        await authenticateWallet(address);
+        if (!isAuthenticated && !isAuthenticating) {
+          await authenticateWallet(address);
+        }
         return;
       }
 
-      if (!hasProvider) {
+      if (hasProvider === false) {
         window.open('https://metamask.io/download/', '_blank');
         return;
       }
-      connect({ connector: injected() });
+      if (hasProvider === null) {
+        const providerExists = Boolean((window as { ethereum?: unknown }).ethereum);
+        setHasProvider(providerExists);
+        if (!providerExists) {
+          window.open('https://metamask.io/download/', '_blank');
+          return;
+        }
+      }
+      await connect({ connector: injected() });
     } catch (error) {
       console.error('Failed to connect wallet:', error);
       const rawMessage = error instanceof Error ? error.message : '';
@@ -116,14 +128,16 @@ export default function WalletConnectButton() {
 
   const handleDisconnect = async () => {
     setIsDisconnecting(true);
+    setErrorMessage(null);
+    setAuthAttemptedWallet(null);
+    clearAuth();
     try {
       await disconnect();
     } catch {
       // No-op: disconnect can throw if connector is already gone.
+    } finally {
+      setIsDisconnecting(false);
     }
-    clearAuth();
-    setAuthAttemptedWallet(null);
-    setErrorMessage(null);
   };
 
   const handleSwitchNetwork = () => {
@@ -159,6 +173,7 @@ export default function WalletConnectButton() {
       displayName={user?.displayName}
       avatarUrl={user?.avatarUrl}
       onDisconnect={handleDisconnect}
+      isDisconnecting={isDisconnecting}
       onSwitchToSepolia={handleSwitchNetwork}
       isSwitchingNetwork={isSwitchingNetwork}
     />

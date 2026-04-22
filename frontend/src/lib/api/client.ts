@@ -1,6 +1,10 @@
 'use client';
 
 const DEFAULT_API_BASE_URL = 'http://localhost:4000/api';
+const RETRYABLE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const MAX_RATE_LIMIT_RETRIES = 4;
+const INITIAL_BACKOFF_MS = 400;
+const MAX_BACKOFF_MS = 5000;
 
 function normalizeApiBaseUrl(rawUrl?: string) {
   const trimmed = rawUrl?.trim();
@@ -26,13 +30,34 @@ export interface ApiError {
 
 export type ApiResponse<T> = ApiSuccess<T> | ApiError;
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function parseRetryAfterMs(value: string | null): number | null {
+  if (!value) return null;
+
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.floor(seconds * 1000);
+  }
+
+  const dateTs = Date.parse(value);
+  if (!Number.isNaN(dateTs)) {
+    const delta = dateTs - Date.now();
+    return delta > 0 ? delta : 0;
+  }
+
+  return null;
+}
+
 /**
  * Small fetch wrapper for backend gateway APIs.
  * It normalizes success/error response shape from all services.
  */
 export async function apiRequest<T>(
   path: string,
-  init?: RequestInit & { token?: string | null }
+  init?: RequestInit & { token?: string | null; timeoutMs?: number }
 ): Promise<T> {
   const headers = new Headers(init?.headers || {});
   headers.set('Content-Type', 'application/json');
@@ -40,16 +65,78 @@ export async function apiRequest<T>(
   headers.set('Pragma', 'no-cache');
   if (init?.token) headers.set('Authorization', `Bearer ${init.token}`);
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    cache: 'no-store',
-    headers,
-  });
+  const method = (init?.method || 'GET').toUpperCase();
+  const canRetry = RETRYABLE_METHODS.has(method);
+  const maxAttempts = canRetry ? MAX_RATE_LIMIT_RETRIES + 1 : 1;
+  let attempt = 0;
 
-  const payload = (await response.json()) as ApiResponse<T>;
-  if (!response.ok || !payload.success) {
-    throw new Error(payload.success ? 'Request failed' : payload.error);
+  while (attempt < maxAttempts) {
+    const timeoutMs = init?.timeoutMs;
+    const timeoutController =
+      typeof timeoutMs === 'number' && timeoutMs > 0 ? new AbortController() : null;
+    const relayAbortController = new AbortController();
+    const signal = timeoutController ? timeoutController.signal : relayAbortController.signal;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const onCallerAbort = () => relayAbortController.abort();
+    if (init?.signal) {
+      if (init.signal.aborted) {
+        relayAbortController.abort();
+      } else {
+        init.signal.addEventListener('abort', onCallerAbort, { once: true });
+      }
+    }
+
+    if (timeoutController && timeoutMs) {
+      timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE_URL}${path}`, {
+        ...init,
+        cache: 'no-store',
+        headers,
+        signal,
+      });
+    } catch (error) {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (init?.signal) {
+        init.signal.removeEventListener('abort', onCallerAbort);
+      }
+
+      if (error instanceof Error && error.name === 'AbortError' && timeoutController) {
+        throw new Error('Request timeout');
+      }
+      throw error;
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (init?.signal) {
+        init.signal.removeEventListener('abort', onCallerAbort);
+      }
+    }
+
+    if (response.status === 429 && attempt < maxAttempts - 1) {
+      const retryAfterMs = parseRetryAfterMs(response.headers.get('Retry-After'));
+      const exponentialBackoff = Math.min(
+        INITIAL_BACKOFF_MS * 2 ** attempt,
+        MAX_BACKOFF_MS
+      );
+      // Add jitter to avoid synchronized retries across clients.
+      const jitter = Math.floor(Math.random() * 250);
+      const waitMs = Math.max(retryAfterMs ?? 0, exponentialBackoff + jitter);
+      await sleep(waitMs);
+      attempt += 1;
+      continue;
+    }
+
+    const payload = (await response.json()) as ApiResponse<T>;
+    if (!response.ok || !payload.success) {
+      throw new Error(payload.success ? 'Request failed' : payload.error);
+    }
+
+    return payload.data;
   }
 
-  return payload.data;
+  throw new Error('Request failed after retries');
 }

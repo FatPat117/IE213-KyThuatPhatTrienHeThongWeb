@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getDisbursedMilestoneCount,
   getCampaignMetadataFromCache,
@@ -23,6 +23,43 @@ export function ContractStatsDisplay() {
   const [isRefreshingMilestones, setIsRefreshingMilestones] = useState(false);
   const [milestoneError, setMilestoneError] = useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
+  const lastUpdatedAtRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    lastUpdatedAtRef.current = lastUpdatedAt;
+  }, [lastUpdatedAt]);
+
+  const isMilestoneRateLimited = useCallback((error: unknown) => {
+    if (!(error instanceof Error)) return false;
+    const normalized = error.message.toLowerCase();
+    return (
+      normalized.includes('rate limit') ||
+      normalized.includes('too many requests')
+    );
+  }, []);
+
+  const getMilestoneErrorMessage = useCallback((error: unknown) => {
+    const fallback = 'Không thể tải số mốc đã giải ngân';
+    if (!(error instanceof Error)) return fallback;
+
+    const normalized = error.message.toLowerCase();
+    if (
+      normalized.includes('rate limit') ||
+      normalized.includes('too many requests')
+    ) {
+      return 'API milestones đang quá tải. Hệ thống đang giữ số liệu lần cập nhật gần nhất, vui lòng thử lại sau ít phút.';
+    }
+
+    if (
+      normalized.includes('failed to fetch') ||
+      normalized.includes('network') ||
+      normalized.includes('timeout')
+    ) {
+      return 'Không kết nối được tới API milestones. Vui lòng kiểm tra mạng và thử lại.';
+    }
+
+    return fallback;
+  }, []);
 
   const refreshMilestones = useCallback(async () => {
     try {
@@ -32,11 +69,14 @@ export function ContractStatsDisplay() {
       setDisbursedMilestones(disbursedCount);
       setLastUpdatedAt(new Date().toLocaleTimeString('vi-VN'));
     } catch (error) {
-      setMilestoneError(error instanceof Error ? error.message : 'Không thể tải số mốc đã giải ngân');
+      if (isMilestoneRateLimited(error) && lastUpdatedAtRef.current) {
+        return;
+      }
+      setMilestoneError(getMilestoneErrorMessage(error));
     } finally {
       setIsRefreshingMilestones(false);
     }
-  }, []);
+  }, [getMilestoneErrorMessage, isMilestoneRateLimited]);
 
   useEffect(() => {
     refreshMilestones();

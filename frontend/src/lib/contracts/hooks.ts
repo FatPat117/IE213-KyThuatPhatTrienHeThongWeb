@@ -9,7 +9,10 @@ import {
     useReadContracts,
     useWriteContract,
 } from "wagmi";
-import { CROWDFUNDING_CONTRACT_ADDRESS, contractConfig } from "./config";
+import {
+    CROWDFUNDING_CONTRACT_ADDRESS,
+    contractConfig,
+} from "./config";
 
 type CampaignTuple = {
     id: bigint;
@@ -56,6 +59,64 @@ const STATUS_MAP: Record<number, CampaignStatusLabel> = {
 const CREATE_CAMPAIGN_GAS_BASE = 900_000n;
 const CREATE_CAMPAIGN_GAS_PER_MILESTONE = 180_000n;
 const CREATE_CAMPAIGN_GAS_MAX = 8_000_000n;
+const REVIEWER_REGISTRY_ABI = [
+    {
+        type: "function",
+        name: "getReviewerSafes",
+        stateMutability: "view",
+        inputs: [],
+        outputs: [{ name: "", type: "address[]" }],
+    },
+    {
+        type: "function",
+        name: "reviewerSafes",
+        stateMutability: "view",
+        inputs: [{ name: "safe", type: "address" }],
+        outputs: [{ name: "", type: "bool" }],
+    },
+    {
+        type: "function",
+        name: "addReviewerSafe",
+        stateMutability: "nonpayable",
+        inputs: [{ name: "safe", type: "address" }],
+        outputs: [],
+    },
+    {
+        type: "function",
+        name: "removeReviewerSafe",
+        stateMutability: "nonpayable",
+        inputs: [{ name: "safe", type: "address" }],
+        outputs: [],
+    },
+] as const;
+
+async function readReviewerSafeExists(
+    publicClient: NonNullable<ReturnType<typeof usePublicClient>>,
+    safe: Address,
+) {
+    try {
+        const safes = (await publicClient.readContract({
+            address: CROWDFUNDING_CONTRACT_ADDRESS,
+            abi: REVIEWER_REGISTRY_ABI,
+            functionName: "getReviewerSafes",
+        })) as Address[];
+        const normalizedSafe = safe.toLowerCase();
+        return safes.some((item) => item.toLowerCase() === normalizedSafe);
+    } catch {
+        // Fallback for deployments that only expose reviewerSafes mapping getter.
+        try {
+            const approved = (await publicClient.readContract({
+                address: CROWDFUNDING_CONTRACT_ADDRESS,
+                abi: REVIEWER_REGISTRY_ABI,
+                functionName: "reviewerSafes",
+                args: [safe],
+            })) as boolean;
+            return approved;
+        } catch {
+            return null;
+        }
+    }
+}
 
 type CreateCampaignWithGoalPayload = {
     goalWei: bigint;
@@ -161,8 +222,14 @@ export function useReadTotalRaised() {
 }
 
 export function useReadCampaign(campaignId: number | null | undefined) {
-    const enabled =
+    const countQuery = useReadCampaignCount();
+    const hasValidInput =
         campaignId !== null && campaignId !== undefined && campaignId > 0;
+    const isOutOfRange =
+        hasValidInput &&
+        !countQuery.isLoading &&
+        campaignId > countQuery.count;
+    const enabled = hasValidInput && !isOutOfRange;
     const campaignIdArg = enabled ? BigInt(campaignId) : undefined;
 
     const {
@@ -196,9 +263,11 @@ export function useReadCampaign(campaignId: number | null | undefined) {
 
     return {
         campaign,
-        isLoading,
-        isError,
-        error: error?.message || null,
+        isLoading: countQuery.isLoading || isLoading,
+        isError: isOutOfRange || isError,
+        error: isOutOfRange
+            ? `Campaign #${campaignId} does not exist on-chain.`
+            : error?.message || null,
         refetch,
     };
 }
@@ -473,23 +542,67 @@ export function useCreateCampaign() {
 }
 
 export function useReadReviewerSafes() {
-    const { data, isLoading, isError, error, refetch } = useReadContract({
-        ...contractConfig,
+    const {
+        data: reviewerSafesOnChain,
+        isLoading: isLoadingReviewerSafesOnChain,
+        refetch: refetchReviewerSafesOnChain,
+    } = useReadContract({
+        address: CROWDFUNDING_CONTRACT_ADDRESS,
+        abi: REVIEWER_REGISTRY_ABI,
         functionName: "getReviewerSafes",
         query: {
             staleTime: 30_000,
-            refetchOnWindowFocus: true,
+            refetchOnWindowFocus: false,
+            refetchOnMount: true,
+            enabled:
+                CROWDFUNDING_CONTRACT_ADDRESS !==
+                "0x0000000000000000000000000000000000000000",
         },
     });
 
+    const countQuery = useReadCampaignCount();
+    const {
+        reviewersByCampaignId,
+        isLoading: isLoadingReviewers,
+        isError: isErrorReviewers,
+        error: reviewerError,
+        refetch: refetchReviewers,
+    } = useReadCampaignReviewersBatch(countQuery.count);
+
+    const reviewerSafes = useMemo(() => {
+        const onChainList = Array.isArray(reviewerSafesOnChain)
+            ? reviewerSafesOnChain
+                  .map((item) => item.toLowerCase())
+                  .filter((item) => /^0x[a-f0-9]{40}$/.test(item))
+            : [];
+        if (onChainList.length > 0) {
+            return Array.from(new Set(onChainList));
+        }
+
+        return Array.from(
+            new Set(
+                Array.from(reviewersByCampaignId.values())
+                    .map((item) => item.toLowerCase())
+                    .filter((item) => /^0x[a-f0-9]{40}$/.test(item)),
+            ),
+        );
+    }, [reviewerSafesOnChain, reviewersByCampaignId]);
+
     return {
-        reviewerSafes: Array.isArray(data)
-            ? (data as string[]).map((item) => item.toLowerCase())
-            : [],
-        isLoading,
-        isError,
-        error: error?.message || null,
-        refetch,
+        reviewerSafes,
+        isLoading:
+            isLoadingReviewerSafesOnChain ||
+            countQuery.isLoading ||
+            isLoadingReviewers,
+        isError: countQuery.isError || isErrorReviewers,
+        error: countQuery.error || reviewerError,
+        refetch: async () => {
+            await Promise.all([
+                refetchReviewerSafesOnChain(),
+                countQuery.refetch(),
+                refetchReviewers(),
+            ]);
+        },
     };
 }
 
@@ -513,14 +626,66 @@ export function useReadContractOwner() {
 }
 
 export function useAdminApproveCampaign() {
+    const { address } = useAccount();
+    const publicClient = usePublicClient();
     const { writeContractAsync, data, isPending, error } = useWriteContract();
+    const ADMIN_APPROVE_GAS_LIMIT_CAP = 500_000n;
 
-    const adminApproveCampaign = (campaignId: number) =>
-        writeContractAsync({
+    const adminApproveCampaign = async (campaignId: number) => {
+        if (!publicClient) {
+            throw new Error("Không thể kết nối RPC để ước lượng gas.");
+        }
+        if (!address) {
+            throw new Error("Không tìm thấy địa chỉ ví để gửi giao dịch.");
+        }
+
+        const owner = (await publicClient
+            .readContract({
+                address: CROWDFUNDING_CONTRACT_ADDRESS,
+                abi: contractConfig.abi,
+                functionName: "owner",
+            })
+            .catch(() => null)) as Address | null;
+        if (owner && owner.toLowerCase() !== address.toLowerCase()) {
+            throw new Error(
+                `Ví hiện tại không phải owner của contract. Ví gửi: ${address}. Owner: ${owner}.`,
+            );
+        }
+
+        const args = [BigInt(campaignId)] as const;
+        let gas: bigint | undefined;
+        try {
+            const estimatedGas = await publicClient.estimateContractGas({
+                ...contractConfig,
+                account: address,
+                functionName: "adminApprove",
+                args,
+            });
+            const bufferedGas = (estimatedGas * 120n) / 100n;
+            gas =
+                bufferedGas > ADMIN_APPROVE_GAS_LIMIT_CAP
+                    ? ADMIN_APPROVE_GAS_LIMIT_CAP
+                    : bufferedGas;
+        } catch (estimateError) {
+            const message =
+                estimateError instanceof Error
+                    ? estimateError.message.toLowerCase()
+                    : "";
+            if (message.includes("gas limit too high")) {
+                throw new Error(
+                    "Ước lượng gas vượt mức cho phép của RPC. Vui lòng thử lại, hệ thống sẽ dùng gas an toàn.",
+                );
+            }
+            throw estimateError;
+        }
+
+        return writeContractAsync({
             ...contractConfig,
             functionName: "adminApprove",
-            args: [BigInt(campaignId)],
+            args,
+            gas,
         });
+    };
 
     return {
         adminApproveCampaign,
@@ -531,24 +696,172 @@ export function useAdminApproveCampaign() {
 }
 
 export function useAddReviewerSafe() {
+    const { address } = useAccount();
+    const publicClient = usePublicClient();
     const { writeContractAsync, data, isPending, error } = useWriteContract();
-    const addReviewerSafe = (safe: Address) =>
-        writeContractAsync({
-            ...contractConfig,
+    const addReviewerSafe = async (safe: Address) => {
+        if (!publicClient) {
+            throw new Error("Không thể kết nối RPC để ước lượng gas.");
+        }
+        if (!address) {
+            throw new Error("Không tìm thấy địa chỉ ví để gửi giao dịch.");
+        }
+        const normalizedSafe = safe.toLowerCase() as Address;
+        const contractOwner = (await publicClient
+            .readContract({
+                address: CROWDFUNDING_CONTRACT_ADDRESS,
+                abi: contractConfig.abi,
+                functionName: "owner",
+            })
+            .catch(() => null)) as Address | null;
+        if (
+            contractOwner &&
+            contractOwner.toLowerCase() !== address.toLowerCase()
+        ) {
+            throw new Error(
+                `Ví hiện tại không phải owner của contract. Ví gửi: ${address}. Owner: ${contractOwner}.`,
+            );
+        }
+
+        const reviewerState = await readReviewerSafeExists(publicClient, normalizedSafe);
+        if (reviewerState === true) {
+            throw new Error("Reviewer safe này đã tồn tại trong danh sách.");
+        }
+
+        let estimatedGas: bigint;
+        try {
+            estimatedGas = await publicClient.estimateContractGas({
+                address: CROWDFUNDING_CONTRACT_ADDRESS,
+                abi: REVIEWER_REGISTRY_ABI,
+                functionName: "addReviewerSafe",
+                args: [normalizedSafe],
+                account: address,
+            });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "";
+            const normalizedMessage = message.toLowerCase();
+            const owner = (await publicClient
+                .readContract({
+                    address: CROWDFUNDING_CONTRACT_ADDRESS,
+                    abi: contractConfig.abi,
+                    functionName: "owner",
+                })
+                .catch(() => null)) as Address | null;
+            if (
+                normalizedMessage.includes("ownableunauthorizedaccount") ||
+                normalizedMessage.includes("caller is not the owner") ||
+                normalizedMessage.includes("execution reverted")
+            ) {
+                if (owner && owner.toLowerCase() !== address.toLowerCase()) {
+                    throw new Error(
+                        `Contract từ chối giao dịch: chỉ owner mới được thêm reviewer. Ví gửi: ${address}. Owner: ${owner}.`,
+                    );
+                }
+                throw new Error(
+                    "Contract từ chối addReviewerSafe (execution reverted). Có thể do quyền onlyOwner hoặc rule nội bộ của contract.",
+                );
+            }
+            if (normalizedMessage.includes("reviewer already approved")) {
+                throw new Error("Reviewer safe này đã tồn tại trong danh sách.");
+            }
+            throw error;
+        }
+        const gasWithBuffer = (estimatedGas * 120n) / 100n;
+
+        return writeContractAsync({
+            address: CROWDFUNDING_CONTRACT_ADDRESS,
+            abi: REVIEWER_REGISTRY_ABI,
+            chainId: contractConfig.chainId,
             functionName: "addReviewerSafe",
-            args: [safe],
+            args: [normalizedSafe],
+            gas: gasWithBuffer,
         });
+    };
     return { addReviewerSafe, hash: data, isPending, error };
 }
 
 export function useRemoveReviewerSafe() {
+    const { address } = useAccount();
+    const publicClient = usePublicClient();
     const { writeContractAsync, data, isPending, error } = useWriteContract();
-    const removeReviewerSafe = (safe: Address) =>
-        writeContractAsync({
-            ...contractConfig,
+    const removeReviewerSafe = async (safe: Address) => {
+        if (!publicClient) {
+            throw new Error("Không thể kết nối RPC để ước lượng gas.");
+        }
+        if (!address) {
+            throw new Error("Không tìm thấy địa chỉ ví để gửi giao dịch.");
+        }
+        const normalizedSafe = safe.toLowerCase() as Address;
+        const contractOwner = (await publicClient
+            .readContract({
+                address: CROWDFUNDING_CONTRACT_ADDRESS,
+                abi: contractConfig.abi,
+                functionName: "owner",
+            })
+            .catch(() => null)) as Address | null;
+        if (
+            contractOwner &&
+            contractOwner.toLowerCase() !== address.toLowerCase()
+        ) {
+            throw new Error(
+                `Ví hiện tại không phải owner của contract. Ví gửi: ${address}. Owner: ${contractOwner}.`,
+            );
+        }
+
+        const reviewerState = await readReviewerSafeExists(publicClient, normalizedSafe);
+        if (reviewerState === false) {
+            throw new Error("Reviewer safe này chưa có trong danh sách.");
+        }
+
+        let estimatedGas: bigint;
+        try {
+            estimatedGas = await publicClient.estimateContractGas({
+                address: CROWDFUNDING_CONTRACT_ADDRESS,
+                abi: REVIEWER_REGISTRY_ABI,
+                functionName: "removeReviewerSafe",
+                args: [normalizedSafe],
+                account: address,
+            });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "";
+            const normalizedMessage = message.toLowerCase();
+            const owner = (await publicClient
+                .readContract({
+                    address: CROWDFUNDING_CONTRACT_ADDRESS,
+                    abi: contractConfig.abi,
+                    functionName: "owner",
+                })
+                .catch(() => null)) as Address | null;
+            if (
+                normalizedMessage.includes("ownableunauthorizedaccount") ||
+                normalizedMessage.includes("caller is not the owner") ||
+                normalizedMessage.includes("execution reverted")
+            ) {
+                if (owner && owner.toLowerCase() !== address.toLowerCase()) {
+                    throw new Error(
+                        `Contract từ chối giao dịch: chỉ owner mới được xóa reviewer. Ví gửi: ${address}. Owner: ${owner}.`,
+                    );
+                }
+                throw new Error(
+                    "Contract từ chối removeReviewerSafe (execution reverted). Có thể do quyền onlyOwner hoặc rule nội bộ của contract.",
+                );
+            }
+            if (normalizedMessage.includes("reviewer not approved")) {
+                throw new Error("Reviewer safe này chưa có trong danh sách.");
+            }
+            throw error;
+        }
+        const gasWithBuffer = (estimatedGas * 120n) / 100n;
+
+        return writeContractAsync({
+            address: CROWDFUNDING_CONTRACT_ADDRESS,
+            abi: REVIEWER_REGISTRY_ABI,
+            chainId: contractConfig.chainId,
             functionName: "removeReviewerSafe",
-            args: [safe],
+            args: [normalizedSafe],
+            gas: gasWithBuffer,
         });
+    };
     return { removeReviewerSafe, hash: data, isPending, error };
 }
 
@@ -610,17 +923,51 @@ export function useMarkAsFailed() {
 }
 
 export function useSubmitMilestoneProof() {
+    const { address } = useAccount();
+    const publicClient = usePublicClient();
     const { writeContractAsync, data, isPending, error } = useWriteContract();
+    const SUBMIT_PROOF_DEFAULT_GAS = 350_000n;
 
-    const submitMilestoneProof = (
+    const submitMilestoneProof = async (
         campaignId: number,
         milestoneId: number,
         ipfsCid: string,
     ) => {
+        if (!publicClient) {
+            throw new Error("Không thể kết nối RPC để ước lượng gas.");
+        }
+        if (!address) {
+            throw new Error("Không tìm thấy địa chỉ ví để gửi giao dịch.");
+        }
+
+        const args = [BigInt(campaignId), BigInt(milestoneId), ipfsCid] as const;
+        try {
+            await publicClient.simulateContract({
+                ...contractConfig,
+                account: address,
+                functionName: "submitMilestoneProof",
+                args,
+            });
+        } catch (simulationError) {
+            const message =
+                simulationError instanceof Error
+                    ? simulationError.message.toLowerCase()
+                    : "";
+            // Some RPCs return generic "gas limit too high" during estimation/simulation.
+            // Continue and let the wallet send with a known-safe gas limit.
+            if (
+                !message.includes("gas limit too high") &&
+                !message.includes("execution reverted")
+            ) {
+                throw simulationError;
+            }
+        }
+
         return writeContractAsync({
             ...contractConfig,
             functionName: "submitMilestoneProof",
-            args: [BigInt(campaignId), BigInt(milestoneId), ipfsCid],
+            args,
+            gas: SUBMIT_PROOF_DEFAULT_GAS,
         });
     };
 
@@ -804,7 +1151,7 @@ export function useReadCampaignReviewersBatch(campaignCount: number) {
         [campaignCount],
     );
 
-    const { data, isLoading, refetch } = useReadContracts({
+    const { data, isLoading, isError, error, refetch } = useReadContracts({
         contracts,
         query: {
             enabled:
@@ -835,5 +1182,11 @@ export function useReadCampaignReviewersBatch(campaignCount: number) {
         return map;
     }, [data]);
 
-    return { reviewersByCampaignId, isLoading, refetch };
+    return {
+        reviewersByCampaignId,
+        isLoading,
+        isError,
+        error: error?.message || null,
+        refetch,
+    };
 }

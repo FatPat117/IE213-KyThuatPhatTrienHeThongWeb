@@ -23,7 +23,7 @@ import {
 import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { formatEther, parseAbiItem } from "viem";
+import { formatEther, parseAbiItem, parseEther } from "viem";
 import {
     useAccount,
     usePublicClient,
@@ -57,6 +57,9 @@ export default function CampaignDetailPage() {
     const backendCampaign = useBackendCampaign(Number.isFinite(id) ? id : null);
     const { token, user, setAuth } = useAuth();
     const [amount, setAmount] = useState("0.01");
+    const [lastDonatedAmount, setLastDonatedAmount] = useState<string | null>(
+        null,
+    );
     const [donations, setDonations] = useState<DonationEvent[]>([]);
     const [donationReloadNonce, setDonationReloadNonce] = useState(0);
     const [mintProfileSaving, setMintProfileSaving] = useState(false);
@@ -219,15 +222,48 @@ export default function CampaignDetailPage() {
 
             if (publicClient) {
                 try {
-                    const logs = await publicClient.getLogs({
-                        address: contractConfig.address,
-                        event: parseAbiItem(
-                            "event Donated(uint256 indexed campaignId, address indexed donor, uint256 amount, uint256 totalRaised)",
-                        ),
-                        args: { campaignId: BigInt(id) },
-                        fromBlock: "earliest",
-                        toBlock: "latest",
-                    });
+                    const donatedEvent = parseAbiItem(
+                        "event Donated(uint256 indexed campaignId, address indexed donor, uint256 amount, uint256 totalRaised)",
+                    );
+                    let logs: Awaited<ReturnType<typeof publicClient.getLogs>> =
+                        [];
+                    try {
+                        // Fast path for RPCs that support full-range log queries.
+                        logs = await publicClient.getLogs({
+                            address: contractConfig.address,
+                            event: donatedEvent,
+                            args: { campaignId: BigInt(id) },
+                            fromBlock: "earliest",
+                            toBlock: "latest",
+                        });
+                    } catch {
+                        // Fallback for RPC providers that reject very large ranges.
+                        const latestBlock = await publicClient.getBlockNumber();
+                        const windowSize = 20_000n;
+                        const maxWindows = 40n;
+                        let toBlock = latestBlock;
+                        let scannedWindows = 0n;
+                        const collected: typeof logs = [];
+
+                        while (toBlock > 0n && scannedWindows < maxWindows) {
+                            const fromBlock =
+                                toBlock > windowSize ? toBlock - windowSize : 0n;
+                            const chunkLogs = await publicClient.getLogs({
+                                address: contractConfig.address,
+                                event: donatedEvent,
+                                args: { campaignId: BigInt(id) },
+                                fromBlock,
+                                toBlock,
+                            });
+                            if (chunkLogs.length > 0) {
+                                collected.push(...chunkLogs);
+                            }
+                            if (fromBlock === 0n) break;
+                            toBlock = fromBlock - 1n;
+                            scannedWindows += 1n;
+                        }
+                        logs = collected;
+                    }
 
                     const onChainDonations = await Promise.all(
                         logs.map(async (log) => {
@@ -278,6 +314,10 @@ export default function CampaignDetailPage() {
         address.toLowerCase() === campaign.creator.toLowerCase();
 
     const campaignStatusLabel = campaign?.statusLabel || "active";
+    const uiCampaignStatusLabel =
+        campaignStatusLabel === "pending_approval"
+            ? "active"
+            : campaignStatusLabel;
     const isCampaignActive = campaignStatusLabel === "active";
     const isCampaignInProgress = campaignStatusLabel === "in_progress";
     const isCampaignCompleted = campaignStatusLabel === "completed";
@@ -392,18 +432,38 @@ export default function CampaignDetailPage() {
 
     useEffect(() => {
         if (isConfirmed) {
+            if (hash && address && lastDonatedAmount) {
+                try {
+                    setDonations((prev) =>
+                        mergeDonations(prev, [
+                            {
+                                campaignId: id,
+                                donor: address,
+                                amount: parseEther(lastDonatedAmount),
+                                transactionHash: hash,
+                                timestamp: Date.now(),
+                            },
+                        ]),
+                    );
+                } catch {
+                    // Ignore malformed local amount and keep server/on-chain data sources.
+                }
+            }
             refetch();
             setAmount("0.01");
+            setLastDonatedAmount(null);
             showSuccessToast(
                 "Quyên góp thành công! Giao dịch đang được xác nhận.",
             );
         }
-    }, [isConfirmed, refetch]);
+    }, [address, hash, id, isConfirmed, lastDonatedAmount, refetch]);
 
     const handleDonate = () => {
         if (!Number.isFinite(id)) return;
         if (parseFloat(amount) <= 0) return;
+        setLastDonatedAmount(amount);
         donate(id, amount).catch((err) => {
+            setLastDonatedAmount(null);
             const friendly = getFriendlyError(err);
             showErrorToast(
                 friendly || "Không thể thực hiện quyên góp. Vui lòng thử lại.",
@@ -446,6 +506,12 @@ export default function CampaignDetailPage() {
         if (!Number.isFinite(id)) return;
         if (!address) {
             setMintFlowError("Vui lòng kết nối ví trước khi mint chứng chỉ.");
+            return;
+        }
+        if (!canMintCertificate) {
+            setMintFlowError(
+                "Chưa thể mint chứng chỉ. Chỉ mint được khi campaign đã vào giai đoạn triển khai hoặc đã kết thúc.",
+            );
             return;
         }
         if (!token) {
@@ -626,14 +692,17 @@ export default function CampaignDetailPage() {
                                     progressPercent={progress}
                                     goalWei={campaign.goal}
                                     milestoneCount={campaign.milestoneCount}
-                                    campaignStatusLabel={campaign.statusLabel}
+                                    campaignStatusLabel={uiCampaignStatusLabel}
                                     currentMilestoneId={
                                         campaign.currentMilestoneId
                                     }
                                 />
 
                                 <CampaignInfoPanel
-                                    campaign={campaign}
+                                    campaign={{
+                                        ...campaign,
+                                        statusLabel: uiCampaignStatusLabel,
+                                    }}
                                     backendTitle={
                                         !isPlaceholderCampaignTitle(
                                             backendCampaign.data?.title,
@@ -904,6 +973,7 @@ export default function CampaignDetailPage() {
                                     isSepolia={isSepolia}
                                     campaignStatusLabel={
                                         campaignStatusLabel as
+                                            | "pending_approval"
                                             | "active"
                                             | "in_progress"
                                             | "completed"

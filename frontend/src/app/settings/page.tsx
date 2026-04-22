@@ -41,8 +41,8 @@ export default function SettingsPage() {
     getUserProfile(walletAddress)
       .then((profile) => {
         if (cancelled) return;
-        setDisplayName(profile.displayName || '');
-        setAvatarDataUrl(profile.avatarUrl || '');
+        setDisplayName(profile?.displayName || '');
+        setAvatarDataUrl(profile?.avatarUrl || '');
       })
       .catch((err) => {
         if (cancelled) return;

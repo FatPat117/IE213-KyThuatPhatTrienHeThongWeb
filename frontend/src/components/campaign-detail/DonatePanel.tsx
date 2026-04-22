@@ -6,6 +6,7 @@ interface DonatePanelProps {
     isConnected: boolean;
     isSepolia: boolean;
     campaignStatusLabel?:
+        | "pending_approval"
         | "active"
         | "in_progress"
         | "completed"
@@ -114,7 +115,9 @@ export default function DonatePanel({
                               ? "Sai mạng"
                               : campaignStatusLabel &&
                                   campaignStatusLabel !== "active"
-                                ? campaignStatusLabel === "in_progress"
+                                ? campaignStatusLabel === "pending_approval"
+                                    ? "Chiến dịch đang chờ duyệt"
+                                    : campaignStatusLabel === "in_progress"
                                     ? "Chiến dịch đang triển khai milestone"
                                     : campaignStatusLabel === "partial_failed"
                                       ? "Chiến dịch thất bại một phần"

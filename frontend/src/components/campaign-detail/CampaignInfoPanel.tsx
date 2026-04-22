@@ -35,6 +35,11 @@ function getStatusBadge(
     completed?: boolean,
 ) {
     switch (statusLabel) {
+        case "pending_approval":
+            return {
+                className: "bg-amber-100 text-amber-700",
+                label: "● Chờ duyệt",
+            };
         case "active":
             return {
                 className: "bg-emerald-100 text-emerald-700",

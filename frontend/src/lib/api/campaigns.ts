@@ -106,6 +106,10 @@ const campaignIndexStatusCache = new Map<
     number,
     { indexed: boolean; expiresAt: number }
 >();
+const DISBURSED_MILESTONE_COUNT_CACHE_TTL_MS = 45_000;
+let disbursedMilestoneCountCache: { value: number; expiresAt: number } | null =
+    null;
+let disbursedMilestoneCountInFlight: Promise<number> | null = null;
 
 function readCachedCampaignIndexStatus(id: number): boolean | null {
     const cached = campaignIndexStatusCache.get(id);
@@ -348,26 +352,55 @@ export async function resubmitMilestone(
 }
 
 export async function getDisbursedMilestoneCount(): Promise<number> {
-    const campaigns = await getAllPublicCampaigns();
-    if (campaigns.length === 0) return 0;
-
-    const milestoneResults = await Promise.allSettled(
-        campaigns.map((campaign) =>
-            getPublicCampaignMilestones(campaign.onChainId),
-        ),
-    );
-
-    let disbursedCount = 0;
-    for (const result of milestoneResults) {
-        if (result.status !== "fulfilled") continue;
-        for (const milestone of result.value.milestones) {
-            if (milestone.status === "disbursed") {
-                disbursedCount += 1;
-            }
-        }
+    if (
+        disbursedMilestoneCountCache &&
+        Date.now() <= disbursedMilestoneCountCache.expiresAt
+    ) {
+        return disbursedMilestoneCountCache.value;
     }
 
-    return disbursedCount;
+    if (disbursedMilestoneCountInFlight) {
+        return disbursedMilestoneCountInFlight;
+    }
+
+    disbursedMilestoneCountInFlight = (async () => {
+        const campaigns = await getAllPublicCampaigns();
+        if (campaigns.length === 0) {
+            disbursedMilestoneCountCache = {
+                value: 0,
+                expiresAt: Date.now() + DISBURSED_MILESTONE_COUNT_CACHE_TTL_MS,
+            };
+            return 0;
+        }
+
+        const milestoneResults = await Promise.allSettled(
+            campaigns.map((campaign) =>
+                getPublicCampaignMilestones(campaign.onChainId),
+            ),
+        );
+
+        let disbursedCount = 0;
+        for (const result of milestoneResults) {
+            if (result.status !== "fulfilled") continue;
+            for (const milestone of result.value.milestones) {
+                if (milestone.status === "disbursed") {
+                    disbursedCount += 1;
+                }
+            }
+        }
+
+        disbursedMilestoneCountCache = {
+            value: disbursedCount,
+            expiresAt: Date.now() + DISBURSED_MILESTONE_COUNT_CACHE_TTL_MS,
+        };
+        return disbursedCount;
+    })();
+
+    try {
+        return await disbursedMilestoneCountInFlight;
+    } finally {
+        disbursedMilestoneCountInFlight = null;
+    }
 }
 
 export async function getReviewerAggregates(): Promise<ReviewerAggregate[]> {

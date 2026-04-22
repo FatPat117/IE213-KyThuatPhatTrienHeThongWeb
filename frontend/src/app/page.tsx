@@ -6,6 +6,7 @@ import {
     useCallback,
     useEffect,
     useMemo,
+    useRef,
     useState,
     useSyncExternalStore,
 } from "react";
@@ -74,6 +75,15 @@ function HomeContent() {
         reviewerSafes: onChainReviewerSafes,
         refetch: refetchOnChainReviewerSafes,
     } = useReadReviewerSafes();
+    const reviewerSafesRef = useRef<string[]>([]);
+    const refetchOnChainReviewerSafesRef = useRef(refetchOnChainReviewerSafes);
+
+    useEffect(() => {
+        reviewerSafesRef.current = onChainReviewerSafes;
+    }, [onChainReviewerSafes]);
+    useEffect(() => {
+        refetchOnChainReviewerSafesRef.current = refetchOnChainReviewerSafes;
+    }, [refetchOnChainReviewerSafes]);
 
     const buildCardsFromSafes = useCallback(
         async (safes: string[]): Promise<ReviewerCard[]> => {
@@ -146,15 +156,15 @@ function HomeContent() {
                 }),
             );
             if (reviewerCards.length === 0) {
-                await refetchOnChainReviewerSafes();
-                reviewerCards = await buildCardsFromSafes(onChainReviewerSafes);
+                await refetchOnChainReviewerSafesRef.current();
+                reviewerCards = await buildCardsFromSafes(reviewerSafesRef.current);
             }
 
             setReviewers(reviewerCards);
             setReviewerUpdatedAt(new Date().toLocaleTimeString("vi-VN"));
-        } catch (error) {
-            await refetchOnChainReviewerSafes();
-            const fallbackCards = await buildCardsFromSafes(onChainReviewerSafes);
+        } catch {
+            await refetchOnChainReviewerSafesRef.current();
+            const fallbackCards = await buildCardsFromSafes(reviewerSafesRef.current);
             setReviewers(fallbackCards);
             if (fallbackCards.length > 0) {
                 setReviewerError(
@@ -169,7 +179,7 @@ function HomeContent() {
             setIsLoadingReviewers(false);
             setIsRefreshingReviewers(false);
         }
-    }, [buildCardsFromSafes, onChainReviewerSafes, refetchOnChainReviewerSafes]);
+    }, [buildCardsFromSafes]);
 
     useEffect(() => {
         refreshReviewers();

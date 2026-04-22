@@ -5,6 +5,7 @@ interface WalletConnectedCardProps {
   isSepoliaNetwork: boolean;
   authRole: string | null;
   onDisconnect: () => void;
+  isDisconnecting?: boolean;
   onSwitchToSepolia?: () => void;
   isSwitchingNetwork?: boolean;
   displayName?: string | null;
@@ -30,6 +31,7 @@ export default function WalletConnectedCard({
   isSepoliaNetwork,
   authRole,
   onDisconnect,
+  isDisconnecting,
   onSwitchToSepolia,
   isSwitchingNetwork,
   displayName,
@@ -84,9 +86,10 @@ export default function WalletConnectedCard({
 
       <button
         onClick={onDisconnect}
+        disabled={Boolean(isDisconnecting)}
         className="rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700 transition"
       >
-        Ngắt
+        {isDisconnecting ? 'Đang ngắt...' : 'Ngắt'}
       </button>
     </div>
   );

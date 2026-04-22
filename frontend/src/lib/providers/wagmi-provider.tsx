@@ -6,7 +6,16 @@ import { ReactNode } from 'react';
 import { WalletTxOverlayProvider } from '@/context/wallet-tx-overlay';
 import { config } from '../contracts/wagmi';
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+      staleTime: 30_000,
+    },
+  },
+});
 
 export function WagmiProviderWrapper({ children }: { children: ReactNode }) {
   return (

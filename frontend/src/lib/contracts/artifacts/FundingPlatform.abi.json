@@ -32,6 +32,19 @@
   },
   {
     "type": "function",
+    "name": "adminApprove",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "approve",
     "inputs": [
       {
@@ -401,9 +414,9 @@
             "internalType": "uint256"
           },
           {
-            "name": "proofCids",
-            "type": "string[]",
-            "internalType": "string[]"
+            "name": "proofIpfsCid",
+            "type": "string",
+            "internalType": "string"
           },
           {
             "name": "proofSubmissionCount",
@@ -615,9 +628,9 @@
             "internalType": "uint256"
           },
           {
-            "name": "proofCids",
-            "type": "string[]",
-            "internalType": "string[]"
+            "name": "proofIpfsCid",
+            "type": "string",
+            "internalType": "string"
           },
           {
             "name": "proofSubmissionCount",
@@ -789,9 +802,9 @@
         "internalType": "uint256"
       },
       {
-        "name": "proofCids",
-        "type": "string[]",
-        "internalType": "string[]"
+        "name": "proofIpfsCid",
+        "type": "string",
+        "internalType": "string"
       },
       {
         "name": "proofSubmissionCount",
@@ -1194,6 +1207,25 @@
   },
   {
     "type": "event",
+    "name": "CampaignApproved",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "approvedBy",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "CampaignCreated",
     "inputs": [
       {
@@ -1492,6 +1524,31 @@
         "type": "address",
         "indexed": false,
         "internalType": "address"
+      },
+      {
+        "name": "submissionCount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "MilestoneUnlocked",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "milestoneId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
       }
     ],
     "anonymous": false

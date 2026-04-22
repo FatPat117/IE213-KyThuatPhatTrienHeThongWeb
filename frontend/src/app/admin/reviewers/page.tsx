@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 import { useAuth } from "@/lib";
 import {
@@ -14,12 +14,16 @@ import {
 import { useWaitForTransactionReceipt } from "wagmi";
 import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 
+const SAFE_META_RETRY_AFTER_429_MS = 60_000;
+
 export default function AdminReviewersPage() {
     const { token, user } = useAuth();
     const { address } = useAccount();
     const { owner } = useReadContractOwner();
     const [newSafe, setNewSafe] = useState("");
     const [txHash, setTxHash] = useState<`0x${string}` | undefined>(undefined);
+    const [actionError, setActionError] = useState<string | null>(null);
+    const [isMounted, setIsMounted] = useState(false);
     const { reviewerSafes, refetch } = useReadReviewerSafes();
     const { campaigns } = useReadAllCampaigns();
     const { reviewersByCampaignId } = useReadCampaignReviewersBatch(campaigns.length);
@@ -30,6 +34,10 @@ export default function AdminReviewersPage() {
     const [safeMetaByAddress, setSafeMetaByAddress] = useState<
         Record<string, { threshold: number | null; ownerCount: number | null }>
     >({});
+    const safeMetaCacheRef = useRef<
+        Record<string, { threshold: number | null; ownerCount: number | null }>
+    >({});
+    const safeMetaRetryAfterRef = useRef<Record<string, number>>({});
     const normalizedReviewerSafes = useMemo(
         () =>
             Array.from(
@@ -61,43 +69,68 @@ export default function AdminReviewersPage() {
     const isAdminByRole = (user?.role || "").toLowerCase() === "admin";
     const isAdminByConfig = Boolean(normalizedWallet) && adminWallets.includes(normalizedWallet);
     const isAdmin = Boolean(token && (isAdminByOwner || isAdminByRole || isAdminByConfig));
+    const isContractOwner = Boolean(normalizedWallet) && normalizedWallet === owner;
+
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
 
     useEffect(() => {
         let cancelled = false;
         const loadSafeMeta = async () => {
-            const entries = await Promise.all(
-                normalizedReviewerSafes.map(async (normalized) => {
-                    try {
-                        const res = await fetch(
-                            `https://safe-transaction-sepolia.safe.global/api/v1/safes/${normalized}/`,
-                            { cache: "no-store" },
-                        );
-                        if (!res.ok) {
-                            return [normalized, { threshold: null, ownerCount: null }] as const;
-                        }
-                        const payload = (await res.json()) as {
-                            threshold?: number;
-                            owners?: string[];
-                        };
-                        return [
-                            normalized,
-                            {
-                                threshold:
-                                    typeof payload.threshold === "number"
-                                        ? payload.threshold
-                                        : null,
-                                ownerCount: Array.isArray(payload.owners)
-                                    ? payload.owners.length
-                                    : null,
-                            },
-                        ] as const;
-                    } catch {
-                        return [normalized, { threshold: null, ownerCount: null }] as const;
-                    }
-                }),
+            const now = Date.now();
+            const pending = normalizedReviewerSafes.filter(
+                (safe) =>
+                    safeMetaCacheRef.current[safe] === undefined &&
+                    (safeMetaRetryAfterRef.current[safe] ?? 0) <= now,
             );
+            if (pending.length === 0) return;
+            const entries: Array<
+                readonly [string, { threshold: number | null; ownerCount: number | null }]
+            > = [];
+            for (const normalized of pending) {
+                try {
+                    const res = await fetch(
+                        `https://safe-transaction-sepolia.safe.global/api/v1/safes/${normalized}/`,
+                        { cache: "no-store" },
+                    );
+                    if (res.status === 429) {
+                        safeMetaRetryAfterRef.current[normalized] =
+                            Date.now() + SAFE_META_RETRY_AFTER_429_MS;
+                        continue;
+                    }
+                    if (!res.ok) {
+                        entries.push([normalized, { threshold: null, ownerCount: null }]);
+                        continue;
+                    }
+                    const payload = (await res.json()) as {
+                        threshold?: number;
+                        owners?: string[];
+                    };
+                    entries.push([
+                        normalized,
+                        {
+                            threshold:
+                                typeof payload.threshold === "number"
+                                    ? payload.threshold
+                                    : null,
+                            ownerCount: Array.isArray(payload.owners)
+                                ? payload.owners.length
+                                : null,
+                        },
+                    ]);
+                } catch {
+                    entries.push([normalized, { threshold: null, ownerCount: null }]);
+                }
+            }
             if (cancelled) return;
-            setSafeMetaByAddress(Object.fromEntries(entries));
+            if (entries.length === 0) return;
+            const nextCache = {
+                ...safeMetaCacheRef.current,
+                ...Object.fromEntries(entries),
+            };
+            safeMetaCacheRef.current = nextCache;
+            setSafeMetaByAddress(nextCache);
         };
         if (!reviewerSafesKey) return;
         loadSafeMeta();
@@ -110,6 +143,16 @@ export default function AdminReviewersPage() {
         if (isConfirming || !txHash) return;
         refetch();
     }, [isConfirming, refetch, txHash]);
+
+    if (!isMounted) {
+        return (
+            <div className="min-h-screen bg-slate-50 px-6 py-10">
+                <main className="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
+                    Đang tải quyền truy cập...
+                </main>
+            </div>
+        );
+    }
 
     if (!isAdmin) {
         return (
@@ -125,6 +168,16 @@ export default function AdminReviewersPage() {
         <div className="min-h-screen bg-slate-50 px-6 py-10">
             <main className="mx-auto max-w-6xl rounded-2xl border border-slate-200 bg-white p-6">
                 <h1 className="text-2xl font-bold text-slate-900">Quản lý Reviewer Safe</h1>
+                {!isContractOwner && (
+                    <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                        Ví hiện tại có thể vào trang admin nhưng không phải owner on-chain, nên không thể thêm/xóa reviewer Safe.
+                    </p>
+                )}
+                {actionError && (
+                    <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                        {actionError}
+                    </p>
+                )}
                 <div className="mt-4 flex gap-2">
                     <input
                         value={newSafe}
@@ -134,11 +187,25 @@ export default function AdminReviewersPage() {
                     />
                     <button
                         type="button"
-                        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white"
+                        disabled={!isContractOwner}
+                        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={async () => {
-                            const hash = await addReviewerSafe(newSafe.toLowerCase() as `0x${string}`);
-                            setTxHash(hash as `0x${string}`);
-                            setNewSafe("");
+                            try {
+                                setActionError(null);
+                                const normalized = newSafe.trim().toLowerCase();
+                                if (!/^0x[a-f0-9]{40}$/.test(normalized)) {
+                                    throw new Error("Địa chỉ Safe không hợp lệ.");
+                                }
+                                const hash = await addReviewerSafe(normalized as `0x${string}`);
+                                setTxHash(hash as `0x${string}`);
+                                setNewSafe("");
+                            } catch (error) {
+                                setActionError(
+                                    error instanceof Error
+                                        ? error.message
+                                        : "Không thể thêm reviewer safe.",
+                                );
+                            }
                         }}
                     >
                         Thêm reviewer
@@ -164,10 +231,20 @@ export default function AdminReviewersPage() {
                             </p>
                             <button
                                 type="button"
-                                className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700"
+                                disabled={!isContractOwner}
+                                className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
                                 onClick={async () => {
-                                    const hash = await removeReviewerSafe(safe as `0x${string}`);
-                                    setTxHash(hash as `0x${string}`);
+                                    try {
+                                        setActionError(null);
+                                        const hash = await removeReviewerSafe(safe as `0x${string}`);
+                                        setTxHash(hash as `0x${string}`);
+                                    } catch (error) {
+                                        setActionError(
+                                            error instanceof Error
+                                                ? error.message
+                                                : "Không thể xóa reviewer safe.",
+                                        );
+                                    }
                                 }}
                             >
                                 Xóa

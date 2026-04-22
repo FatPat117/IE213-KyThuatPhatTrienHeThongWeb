@@ -252,33 +252,21 @@ export default function CreateCampaignPage() {
         const run = async () => {
             setIsMetadataSyncing(true);
             setMetadataSyncError(null);
-            // Wait for backend to index the campaign event, then patch metadata.
-            // This avoids the frequent 202 "not yet indexed" response.
-            let indexed = false;
-            for (let attempt = 0; attempt < 12; attempt += 1) {
-                if (cancelled) return;
+            // Wait until backend has indexed this campaign before patching metadata.
+            // Do not hard-timeout here because indexing lag can fluctuate a lot.
+            let retryDelayMs = 2000;
+            while (!cancelled) {
                 try {
-                    const status =
-                        await getCampaignIndexStatus(createdCampaignId);
-                    if (status.indexed) {
-                        indexed = true;
-                        break;
-                    }
+                    const status = await getCampaignIndexStatus(createdCampaignId);
+                    if (status.indexed) break;
                 } catch {
-                    // ignore and retry
+                    // Ignore transient status failures and retry.
                 }
-                await sleep(2500);
+                await sleep(retryDelayMs);
+                retryDelayMs = Math.min(retryDelayMs + 1000, 10000);
             }
 
             if (cancelled) return;
-            if (!indexed) {
-                const errorMessage =
-                    "Campaign đã lên chain nhưng backend chưa index kịp để cập nhật metadata. Vui lòng thử lại sau.";
-                setMetadataSyncError(errorMessage);
-                setIsMetadataSyncing(false);
-                showErrorToast(errorMessage);
-                return;
-            }
 
             try {
                 const normalizedTitle = formData.title.trim();
@@ -307,10 +295,17 @@ export default function CreateCampaignPage() {
                     error instanceof Error
                         ? error.message
                         : "Không thể cập nhật metadata campaign sau khi tạo.";
+                const normalizedMessage = message.toLowerCase();
                 if (!cancelled) {
                     setMetadataSyncError(message);
                     setIsMetadataSyncing(false);
-                    showErrorToast(message);
+                    if (
+                        !normalizedMessage.includes(
+                            "only campaign creator can update metadata",
+                        )
+                    ) {
+                        showErrorToast(message);
+                    }
                 }
             }
         };
@@ -331,7 +326,7 @@ export default function CreateCampaignPage() {
     ]);
 
     useEffect(() => {
-        if (transactionStatus !== "success" || !metadataSynced) return;
+        if (transactionStatus !== "success") return;
         showSuccessToast(
             "Tạo chiến dịch thành công! Đang chuyển tới trang chi tiết...",
         );
@@ -691,7 +686,7 @@ export default function CreateCampaignPage() {
                     )}
                     {isMetadataSyncing && (
                         <p className="mt-4 text-sm text-slate-600">
-                            Dang dong bo metadata campaign voi backend...
+                            Backend đang index campaign và đồng bộ metadata...
                         </p>
                     )}
                     {metadataSyncError && (

@@ -15,6 +15,13 @@ import { formatEther } from "viem";
 import { useAccount, useChainId } from "wagmi";
 
 const SEPOLIA_CHAIN_ID = 11155111;
+const TERMINAL_STATUSES = new Set([
+    "completed",
+    "partial_failed",
+    "failed",
+    "cancelled",
+]);
+
 function formatEthAmount(value: number) {
     if (!Number.isFinite(value) || value <= 0) return '0';
     if (value < 0.01) return value.toFixed(4).replace(/\.?0+$/, '');
@@ -72,7 +79,10 @@ function CampaignsPageContent() {
                     creator: campaign.creator,
                     goal: BigInt(campaign.goal || "0"),
                     raised: BigInt(campaign.raised || "0"),
-                    completed: campaign.status !== "active",
+                    status: campaign.status,
+                    completed: TERMINAL_STATUSES.has(
+                        (campaign.status || "").toLowerCase(),
+                    ),
                 };
             }),
         [campaigns]
@@ -88,6 +98,7 @@ function CampaignsPageContent() {
                 creator: string;
                 goal: bigint;
                 raised: bigint;
+                status?: string;
                 completed: boolean;
             }
         >();
@@ -105,6 +116,7 @@ function CampaignsPageContent() {
                     creator: campaign.creator || existing.creator,
                     goal: campaign.goal,
                     raised: campaign.raised,
+                    status: campaign.statusLabel,
                     completed: campaign.completed,
                 });
             } else {
@@ -116,6 +128,7 @@ function CampaignsPageContent() {
                     creator: campaign.creator,
                     goal: campaign.goal,
                     raised: campaign.raised,
+                    status: campaign.statusLabel,
                     completed: campaign.completed,
                 });
             }
@@ -393,7 +406,10 @@ function CampaignsPageContent() {
                             const goalEth = Number(formatEther(campaign.goal));
                             const raisedEth = Number(formatEther(campaign.raised));
                             const progress = goalEth > 0 ? Math.min((raisedEth / goalEth) * 100, 100) : 0;
-                            const isActive = !campaign.completed;
+                            const normalizedStatus = (campaign.status || "").toLowerCase();
+                            const isPendingApproval = normalizedStatus === "pending_approval";
+                            const isInProgress = normalizedStatus === "in_progress";
+                            const isActive = !campaign.completed && !isPendingApproval;
                             const statusClasses = isActive
                                 ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                                 : "bg-slate-100 text-slate-700 border-slate-200";
@@ -428,7 +444,13 @@ function CampaignsPageContent() {
                                             <span
                                                 className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold ${statusClasses}`}
                                             >
-                                                {isActive ? "● Đang hoạt động" : "Đã kết thúc"}
+                                                {isPendingApproval
+                                                    ? "⏳ Chờ duyệt"
+                                                    : isInProgress
+                                                      ? "🔵 Đang triển khai"
+                                                      : isActive
+                                                        ? "● Đang hoạt động"
+                                                        : "Đã kết thúc"}
                                             </span>
                                         </div>
                                     </div>
