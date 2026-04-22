@@ -107,8 +107,9 @@ function HomeContent() {
             );
             const cards = await Promise.all(
                 normalized.map(async (safe) => {
-                    let profile: Awaited<ReturnType<typeof getUserProfile>> | null =
-                        null;
+                    let profile: Awaited<
+                        ReturnType<typeof getUserProfile>
+                    > | null = null;
                     try {
                         profile = await getUserProfile(safe);
                     } catch {
@@ -116,7 +117,9 @@ function HomeContent() {
                     }
                     return {
                         id: safe,
-                        name: profile?.displayName?.trim() || shortenAddress(safe),
+                        name:
+                            profile?.displayName?.trim() ||
+                            shortenAddress(safe),
                         role: "Kiểm duyệt viên đa chữ ký",
                         org: "Ví kiểm duyệt trong danh sách on-chain",
                         image: profile?.avatarUrl?.trim() || "",
@@ -149,40 +152,46 @@ function HomeContent() {
                             : true,
                     )
                     .map(async (aggregate) => {
-                    let profile: Awaited<
-                        ReturnType<typeof getUserProfile>
-                    > | null = null;
-                    try {
-                        profile = await getUserProfile(aggregate.reviewerSafe);
-                    } catch {
-                        profile = null;
-                    }
+                        let profile: Awaited<
+                            ReturnType<typeof getUserProfile>
+                        > | null = null;
+                        try {
+                            profile = await getUserProfile(
+                                aggregate.reviewerSafe,
+                            );
+                        } catch {
+                            profile = null;
+                        }
 
-                    return {
-                        id: aggregate.reviewerSafe,
-                        name:
-                            profile?.displayName?.trim() ||
-                            shortenAddress(aggregate.reviewerSafe),
-                        role: "Kiểm duyệt viên đa chữ ký",
-                        org: `${aggregate.campaignCount} chiến dịch đang dùng ví kiểm duyệt này`,
-                        image: profile?.avatarUrl?.trim() || "",
-                        board: "Hội đồng kiểm duyệt on-chain",
-                        safeAddress: aggregate.reviewerSafe,
-                        campaignCount: aggregate.campaignCount,
-                        totalDisbursedEth: weiToEthText(
-                            aggregate.totalDisbursedWei,
-                        ),
-                    } as ReviewerCard;
-                }),
+                        return {
+                            id: aggregate.reviewerSafe,
+                            name:
+                                profile?.displayName?.trim() ||
+                                shortenAddress(aggregate.reviewerSafe),
+                            role: "Kiểm duyệt viên đa chữ ký",
+                            org: `${aggregate.campaignCount} chiến dịch đang dùng ví kiểm duyệt này`,
+                            image: profile?.avatarUrl?.trim() || "",
+                            board: "Hội đồng kiểm duyệt on-chain",
+                            safeAddress: aggregate.reviewerSafe,
+                            campaignCount: aggregate.campaignCount,
+                            totalDisbursedEth: weiToEthText(
+                                aggregate.totalDisbursedWei,
+                            ),
+                        } as ReviewerCard;
+                    }),
             );
             if (reviewerCards.length === 0) {
-                reviewerCards = await buildCardsFromSafes(reviewerSafesRef.current);
+                reviewerCards = await buildCardsFromSafes(
+                    reviewerSafesRef.current,
+                );
             }
 
             setReviewers(reviewerCards);
             setReviewerUpdatedAt(new Date().toLocaleTimeString("vi-VN"));
         } catch {
-            const fallbackCards = await buildCardsFromSafes(reviewerSafesRef.current);
+            const fallbackCards = await buildCardsFromSafes(
+                reviewerSafesRef.current,
+            );
             setReviewers(fallbackCards);
             if (fallbackCards.length > 0) {
                 setReviewerError(
@@ -419,8 +428,8 @@ function HomeContent() {
 
                     {!isLoadingReviewers && reviewers.length === 0 && (
                         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-sm text-amber-700">
-                            Hiện chưa có reviewer safe khả dụng để hiển thị.
-                            Vui lòng thử làm mới sau.
+                            Hiện chưa có reviewer safe khả dụng để hiển thị. Vui
+                            lòng thử làm mới sau.
                         </div>
                     )}
 

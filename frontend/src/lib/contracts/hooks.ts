@@ -9,10 +9,7 @@ import {
     useReadContracts,
     useWriteContract,
 } from "wagmi";
-import {
-    CROWDFUNDING_CONTRACT_ADDRESS,
-    contractConfig,
-} from "./config";
+import { CROWDFUNDING_CONTRACT_ADDRESS, contractConfig } from "./config";
 
 type CampaignTuple = {
     id: bigint;
@@ -226,9 +223,7 @@ export function useReadCampaign(campaignId: number | null | undefined) {
     const hasValidInput =
         campaignId !== null && campaignId !== undefined && campaignId > 0;
     const isOutOfRange =
-        hasValidInput &&
-        !countQuery.isLoading &&
-        campaignId > countQuery.count;
+        hasValidInput && !countQuery.isLoading && campaignId > countQuery.count;
     const enabled = hasValidInput && !isOutOfRange;
     const campaignIdArg = enabled ? BigInt(campaignId) : undefined;
 
@@ -762,7 +757,10 @@ export function useAddReviewerSafe() {
             );
         }
 
-        const reviewerState = await readReviewerSafeExists(publicClient, normalizedSafe);
+        const reviewerState = await readReviewerSafeExists(
+            publicClient,
+            normalizedSafe,
+        );
         if (reviewerState === true) {
             throw new Error("Reviewer safe này đã tồn tại trong danh sách.");
         }
@@ -801,7 +799,9 @@ export function useAddReviewerSafe() {
                 );
             }
             if (normalizedMessage.includes("reviewer already approved")) {
-                throw new Error("Reviewer safe này đã tồn tại trong danh sách.");
+                throw new Error(
+                    "Reviewer safe này đã tồn tại trong danh sách.",
+                );
             }
             throw error;
         }
@@ -847,7 +847,10 @@ export function useRemoveReviewerSafe() {
             );
         }
 
-        const reviewerState = await readReviewerSafeExists(publicClient, normalizedSafe);
+        const reviewerState = await readReviewerSafeExists(
+            publicClient,
+            normalizedSafe,
+        );
         if (reviewerState === false) {
             throw new Error("Reviewer safe này chưa có trong danh sách.");
         }
@@ -979,7 +982,11 @@ export function useSubmitMilestoneProof() {
             throw new Error("Không tìm thấy địa chỉ ví để gửi giao dịch.");
         }
 
-        const args = [BigInt(campaignId), BigInt(milestoneId), ipfsCid] as const;
+        const args = [
+            BigInt(campaignId),
+            BigInt(milestoneId),
+            ipfsCid,
+        ] as const;
         try {
             await publicClient.simulateContract({
                 ...contractConfig,

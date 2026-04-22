@@ -23,7 +23,9 @@ export default function ReviewerSafePage() {
                 <p className="mt-1 text-sm text-slate-600">
                     Danh sách whitelist được đọc trực tiếp từ smart contract.
                 </p>
-                {isLoading && <p className="mt-4 text-sm text-slate-600">Đang tải...</p>}
+                {isLoading && (
+                    <p className="mt-4 text-sm text-slate-600">Đang tải...</p>
+                )}
                 {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
                     {items.map((safe) => (
