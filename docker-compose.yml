@@ -256,26 +256,6 @@ services:
                 condition: service_started
         restart: unless-stopped
 
-    # ─────────────────────────────────────────────────────────
-    # Frontend
-    # ─────────────────────────────────────────────────────────
-    frontend:
-        build: ./frontend
-        ports:
-            - "${FRONTEND_PORT}:${FRONTEND_PORT}"
-        environment:
-            - NODE_ENV=${NODE_ENV}
-            - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-            - NEXT_PUBLIC_SEPOLIA_RPC_URL=${NEXT_PUBLIC_SEPOLIA_RPC_URL}
-            - NEXT_PUBLIC_CROWDFUNDING_CONTRACT_ADDRESS=${NEXT_PUBLIC_CROWDFUNDING_CONTRACT_ADDRESS}
-        volumes:
-            - ./frontend:/app
-            - /app/node_modules
-            - /app/.next
-        depends_on:
-            - gateway
-        restart: unless-stopped
-
 volumes:
     mongo_data:
     rabbitmq_data:

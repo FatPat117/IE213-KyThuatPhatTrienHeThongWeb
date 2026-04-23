@@ -14,6 +14,7 @@ import {
 } from "@/lib/contracts/hooks";
 import { useWaitForTransactionReceipt } from "wagmi";
 import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
+import toast from "react-hot-toast";
 
 const SAFE_META_RETRY_AFTER_429_MS = 60_000;
 
@@ -23,6 +24,10 @@ export default function AdminReviewersPage() {
     const { owner } = useReadContractOwner();
     const [newSafe, setNewSafe] = useState("");
     const [txHash, setTxHash] = useState<`0x${string}` | undefined>(undefined);
+    const [pendingAction, setPendingAction] = useState<{
+        type: "add" | "remove";
+        safe: string;
+    } | null>(null);
     const [actionError, setActionError] = useState<string | null>(null);
     const [isMounted, setIsMounted] = useState(false);
     const { reviewerSafes, refetch } = useReadReviewerSafesOnChain();
@@ -32,7 +37,12 @@ export default function AdminReviewersPage() {
     );
     const { addReviewerSafe } = useAddReviewerSafe();
     const { removeReviewerSafe } = useRemoveReviewerSafe();
-    const { isLoading: isConfirming } = useWaitForTransactionReceipt({
+    const {
+        isLoading: isConfirming,
+        isSuccess: isTxSuccess,
+        isError: isTxError,
+        error: txError,
+    } = useWaitForTransactionReceipt({
         hash: txHash,
     });
     useRegisterWalletTxOverlay(isConfirming);
@@ -83,6 +93,11 @@ export default function AdminReviewersPage() {
     );
     const isContractOwner =
         Boolean(normalizedWallet) && normalizedWallet === owner;
+    const shouldShowOwnerMismatchWarning =
+        isMounted &&
+        Boolean(normalizedWallet) &&
+        Boolean(owner) &&
+        normalizedWallet !== owner;
 
     useEffect(() => {
         setIsMounted(true);
@@ -192,9 +207,43 @@ export default function AdminReviewersPage() {
     }, [normalizedReviewerSafes, reviewerSafesKey]);
 
     useEffect(() => {
-        if (isConfirming || !txHash) return;
-        refetch();
-    }, [isConfirming, refetch, txHash]);
+        if (!txHash || !pendingAction) return;
+        if (isConfirming) return;
+
+        if (isTxSuccess) {
+            refetch();
+            if (pendingAction.type === "add") {
+                toast.success(
+                    `Thêm reviewer thành công: ${pendingAction.safe.slice(0, 8)}...${pendingAction.safe.slice(-4)}`,
+                );
+            } else {
+                toast.success(
+                    `Xóa reviewer thành công: ${pendingAction.safe.slice(0, 8)}...${pendingAction.safe.slice(-4)}`,
+                );
+            }
+            setPendingAction(null);
+            setTxHash(undefined);
+            return;
+        }
+
+        if (isTxError) {
+            setActionError(
+                txError instanceof Error
+                    ? txError.message
+                    : "Giao dịch thất bại hoặc bị từ chối.",
+            );
+            setPendingAction(null);
+            setTxHash(undefined);
+        }
+    }, [
+        isConfirming,
+        isTxError,
+        isTxSuccess,
+        pendingAction,
+        refetch,
+        txError,
+        txHash,
+    ]);
 
     if (!isMounted) {
         return (
@@ -223,7 +272,7 @@ export default function AdminReviewersPage() {
                 <h1 className="text-2xl font-bold text-slate-900">
                     Quản lý Reviewer Safe
                 </h1>
-                {!isContractOwner && (
+                {shouldShowOwnerMismatchWarning && (
                     <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                         Ví hiện tại có thể vào trang admin nhưng không phải
                         owner on-chain, nên không thể thêm/xóa reviewer Safe.
@@ -258,6 +307,10 @@ export default function AdminReviewersPage() {
                                     normalized as `0x${string}`,
                                 );
                                 setTxHash(hash as `0x${string}`);
+                                setPendingAction({
+                                    type: "add",
+                                    safe: normalized,
+                                });
                                 setNewSafe("");
                             } catch (error) {
                                 setActionError(
@@ -314,6 +367,10 @@ export default function AdminReviewersPage() {
                                             safe as `0x${string}`,
                                         );
                                         setTxHash(hash as `0x${string}`);
+                                        setPendingAction({
+                                            type: "remove",
+                                            safe,
+                                        });
                                     } catch (error) {
                                         setActionError(
                                             error instanceof Error

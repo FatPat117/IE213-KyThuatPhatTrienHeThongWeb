@@ -92,6 +92,7 @@ export default function MilestoneEvidenceUploadPage() {
         Boolean(campaign?.creator) &&
         campaign.creator.toLowerCase() === address.toLowerCase();
     const canUpload = Boolean(token && isConnected && isCreator);
+    const isCampaignInProgress = Boolean(campaign?.isInProgress);
 
     useEffect(() => {
         const loadHistory = async () => {
@@ -183,6 +184,11 @@ export default function MilestoneEvidenceUploadPage() {
     const handleSubmitOnChain = async () => {
         if (!Number.isFinite(campaignId)) return setErrorMessage("Campaign ID không hợp lệ.");
         if (!uploadedCid) return setErrorMessage("Bạn cần upload để lấy CID trước.");
+        if (!isCampaignInProgress) {
+            return setErrorMessage(
+                "Chiến dịch chưa ở trạng thái In Progress nên chưa thể submit minh chứng on-chain.",
+            );
+        }
         setErrorMessage(null);
         setResultMessage(null);
         try {
@@ -317,7 +323,12 @@ export default function MilestoneEvidenceUploadPage() {
                         </button>
                         <button
                             type="button"
-                            disabled={!uploadedCid || isSubmittingOnChain || isConfirmingOnChain}
+                            disabled={
+                                !uploadedCid ||
+                                !isCampaignInProgress ||
+                                isSubmittingOnChain ||
+                                isConfirmingOnChain
+                            }
                             onClick={handleSubmitOnChain}
                             className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
                         >
@@ -336,6 +347,11 @@ export default function MilestoneEvidenceUploadPage() {
                             </button>
                         )}
                     </div>
+                    {!isCampaignInProgress && (
+                        <p className="text-sm text-amber-700">
+                            Milestone chỉ được submit khi chiến dịch ở trạng thái In Progress.
+                        </p>
+                    )}
 
                     {uploadedCid ? (
                         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">

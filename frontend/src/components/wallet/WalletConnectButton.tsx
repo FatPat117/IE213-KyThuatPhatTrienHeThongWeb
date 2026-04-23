@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useSyncExternalStore } from 'react';
 import { useAccount, useChainId, useConnect, useDisconnect, useSignMessage, useSwitchChain } from 'wagmi';
-import { injected } from '@wagmi/core';
 import WalletConnectedCard from './WalletConnectedCard';
 import WalletDisconnectedCard from './WalletDisconnectedCard';
 import { requestNonce, useAuth, verifyWalletSignature } from '@/lib';
@@ -18,7 +17,7 @@ const isIgnorableConnectorError = (message: string) => {
 export default function WalletConnectButton() {
   const isHydrated = useSyncExternalStore(EMPTY_SUBSCRIBE, () => true, () => false);
   const { address, isConnected } = useAccount();
-  const { connect, isPending } = useConnect();
+  const { connect, connectors, isPending } = useConnect();
   const { disconnect } = useDisconnect();
   const { signMessageAsync } = useSignMessage();
   const { switchChain, isPending: isSwitchingNetwork } = useSwitchChain();
@@ -114,7 +113,12 @@ export default function WalletConnectButton() {
           return;
         }
       }
-      await connect({ connector: injected() });
+      const injectedConnector = connectors.find((connector) => connector.id === 'injected') ?? connectors[0];
+      if (!injectedConnector) {
+        setErrorMessage('Không tìm thấy connector ví khả dụng. Vui lòng tải lại trang.');
+        return;
+      }
+      await connect({ connector: injectedConnector });
     } catch (error) {
       console.error('Failed to connect wallet:', error);
       const rawMessage = error instanceof Error ? error.message : '';

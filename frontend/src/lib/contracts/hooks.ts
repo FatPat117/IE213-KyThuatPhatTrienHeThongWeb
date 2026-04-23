@@ -761,6 +761,11 @@ export function useAddReviewerSafe() {
             publicClient,
             normalizedSafe,
         );
+        if (reviewerState === null) {
+            throw new Error(
+                "Contract hiện tại không đọc được reviewer registry (getReviewerSafes/reviewerSafes đều revert). Có thể bạn đang trỏ sai address hoặc contract này là phiên bản cũ chưa có tính năng reviewer safe.",
+            );
+        }
         if (reviewerState === true) {
             throw new Error("Reviewer safe này đã tồn tại trong danh sách.");
         }
@@ -777,6 +782,15 @@ export function useAddReviewerSafe() {
         } catch (error) {
             const message = error instanceof Error ? error.message : "";
             const normalizedMessage = message.toLowerCase();
+            const rawRevertData =
+                typeof error === "object" &&
+                error !== null &&
+                "cause" in error &&
+                typeof (error as { cause?: unknown }).cause === "object" &&
+                (error as { cause?: unknown }).cause !== null &&
+                "raw" in ((error as { cause?: { raw?: unknown } }).cause || {})
+                    ? (error as { cause?: { raw?: string } }).cause?.raw
+                    : undefined;
             const owner = (await publicClient
                 .readContract({
                     address: CROWDFUNDING_CONTRACT_ADDRESS,
@@ -789,6 +803,11 @@ export function useAddReviewerSafe() {
                 normalizedMessage.includes("caller is not the owner") ||
                 normalizedMessage.includes("execution reverted")
             ) {
+                if (rawRevertData === "0x") {
+                    throw new Error(
+                        "Contract đang revert không kèm reason (raw 0x). Khả năng cao ABI/address hiện tại không khớp phiên bản contract đã deploy, hoặc hàm addReviewerSafe không tồn tại ở địa chỉ này.",
+                    );
+                }
                 if (owner && owner.toLowerCase() !== address.toLowerCase()) {
                     throw new Error(
                         `Contract từ chối giao dịch: chỉ owner mới được thêm reviewer. Ví gửi: ${address}. Owner: ${owner}.`,
@@ -851,6 +870,11 @@ export function useRemoveReviewerSafe() {
             publicClient,
             normalizedSafe,
         );
+        if (reviewerState === null) {
+            throw new Error(
+                "Contract hiện tại không đọc được reviewer registry (getReviewerSafes/reviewerSafes đều revert). Có thể bạn đang trỏ sai address hoặc contract này là phiên bản cũ chưa có tính năng reviewer safe.",
+            );
+        }
         if (reviewerState === false) {
             throw new Error("Reviewer safe này chưa có trong danh sách.");
         }
@@ -999,13 +1023,28 @@ export function useSubmitMilestoneProof() {
                 simulationError instanceof Error
                     ? simulationError.message.toLowerCase()
                     : "";
+            const rawMessage =
+                simulationError instanceof Error
+                    ? simulationError.message
+                    : "Không thể mô phỏng giao dịch submit minh chứng.";
             // Some RPCs return generic "gas limit too high" during estimation/simulation.
             // Continue and let the wallet send with a known-safe gas limit.
-            if (
-                !message.includes("gas limit too high") &&
-                !message.includes("execution reverted")
+            if (message.includes("gas limit too high")) {
+                // Continue using default gas fallback below.
+            } else if (
+                message.includes("campaign not in progress") ||
+                message.includes("not in progress")
             ) {
-                throw simulationError;
+                throw new Error(
+                    "Chiến dịch chưa ở trạng thái In Progress nên chưa thể nộp minh chứng milestone on-chain.",
+                );
+            } else if (message.includes("execution reverted")) {
+                throw new Error(
+                    "Contract từ chối submit minh chứng. Vui lòng kiểm tra trạng thái chiến dịch/milestone trước khi gửi.",
+                );
+            }
+            else {
+                throw new Error(rawMessage);
             }
         }
 

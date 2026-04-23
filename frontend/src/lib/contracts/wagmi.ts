@@ -1,6 +1,7 @@
 import { fallback, http } from 'viem';
 import { createConfig } from 'wagmi';
 import { sepolia } from 'wagmi/chains';
+import { injected } from 'wagmi/connectors';
 
 const sepoliaRpcUrl = process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL;
 const defaultSepoliaRpcUrl = sepolia.rpcUrls.default.http[0];
@@ -20,6 +21,7 @@ const rpcCandidates = Array.from(
 
 export const config = createConfig({
     chains: [sepolia],
+    connectors: [injected()],
     transports: {
         [sepolia.id]: fallback(
             rpcCandidates.map((url) =>

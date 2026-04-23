@@ -160,17 +160,12 @@ const uploadProgressEvidence = async (req, res) => {
             campaignOnChainId: parseInt(campaignOnChainId, 10),
             milestoneId: milestone._id,
             milestoneIndex: parseInt(milestoneIndex, 10),
-            creatorAddress,
-            title: safeTitle,
-            description: (description || "").trim(),
-            contentHash: cid,
-            ipfsUrl,
-            pinataUrl: pinataUrl || `${pinataGatewayUrl}/ipfs/${cid}`,
-            evidenceType,
-            filename: originalName,
-            fileSize: file.size || 0,
+            creatorWallet: creatorAddress.toLowerCase(),
+            cid,
+            gatewayUrl: pinataUrl || ipfsUrl || `${pinataGatewayUrl}/ipfs/${cid}`,
+            mimeType: file.mimetype || "application/octet-stream",
+            fileName: originalName,
             submittedAt: new Date(),
-            status: "submitted",
         });
 
         await progressReport.save();

@@ -20,6 +20,7 @@ export {
     useMintCertificate,
     useReadAllCampaigns,
     useReadCampaign,
+    useReadCampaignReviewersBatch,
     useReadCampaignCount,
     useReadContractOwner,
     useReadFilteredCampaigns,
