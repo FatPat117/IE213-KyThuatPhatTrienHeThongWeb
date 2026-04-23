@@ -65,7 +65,8 @@ export default function CampaignMilestonesPage() {
             // Keep page usable even when campaign-service indexing lags behind on-chain data.
             if (
                 message.toLowerCase().includes("campaign not found") ||
-                message.toLowerCase().includes("not yet indexed")
+                message.toLowerCase().includes("not yet indexed") ||
+                message.toLowerCase().includes("chưa được index")
             ) {
                 setMilestones([]);
                 setMilestonesWarning(
@@ -84,6 +85,22 @@ export default function CampaignMilestonesPage() {
         loadMilestones();
     }, [loadMilestones]);
 
+    useEffect(() => {
+        if (!Number.isFinite(id)) return;
+        if (!milestonesWarning) return;
+
+        // Backend indexing can finish a few seconds after campaign creation.
+        // Auto-retry to replace fallback timeline with indexed milestones.
+        const retryTimer = window.setInterval(() => {
+            refetch();
+            loadMilestones();
+        }, 5000);
+
+        return () => {
+            window.clearInterval(retryTimer);
+        };
+    }, [id, loadMilestones, milestonesWarning, refetch]);
+
     const cachedMetadata = useMemo(
         () => (Number.isFinite(id) ? getCampaignMetadataFromCache(id) : null),
         [id],
@@ -97,6 +114,11 @@ export default function CampaignMilestonesPage() {
     const fallbackMilestones = useMemo<PublicCampaignMilestone[]>(() => {
         if (!campaign) return [];
 
+        const timelineStatusLabel =
+            campaign.statusLabel === "pending_approval"
+                ? "active"
+                : campaign.statusLabel;
+
         return buildTimelineMilestones({
             campaignId: campaign.id,
             campaignDeadline: campaign.deadline,
@@ -105,7 +127,7 @@ export default function CampaignMilestonesPage() {
             goalWei: campaign.goal,
             totalRaisedWei: campaign.raised,
             milestoneCount: campaign.milestoneCount,
-            campaignStatusLabel: campaign.statusLabel,
+            campaignStatusLabel: timelineStatusLabel,
             currentMilestoneId: campaign.currentMilestoneId,
         }).map((item, index) => {
             const mappedStatus: PublicCampaignMilestone["status"] =

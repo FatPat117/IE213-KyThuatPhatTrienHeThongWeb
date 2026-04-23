@@ -55,8 +55,9 @@ export default function Header() {
         },
     });
 
-    const isReviewer = isSignedIn && Boolean(isActiveReviewer);
     const roleFromAuth = (user?.role || "").toString().trim().toLowerCase();
+    const isReviewerByRole = roleFromAuth === "reviewer";
+    const isReviewer = isSignedIn && (Boolean(isActiveReviewer) || isReviewerByRole);
     const adminWallets = (process.env.NEXT_PUBLIC_ADMIN_WALLETS || "")
         .split(",")
         .map((item) => item.trim().toLowerCase())

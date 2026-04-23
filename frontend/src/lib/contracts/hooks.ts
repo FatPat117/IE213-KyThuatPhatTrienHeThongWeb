@@ -1084,13 +1084,56 @@ export function useApproveMilestone() {
 }
 
 export function useDisburseMilestone() {
+    const { address } = useAccount();
+    const publicClient = usePublicClient();
     const { writeContractAsync, data, isPending, error } = useWriteContract();
+    const DISBURSE_MILESTONE_DEFAULT_GAS = 350_000n;
 
-    const disburseMilestone = (campaignId: number, milestoneId: number) => {
+    const disburseMilestone = async (campaignId: number, milestoneId: number) => {
+        if (!publicClient) {
+            throw new Error("Không thể kết nối RPC để ước lượng gas.");
+        }
+        if (!address) {
+            throw new Error("Không tìm thấy địa chỉ ví để gửi giao dịch.");
+        }
+
+        const args = [BigInt(campaignId), BigInt(milestoneId)] as const;
+        try {
+            await publicClient.simulateContract({
+                ...contractConfig,
+                account: address,
+                functionName: "disburseMilestone",
+                args,
+            });
+        } catch (simulationError) {
+            const message =
+                simulationError instanceof Error
+                    ? simulationError.message.toLowerCase()
+                    : "";
+            const rawMessage =
+                simulationError instanceof Error
+                    ? simulationError.message
+                    : "Không thể mô phỏng giao dịch giải ngân milestone.";
+            if (message.includes("gas limit too high")) {
+                // Some RPCs fail estimate/simulation for valid txs; fallback gas is applied below.
+            } else if (message.includes("milestone not approved")) {
+                throw new Error("Milestone hiện tại chưa được reviewer duyệt.");
+            } else if (message.includes("only current milestone can be disbursed")) {
+                throw new Error("Chỉ có thể giải ngân milestone hiện tại.");
+            } else if (message.includes("execution reverted")) {
+                throw new Error(
+                    "Contract từ chối giải ngân milestone. Vui lòng kiểm tra trạng thái chiến dịch/milestone.",
+                );
+            } else {
+                throw new Error(rawMessage);
+            }
+        }
+
         return writeContractAsync({
             ...contractConfig,
             functionName: "disburseMilestone",
-            args: [BigInt(campaignId), BigInt(milestoneId)],
+            args,
+            gas: DISBURSE_MILESTONE_DEFAULT_GAS,
         });
     };
 

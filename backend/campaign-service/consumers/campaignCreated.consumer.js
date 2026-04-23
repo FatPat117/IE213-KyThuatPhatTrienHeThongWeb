@@ -44,6 +44,74 @@ const MILESTONE_READER_ABI = [
 
 let milestoneReader = null;
 
+function resolveAdminWalletsFromEnv() {
+    const combined = [
+        process.env.ADMIN_WALLETS || "",
+        process.env.INITIAL_ADMIN_WALLET || "",
+    ]
+        .join(",")
+        .split(/[,\s;]+/)
+        .map((item) => item.trim().toLowerCase())
+        .filter((item) => /^0x[a-f0-9]{40}$/.test(item));
+
+    return [...new Set(combined)];
+}
+
+function normalizeWallet(value) {
+    const wallet = (value || "").toString().trim().toLowerCase();
+    return /^0x[a-f0-9]{40}$/.test(wallet) ? wallet : "";
+}
+
+async function loadAdminWalletsFromUserService() {
+    const userServiceUrl =
+        process.env.USER_SERVICE_URL || "http://user-service:4001";
+    const requesterWallet = normalizeWallet(
+        process.env.INITIAL_ADMIN_WALLET ||
+            process.env.DEFAULT_ADMIN_WALLET ||
+            "",
+    );
+
+    if (!requesterWallet) {
+        return [];
+    }
+
+    try {
+        const response = await fetch(
+            `${userServiceUrl}/api/users/admin/list-admins`,
+            {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-user-role": "admin",
+                    "x-wallet-address": requesterWallet,
+                },
+            },
+        );
+
+        if (!response.ok) {
+            return [];
+        }
+
+        const payload = await response.json();
+        const admins = Array.isArray(payload?.data) ? payload.data : [];
+        return admins
+            .map((item) => normalizeWallet(item?.walletAddress || item?.wallet))
+            .filter(Boolean);
+    } catch {
+        return [];
+    }
+}
+
+async function resolveAdminWallets() {
+    const envWallets = resolveAdminWalletsFromEnv();
+    if (envWallets.length > 0) {
+        return envWallets;
+    }
+
+    const userServiceWallets = await loadAdminWalletsFromUserService();
+    return [...new Set(userServiceWallets)];
+}
+
 function getMilestoneReader() {
     if (milestoneReader) {
         return milestoneReader;
@@ -230,22 +298,26 @@ async function startCampaignCreatedConsumer() {
                 );
             }
 
-            const adminWallets = (process.env.ADMIN_WALLETS || "")
-                .split(",")
-                .map((item) => item.trim().toLowerCase())
-                .filter((item) => /^0x[a-f0-9]{40}$/.test(item));
-            await Promise.all(
-                adminWallets.map((adminWallet) =>
-                    notificationService.createNotification({
-                        recipientWallet: adminWallet,
-                        type: "campaign_created",
-                        title: "Có campaign mới cần duyệt",
-                        message: "Một campaign mới vừa được tạo và đang chờ duyệt.",
-                        campaignOnChainId: onChainId,
-                        txHash: payload.txHash || "",
-                    }),
-                ),
-            );
+            const adminWallets = await resolveAdminWallets();
+            if (adminWallets.length === 0) {
+                console.warn(
+                    "[campaign-service] campaign.created received but no admin wallet found from env/user-service",
+                );
+            } else {
+                await Promise.all(
+                    adminWallets.map((adminWallet) =>
+                        notificationService.createNotification({
+                            recipientWallet: adminWallet,
+                            type: "campaign_created",
+                            title: "Co campaign moi can duyet",
+                            message:
+                                "Mot campaign moi vua duoc tao va dang cho duyet.",
+                            campaignOnChainId: onChainId,
+                            txHash: payload.txHash || "",
+                        }),
+                    ),
+                );
+            }
 
             channel.ack(msg);
         } catch (err) {

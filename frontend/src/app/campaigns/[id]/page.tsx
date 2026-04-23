@@ -14,8 +14,8 @@ import {
     useBackendCampaign,
     useClaimFundingRefund,
     useClaimMilestoneRefund,
-    useDonateToCampaign,
     useDisburseMilestone,
+    useDonateToCampaign,
     useMarkAsFailed,
     useMintCertificate,
     useReadCampaign,
@@ -229,46 +229,35 @@ export default function CampaignDetailPage() {
                     const donatedEvent = parseAbiItem(
                         "event Donated(uint256 indexed campaignId, address indexed donor, uint256 amount, uint256 totalRaised)",
                     );
-                    let logs: Awaited<ReturnType<typeof publicClient.getLogs>> =
+                    const latestBlock = await publicClient.getBlockNumber();
+                    const maxBlocksToScan = 500n;
+                    const chunkSize = 10n;
+                    const fromBlock =
+                        latestBlock > maxBlocksToScan
+                            ? latestBlock - maxBlocksToScan + 1n
+                            : 0n;
+                    const logs: Awaited<ReturnType<typeof publicClient.getLogs>> =
                         [];
-                    try {
-                        // Fast path for RPCs that support full-range log queries.
-                        logs = await publicClient.getLogs({
+
+                    for (
+                        let chunkFrom = fromBlock;
+                        chunkFrom <= latestBlock;
+                        chunkFrom += chunkSize
+                    ) {
+                        const chunkTo =
+                            chunkFrom + chunkSize - 1n > latestBlock
+                                ? latestBlock
+                                : chunkFrom + chunkSize - 1n;
+                        const chunkLogs = await publicClient.getLogs({
                             address: contractConfig.address,
                             event: donatedEvent,
                             args: { campaignId: BigInt(id) },
-                            fromBlock: "earliest",
-                            toBlock: "latest",
+                            fromBlock: chunkFrom,
+                            toBlock: chunkTo,
                         });
-                    } catch {
-                        // Fallback for RPC providers that reject very large ranges.
-                        const latestBlock = await publicClient.getBlockNumber();
-                        const windowSize = 20_000n;
-                        const maxWindows = 40n;
-                        let toBlock = latestBlock;
-                        let scannedWindows = 0n;
-                        const collected: typeof logs = [];
-
-                        while (toBlock > 0n && scannedWindows < maxWindows) {
-                            const fromBlock =
-                                toBlock > windowSize
-                                    ? toBlock - windowSize
-                                    : 0n;
-                            const chunkLogs = await publicClient.getLogs({
-                                address: contractConfig.address,
-                                event: donatedEvent,
-                                args: { campaignId: BigInt(id) },
-                                fromBlock,
-                                toBlock,
-                            });
-                            if (chunkLogs.length > 0) {
-                                collected.push(...chunkLogs);
-                            }
-                            if (fromBlock === 0n) break;
-                            toBlock = fromBlock - 1n;
-                            scannedWindows += 1n;
+                        if (chunkLogs.length > 0) {
+                            logs.push(...chunkLogs);
                         }
-                        logs = collected;
                     }
 
                     const onChainDonations = await Promise.all(
@@ -456,11 +445,11 @@ export default function CampaignDetailPage() {
         });
     };
 
-    const handleWithdraw = () => {
+    const handleWithdraw = async () => {
         if (!Number.isFinite(id)) return;
         if (!campaign) return;
         try {
-            disburseMilestone(id, campaign.currentMilestoneId);
+            await disburseMilestone(id, campaign.currentMilestoneId);
         } catch (err) {
             const friendly = getFriendlyError(err as { message?: string });
             showErrorToast(

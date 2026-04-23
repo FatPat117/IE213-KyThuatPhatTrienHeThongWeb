@@ -281,9 +281,27 @@ export async function getPublicStats() {
 }
 
 export async function getPublicCampaignMilestones(onChainId: number) {
-    await ensureCampaignIndexed(onChainId);
-
     try {
+        await ensureCampaignIndexed(onChainId);
+        // Prefer public campaign endpoint to avoid protected milestone route issues
+        // in guest sessions and keep response shape consistent.
+        return await apiRequest<PublicCampaignMilestonesResponse>(
+            `/campaigns/public/campaigns/${onChainId}/milestones`,
+        );
+    } catch (error) {
+        const message =
+            error instanceof Error ? error.message.toLowerCase() : "";
+        if (
+            message.includes("not yet indexed") ||
+            message.includes("chưa được index")
+        ) {
+            // Indexing can lag right after on-chain creation.
+            // Fall back to campaign-service public milestone endpoint,
+            // then let caller decide fallback timeline if this still fails.
+        }
+
+        // Backward compatible fallback for environments that still expose
+        // milestone timeline via milestone-service endpoint.
         const response = await fetch(
             `${API_BASE_URL}/milestones/campaigns/${onChainId}`,
             {
@@ -295,36 +313,14 @@ export async function getPublicCampaignMilestones(onChainId: number) {
             },
         );
         const payload = (await response.json()) as MilestoneServiceResponse;
-
         if (!response.ok || payload.status !== "success") {
-            if (response.status === 404) {
-                throw new Error("Chiến dịch chưa được index");
-            }
-            throw new Error(
-                payload.error || payload.message || "Request failed",
-            );
+            throw new Error(payload.error || payload.message || "Request failed");
         }
-
         const rawMilestones = Array.isArray(payload.data) ? payload.data : [];
         return {
             campaignOnChainId: onChainId,
             milestones: rawMilestones.map(mapMilestoneRecord),
         };
-    } catch (error) {
-        const message =
-            error instanceof Error ? error.message.toLowerCase() : "";
-        if (
-            message.includes("not yet indexed") ||
-            message.includes("chưa được index")
-        ) {
-            throw error;
-        }
-
-        // Backward compatible fallback for environments that still expose
-        // milestone timeline via campaign public endpoint.
-        return apiRequest<PublicCampaignMilestonesResponse>(
-            `/campaigns/public/campaigns/${onChainId}/milestones`,
-        );
     }
 }
 

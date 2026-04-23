@@ -43,26 +43,53 @@ export default function MyDonationsPage() {
 
       try {
         setIsOnChainLoading(true);
-        const logs = await publicClient.getLogs({
-          address: contractConfig.address,
-          event: parseAbiItem('event Donated(uint256 indexed campaignId, address indexed donor, uint256 amount)'),
-          fromBlock: 'earliest',
-          toBlock: 'latest',
-        });
+        const latestBlock = await publicClient.getBlockNumber();
+        const maxBlocksToScan = 500n;
+        const chunkSize = 10n;
+        const fromBlock =
+          latestBlock > maxBlocksToScan ? latestBlock - maxBlocksToScan + 1n : 0n;
+        const logs: Awaited<ReturnType<typeof publicClient.getLogs>> = [];
+
+        for (
+          let chunkFrom = fromBlock;
+          chunkFrom <= latestBlock;
+          chunkFrom += chunkSize
+        ) {
+          const chunkTo =
+            chunkFrom + chunkSize - 1n > latestBlock
+              ? latestBlock
+              : chunkFrom + chunkSize - 1n;
+          const chunkLogs = await publicClient.getLogs({
+            address: contractConfig.address,
+            event: parseAbiItem('event Donated(uint256 indexed campaignId, address indexed donor, uint256 amount)'),
+            fromBlock: chunkFrom,
+            toBlock: chunkTo,
+          });
+          logs.push(...chunkLogs);
+        }
 
         const mapped = await Promise.all(
           logs.map(async (log) => {
-            const campaignOnChainId = Number(log.args.campaignId ?? 0n);
-            const amountWei = log.args.amount ?? 0n;
-            const donorWallet = (log.args.donor ?? '').toString();
-            const block = await publicClient.getBlock({ blockNumber: log.blockNumber });
+            const args = (log as {
+              args?: { campaignId?: bigint; amount?: bigint; donor?: string };
+              blockNumber?: bigint | null;
+            }).args;
+            const campaignOnChainId = Number(args?.campaignId ?? 0n);
+            const amountWei = args?.amount ?? 0n;
+            const donorWallet = (args?.donor ?? '').toString();
+            const blockNumber = (log as { blockNumber?: bigint | null }).blockNumber;
+            const block = blockNumber
+              ? await publicClient.getBlock({ blockNumber })
+              : null;
             return {
               txHash: log.transactionHash ?? '',
               campaignOnChainId,
               donorWallet,
               amount: amountWei.toString(),
               amountEth: Number(formatEther(amountWei)),
-              donatedAt: new Date(Number(block.timestamp) * 1000).toISOString(),
+              donatedAt: new Date(
+                block ? Number(block.timestamp) * 1000 : Date.now()
+              ).toISOString(),
             } satisfies DonationRecord;
           })
         );

@@ -45,6 +45,10 @@ function toOnChainMilestoneIndex(milestoneId: number) {
     return milestoneId >= 1 ? milestoneId - 1 : milestoneId;
 }
 
+function toDisplayMilestoneId(milestoneId: number) {
+    return milestoneId >= 1 ? milestoneId : milestoneId + 1;
+}
+
 export default function MilestoneEvidenceUploadPage() {
     const params = useParams();
     const searchParams = useSearchParams();
@@ -75,9 +79,11 @@ export default function MilestoneEvidenceUploadPage() {
     const [evidenceType, setEvidenceType] = useState<
         "report" | "photo" | "video" | "document"
     >("photo");
-    const [file, setFile] = useState<File | null>(null);
+    const [files, setFiles] = useState<File[]>([]);
     const [isUploadingFile, setIsUploadingFile] = useState(false);
-    const [uploadedCid, setUploadedCid] = useState(sourceCid);
+    const [uploadedCids, setUploadedCids] = useState<string[]>(
+        sourceCid ? [sourceCid] : [],
+    );
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [resultMessage, setResultMessage] = useState<string | null>(null);
     const [milestoneHistory, setMilestoneHistory] = useState<string[]>([]);
@@ -99,7 +105,13 @@ export default function MilestoneEvidenceUploadPage() {
             if (!Number.isFinite(campaignId)) return;
             try {
                 const data = await getPublicCampaignMilestones(campaignId);
-                const milestone = data.milestones.find((m) => m.milestoneId === milestoneId);
+                const milestone = data.milestones.find((m) => {
+                    const normalizedId = Number(m.milestoneId);
+                    return (
+                        normalizedId === milestoneIndexOnChain ||
+                        normalizedId === milestoneIndexOnChain + 1
+                    );
+                });
                 setMilestoneStatus((milestone?.status || "").toLowerCase());
                 const fromBackend = (milestone?.reportCids || []).map((x) => x.cid);
                 const fromChain = proofCidsByIndex.get(milestoneIndexOnChain) || [];
@@ -124,7 +136,7 @@ export default function MilestoneEvidenceUploadPage() {
     useEffect(() => {
         if (isConfirmedOnChain) {
             setResultMessage("Đã submit minh chứng on-chain thành công.");
-            if (uploadedCid) {
+            for (const uploadedCid of uploadedCids) {
                 setMilestoneHistory((prev) =>
                     prev.some((x) => x.toLowerCase() === uploadedCid.toLowerCase())
                         ? prev
@@ -132,46 +144,67 @@ export default function MilestoneEvidenceUploadPage() {
                 );
             }
         }
-    }, [isConfirmedOnChain, uploadedCid]);
+    }, [isConfirmedOnChain, uploadedCids]);
+
+    const uploadSingleEvidence = async (file: File) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("title", title.trim());
+        formData.append("description", description.trim());
+        formData.append("evidenceType", evidenceType);
+
+        const response = await fetch(
+            `${apiBaseUrl}/milestones/${campaignId}/${milestoneIndexOnChain}/evidence`,
+            {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}` },
+                body: formData,
+            },
+        );
+        const payload = await response.json();
+        if (!response.ok || !payload?.success) {
+            throw new Error(payload?.error || payload?.message || "Upload thất bại");
+        }
+
+        const cid =
+            payload?.data?.evidenceCid ||
+            payload?.data?.cid ||
+            payload?.data?.ipfsCid ||
+            "";
+        if (!cid) throw new Error("Upload thành công nhưng thiếu CID.");
+        return cid;
+    };
 
     const handleUploadFile = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         if (!Number.isFinite(campaignId)) return setErrorMessage("Campaign ID không hợp lệ.");
         if (!token) return setErrorMessage("Bạn cần đăng nhập ví để upload minh chứng.");
         if (!canUpload) return setErrorMessage("Chỉ creator mới có quyền upload.");
-        if (!file) return setErrorMessage("Vui lòng chọn file minh chứng.");
+        if (files.length === 0) return setErrorMessage("Vui lòng chọn ít nhất 1 file.");
 
         setIsUploadingFile(true);
         setErrorMessage(null);
         setResultMessage(null);
         try {
-            const formData = new FormData();
-            formData.append("file", file);
-            formData.append("title", title.trim());
-            formData.append("description", description.trim());
-            formData.append("evidenceType", evidenceType);
-
-            const response = await fetch(
-                `${apiBaseUrl}/milestones/${campaignId}/${milestoneId}/evidence`,
-                {
-                    method: "POST",
-                    headers: { Authorization: `Bearer ${token}` },
-                    body: formData,
-                },
-            );
-            const payload = await response.json();
-            if (!response.ok || !payload?.success) {
-                throw new Error(payload?.error || payload?.message || "Upload thất bại");
+            const newCids: string[] = [];
+            for (const selectedFile of files) {
+                const cid = await uploadSingleEvidence(selectedFile);
+                newCids.push(cid);
             }
-
-            const cid =
-                payload?.data?.evidenceCid ||
-                payload?.data?.cid ||
-                payload?.data?.ipfsCid ||
-                "";
-            if (!cid) throw new Error("Upload thành công nhưng thiếu CID.");
-            setUploadedCid(cid);
-            setResultMessage("Upload IPFS thành công. Xác nhận để submit on-chain.");
+            setUploadedCids((prev) => {
+                const seen = new Set(prev.map((x) => x.toLowerCase()));
+                const merged = [...prev];
+                for (const cid of newCids) {
+                    const key = cid.toLowerCase();
+                    if (seen.has(key)) continue;
+                    seen.add(key);
+                    merged.push(cid);
+                }
+                return merged;
+            });
+            setResultMessage(
+                `Upload IPFS thành công ${newCids.length} file. Xác nhận để submit on-chain.`,
+            );
         } catch (error) {
             setErrorMessage(
                 error instanceof Error ? error.message : "Không thể upload minh chứng",
@@ -183,7 +216,9 @@ export default function MilestoneEvidenceUploadPage() {
 
     const handleSubmitOnChain = async () => {
         if (!Number.isFinite(campaignId)) return setErrorMessage("Campaign ID không hợp lệ.");
-        if (!uploadedCid) return setErrorMessage("Bạn cần upload để lấy CID trước.");
+        if (uploadedCids.length === 0) {
+            return setErrorMessage("Bạn cần upload để lấy CID trước.");
+        }
         if (!isCampaignInProgress) {
             return setErrorMessage(
                 "Chiến dịch chưa ở trạng thái In Progress nên chưa thể submit minh chứng on-chain.",
@@ -192,12 +227,12 @@ export default function MilestoneEvidenceUploadPage() {
         setErrorMessage(null);
         setResultMessage(null);
         try {
-            await submitMilestoneProof(
-                campaignId,
-                milestoneIndexOnChain,
-                uploadedCid,
+            for (const cid of uploadedCids) {
+                await submitMilestoneProof(campaignId, milestoneIndexOnChain, cid);
+            }
+            setResultMessage(
+                `Đã gửi ${uploadedCids.length} giao dịch submit minh chứng. Đang chờ xác nhận...`,
             );
-            setResultMessage("Đã gửi giao dịch submit minh chứng. Đang chờ xác nhận...");
         } catch (error) {
             setErrorMessage(
                 error instanceof Error
@@ -210,10 +245,11 @@ export default function MilestoneEvidenceUploadPage() {
     const handleResubmitOffChain = async () => {
         if (!Number.isFinite(campaignId)) return setErrorMessage("Campaign ID không hợp lệ.");
         if (!token) return setErrorMessage("Bạn cần đăng nhập ví để nộp lại minh chứng.");
-        if (!uploadedCid) return setErrorMessage("Chưa có CID để nộp lại.");
+        if (uploadedCids.length === 0) return setErrorMessage("Chưa có CID để nộp lại.");
         setErrorMessage(null);
         try {
-            await resubmitMilestone(campaignId, milestoneId, token, uploadedCid);
+            const newestCid = uploadedCids[uploadedCids.length - 1];
+            await resubmitMilestone(campaignId, milestoneIndexOnChain, token, newestCid);
             setResultMessage(
                 "Đã chuyển milestone sang trạng thái submitted (resubmit off-chain). Tiếp tục xác nhận on-chain ở bước 2.",
             );
@@ -225,10 +261,8 @@ export default function MilestoneEvidenceUploadPage() {
         }
     };
 
-    const previewUrl = uploadedCid ? normalizeIpfsUrl(uploadedCid) : "";
-
     return (
-        <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
+        <div className="min-h-screen bg-linear-to-b from-slate-50 to-white text-slate-900">
             <main className="mx-auto w-full max-w-3xl px-6 py-10 md:px-10">
                 <div className="mb-6 flex items-center justify-between gap-3">
                     <div>
@@ -240,7 +274,7 @@ export default function MilestoneEvidenceUploadPage() {
                         </h1>
                         <p className="mt-1 text-sm text-slate-600">
                             Mã chiến dịch #{Number.isFinite(campaignId) ? campaignId : "-"} - Mốc #
-                            {milestoneId}
+                            {toDisplayMilestoneId(milestoneId)}
                         </p>
                     </div>
                     <Link
@@ -253,21 +287,29 @@ export default function MilestoneEvidenceUploadPage() {
 
                 <form
                     onSubmit={handleUploadFile}
-                    className="space-y-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+                    className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:p-7"
                 >
-                    <p className="text-sm text-slate-600">
+                    <p className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
                         Luồng chuẩn: tải file lên Pinata để lấy CID, sau đó xác nhận gửi CID
                         lên blockchain.
                     </p>
 
-                    <label className="block">
-                        <span className="mb-1 block text-sm font-semibold text-slate-700">File minh chứng</span>
+                    <label className="block rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <span className="mb-2 block text-sm font-semibold text-slate-700">
+                            File minh chứng (chọn nhiều ảnh/tài liệu)
+                        </span>
                         <input
                             type="file"
                             accept="image/*,application/pdf,video/*"
-                            onChange={(event) => setFile(event.target.files?.[0] || null)}
+                            multiple
+                            onChange={(event) =>
+                                setFiles(Array.from(event.target.files || []))
+                            }
                             className="block w-full text-sm text-slate-700"
                         />
+                        <p className="mt-2 text-xs text-slate-500">
+                            Đã chọn: {files.length} file
+                        </p>
                     </label>
 
                     <div className="grid gap-4 sm:grid-cols-2">
@@ -319,12 +361,12 @@ export default function MilestoneEvidenceUploadPage() {
                             disabled={!canUpload || isUploadingFile}
                             className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
                         >
-                            {isUploadingFile ? "Đang upload..." : "1) Upload lấy CID"}
+                            {isUploadingFile ? "Đang upload..." : "1) Upload file lấy CID"}
                         </button>
                         <button
                             type="button"
                             disabled={
-                                !uploadedCid ||
+                                uploadedCids.length === 0 ||
                                 !isCampaignInProgress ||
                                 isSubmittingOnChain ||
                                 isConfirmingOnChain
@@ -334,12 +376,12 @@ export default function MilestoneEvidenceUploadPage() {
                         >
                             {isSubmittingOnChain || isConfirmingOnChain
                                 ? "Đang chờ xác nhận..."
-                                : "2) Xác nhận submit on-chain"}
+                                : "2) Submit tất cả CID on-chain"}
                         </button>
                         {milestoneStatus === "resubmittable" && (
                             <button
                                 type="button"
-                                disabled={!uploadedCid || isUploadingFile}
+                                disabled={uploadedCids.length === 0 || isUploadingFile}
                                 onClick={handleResubmitOffChain}
                                 className="rounded-lg border border-amber-300 bg-amber-50 px-5 py-2.5 text-sm font-semibold text-amber-800 disabled:opacity-60"
                             >
@@ -353,17 +395,23 @@ export default function MilestoneEvidenceUploadPage() {
                         </p>
                     )}
 
-                    {uploadedCid ? (
+                    {uploadedCids.length > 0 ? (
                         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                            <p className="font-semibold">CID mới: {uploadedCid}</p>
-                            <a
-                                href={previewUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="mt-1 inline-block text-blue-700 underline"
-                            >
-                                Mở preview IPFS
-                            </a>
+                            <p className="font-semibold">CID mới đã upload ({uploadedCids.length})</p>
+                            <ul className="mt-2 space-y-1">
+                                {uploadedCids.map((cid) => (
+                                    <li key={cid} className="break-all">
+                                        <a
+                                            href={normalizeIpfsUrl(cid)}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-blue-700 underline"
+                                        >
+                                            {cid}
+                                        </a>
+                                    </li>
+                                ))}
+                            </ul>
                         </div>
                     ) : null}
 
