@@ -19,6 +19,10 @@ import {
     useCreateCampaign,
     useReadReviewerSafes,
 } from "@/lib";
+import {
+    getBackendErrorMessage,
+    getChainErrorMessage,
+} from "@/lib/errors/normalize";
 import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
 import CreateCampaignForm from "@/components/campaign-create/CreateCampaignForm";
 import CreateCampaignGuardCard from "@/components/campaign-create/CreateCampaignGuardCard";
@@ -72,21 +76,21 @@ export default function CreateCampaignPage() {
     >([]);
     const reviewerSafesQuery = useReadReviewerSafes();
     const normalizedReviewerSafe = formData.reviewerSafe.trim().toLowerCase();
-    const reviewerSafeLooksValid = /^0x[a-f0-9]{40}$/.test(normalizedReviewerSafe);
-    const {
-        data: isReviewerActive,
-        isLoading: isCheckingReviewerSafe,
-    } = useReadContract({
-        ...contractConfig,
-        functionName: "isActiveReviewer",
-        args: reviewerSafeLooksValid
-            ? [normalizedReviewerSafe as `0x${string}`]
-            : undefined,
-        query: {
-            enabled: reviewerSafeLooksValid,
-            staleTime: 30_000,
-        },
-    });
+    const reviewerSafeLooksValid = /^0x[a-f0-9]{40}$/.test(
+        normalizedReviewerSafe,
+    );
+    const { data: isReviewerActive, isLoading: isCheckingReviewerSafe } =
+        useReadContract({
+            ...contractConfig,
+            functionName: "isActiveReviewer",
+            args: reviewerSafeLooksValid
+                ? [normalizedReviewerSafe as `0x${string}`]
+                : undefined,
+            query: {
+                enabled: reviewerSafeLooksValid,
+                staleTime: 30_000,
+            },
+        });
 
     const {
         createCampaign,
@@ -142,30 +146,10 @@ export default function CreateCampaignPage() {
     }, [receipt, isConfirmed]);
 
     const parsedCreateError = useMemo(() => {
-        if (!createError?.message) return null;
-        const msg = createError.message.toLowerCase();
-        if (msg.includes("user rejected") || msg.includes("user denied"))
-            return "Bạn đã từ chối giao dịch.";
-        if (
-            msg.includes("does not match the target chain") ||
-            msg.includes("expected chain id") ||
-            msg.includes("wrong network") ||
-            msg.includes("chain id")
-        ) {
-            return "Sai mạng. Vui lòng chuyển ví sang Sepolia trước khi tạo chiến dịch.";
-        }
-        if (msg.includes("insufficient funds")) {
-            return "Không đủ ETH để trả phí gas. Vui lòng kiểm tra số dư.";
-        }
-        if (msg.includes("reviewer not approved")) {
-            return "ReviewerSafe chưa được duyệt on-chain. Vui lòng chọn reviewer đã được add vào contract trước.";
-        }
-        if (msg.includes("gas limit too high")) {
-            return "Ước lượng gas vượt giới hạn block. Vui lòng thử lại, hệ thống sẽ dùng gas an toàn.";
-        }
-        if (msg.includes("network") || msg.includes("rpc"))
-            return "Lỗi mạng/RPC. Vui lòng kiểm tra kết nối.";
-        return createError.message;
+        if (!createError) return null;
+        return getChainErrorMessage(createError, {
+            fallback: "Không thể gửi giao dịch. Vui lòng thử lại.",
+        });
     }, [createError]);
 
     const transactionError = manualError || parsedCreateError;
@@ -257,7 +241,8 @@ export default function CreateCampaignPage() {
             let retryDelayMs = 2000;
             while (!cancelled) {
                 try {
-                    const status = await getCampaignIndexStatus(createdCampaignId);
+                    const status =
+                        await getCampaignIndexStatus(createdCampaignId);
                     if (status.indexed) break;
                 } catch {
                     // Ignore transient status failures and retry.
@@ -291,17 +276,17 @@ export default function CreateCampaignPage() {
                     setIsMetadataSyncing(false);
                 }
             } catch (error) {
-                const message =
-                    error instanceof Error
-                        ? error.message
-                        : "Không thể cập nhật metadata campaign sau khi tạo.";
+                const message = getBackendErrorMessage(error, {
+                    fallback:
+                        "Không thể đồng bộ metadata chiến dịch sau khi tạo.",
+                });
                 const normalizedMessage = message.toLowerCase();
                 if (!cancelled) {
                     setMetadataSyncError(message);
                     setIsMetadataSyncing(false);
                     if (
                         !normalizedMessage.includes(
-                            "only campaign creator can update metadata",
+                            "only the campaign creator can update metadata",
                         )
                     ) {
                         showErrorToast(message);
@@ -421,7 +406,8 @@ export default function CreateCampaignPage() {
         }
         if (!validateForm()) return;
         if (isCheckingReviewerSafe) {
-            const msg = "Đang kiểm tra reviewerSafe trên blockchain, vui lòng thử lại sau vài giây.";
+            const msg =
+                "Đang kiểm tra reviewerSafe trên blockchain, vui lòng thử lại sau vài giây.";
             setManualError(msg);
             showErrorToast(msg);
             return;
@@ -643,10 +629,10 @@ export default function CreateCampaignPage() {
                                         `Đã gửi giao dịch ${shortenHash(txHash)}. Đang chờ xác nhận trên blockchain...`,
                                     );
                                 } catch (err) {
-                                    const message =
-                                        err instanceof Error
-                                            ? err.message
-                                            : "Có lỗi xảy ra";
+                                    const message = getChainErrorMessage(err, {
+                                        fallback:
+                                            "Không thể gửi giao dịch. Vui lòng thử lại.",
+                                    });
                                     setManualError(message);
                                     showErrorToast(message);
                                 }

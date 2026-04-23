@@ -17,7 +17,8 @@ interface CampaignInfoPanelProps {
             | "completed"
             | "partial_failed"
             | "failed"
-            | "cancelled";
+            | "cancelled"
+            | "pending_approval";
     };
     backendDescription?: string;
     backendTitle?: string;

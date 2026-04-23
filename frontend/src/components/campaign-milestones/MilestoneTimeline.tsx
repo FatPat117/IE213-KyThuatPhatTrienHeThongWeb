@@ -46,7 +46,7 @@ function getStatusMeta(status: string) {
     switch (status) {
         case "disbursed":
             return {
-                label: "Đã hoàn thành",
+                label: "Đã giải ngân chờ xác nhận bằng chứng",
                 badgeClass:
                     "bg-emerald-100 text-emerald-700 border-emerald-200",
                 dotClass: "bg-emerald-500 ring-emerald-100",

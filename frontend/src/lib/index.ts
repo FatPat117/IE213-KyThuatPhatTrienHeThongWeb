@@ -89,6 +89,7 @@ export {
     resubmitMilestone,
     getReviewerAggregates,
     updateCampaignMetadata,
+    updateCampaignStatus,
 } from "./api/campaigns";
 export {
     getDonationsByCampaign,

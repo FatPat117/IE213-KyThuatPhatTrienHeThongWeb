@@ -20,6 +20,7 @@ import {
     useMintCertificate,
     useReadCampaign,
 } from "@/lib";
+import { getChainErrorMessage } from "@/lib/errors/normalize";
 import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -318,11 +319,19 @@ export default function CampaignDetailPage() {
         campaign &&
         address.toLowerCase() === campaign.creator.toLowerCase();
 
-    const campaignStatusLabel = campaign?.statusLabel || "active";
-    const uiCampaignStatusLabel =
-        campaignStatusLabel === "pending_approval"
-            ? "active"
-            : campaignStatusLabel;
+    const backendStatus = backendCampaign.data?.status as
+        | "pending_approval"
+        | "active"
+        | "in_progress"
+        | "completed"
+        | "partial_failed"
+        | "failed"
+        | "cancelled"
+        | undefined;
+    const onChainStatusLabel = campaign?.statusLabel || "active";
+    const campaignStatusLabel = onChainStatusLabel;
+    const isStatusOutOfSync =
+        Boolean(backendStatus) && backendStatus !== onChainStatusLabel;
     const isCampaignActive = campaignStatusLabel === "active";
     const isCampaignInProgress = campaignStatusLabel === "in_progress";
     const isCampaignCompleted = campaignStatusLabel === "completed";
@@ -400,39 +409,10 @@ export default function CampaignDetailPage() {
     });
 
     const getFriendlyError = (err?: { message?: string } | null) => {
-        if (!err?.message) return null;
-        const msg = err.message.toLowerCase();
-        if (msg.includes("user rejected") || msg.includes("user denied")) {
-            return "Bạn đã từ chối giao dịch.";
-        }
-        if (msg.includes("insufficient funds")) {
-            return "Không đủ ETH để trả phí gas. Vui lòng nạp thêm ETH testnet.";
-        }
-        if (msg.includes("network") || msg.includes("rpc")) {
-            return "Lỗi mạng/RPC. Vui lòng thử lại hoặc đổi RPC.";
-        }
-        if (msg.includes("wrong network") || msg.includes("chain")) {
-            return "Sai mạng. Vui lòng chuyển sang Sepolia.";
-        }
-        if (msg.includes("deadline not reached")) {
-            return "Campaign chưa tới hạn nên chưa thể đánh dấu thất bại.";
-        }
-        if (msg.includes("has reached its goal")) {
-            return "Campaign đã đạt mục tiêu nên không thể đánh dấu thất bại.";
-        }
-        if (msg.includes("not active")) {
-            return "Campaign không còn ở trạng thái đang hoạt động.";
-        }
-        if (msg.includes("milestone not approved")) {
-            return "Milestone hiện tại chưa được reviewer phê duyệt nên chưa thể giải ngân.";
-        }
-        if (msg.includes("only current milestone can be disbursed")) {
-            return "Chỉ có thể giải ngân milestone hiện tại.";
-        }
-        if (msg.includes("wrong reviewer")) {
-            return "Ví hiện tại không có quyền reviewer cho campaign này.";
-        }
-        return err.message;
+        if (!err) return null;
+        return getChainErrorMessage(err, {
+            fallback: "Giao dịch thất bại. Vui lòng thử lại.",
+        });
     };
 
     useEffect(() => {
@@ -622,6 +602,12 @@ export default function CampaignDetailPage() {
         [id],
     );
 
+    console.log("Render CampaignDetailPage", {
+        id,
+        campaign,
+        backendCampaign,
+    });
+
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
             <main className="mx-auto w-full max-w-6xl px-6 py-12 md:px-10">
@@ -688,6 +674,16 @@ export default function CampaignDetailPage() {
                         <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
                             {/* Left Column - Main Content */}
                             <div className="space-y-6">
+                                {isStatusOutOfSync && (
+                                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-4 text-amber-900">
+                                        <p className="text-sm font-semibold">
+                                            Trạng thái đang đồng bộ
+                                        </p>
+                                        <p className="text-xs text-amber-800">
+                                            Trạng thái on-chain khác backend. Dữ liệu sẽ tự cập nhật sau khi đồng bộ.
+                                        </p>
+                                    </div>
+                                )}
                                 <MilestonePreviewCard
                                     campaignId={campaign.id}
                                     campaignDeadline={campaign.deadline}
@@ -697,7 +693,7 @@ export default function CampaignDetailPage() {
                                     progressPercent={progress}
                                     goalWei={campaign.goal}
                                     milestoneCount={campaign.milestoneCount}
-                                    campaignStatusLabel={uiCampaignStatusLabel}
+                                    campaignStatusLabel={campaignStatusLabel}
                                     currentMilestoneId={
                                         campaign.currentMilestoneId
                                     }
@@ -706,7 +702,7 @@ export default function CampaignDetailPage() {
                                 <CampaignInfoPanel
                                     campaign={{
                                         ...campaign,
-                                        statusLabel: uiCampaignStatusLabel,
+                                        statusLabel: campaignStatusLabel,
                                     }}
                                     backendTitle={
                                         !isPlaceholderCampaignTitle(

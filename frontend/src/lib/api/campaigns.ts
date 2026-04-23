@@ -133,7 +133,7 @@ function writeCampaignIndexStatusCache(id: number, indexed: boolean) {
 async function ensureCampaignIndexed(onChainId: number): Promise<void> {
     const status = await getCampaignIndexStatus(onChainId);
     if (!status.indexed) {
-            throw new Error("Chiến dịch chưa được index");
+        throw new Error("Chiến dịch chưa được index.");
     }
 }
 
@@ -145,7 +145,11 @@ function mapMilestoneRecord(
         title: item.title || "",
         description: item.description || "",
         allocationBps: Number(item.allocationBps || 0),
-        amountWei: (item.financialTargetWei || item.amountWei || "0").toString(),
+        amountWei: (
+            item.financialTargetWei ||
+            item.amountWei ||
+            "0"
+        ).toString(),
         deadline: item.deadline || "",
         status: item.status || "pending_funding",
         reportCids: Array.isArray(item.reportCids)
@@ -213,6 +217,25 @@ export async function updateCampaignMetadata(
     });
 }
 
+export async function updateCampaignStatus(
+    id: number,
+    token: string,
+    status:
+        | "pending_approval"
+        | "active"
+        | "in_progress"
+        | "completed"
+        | "partial_failed"
+        | "failed"
+        | "cancelled",
+) {
+    return apiRequest<CampaignRecord>(`/campaigns/${id}/status`, {
+        method: "PATCH",
+        token,
+        body: JSON.stringify({ status }),
+    });
+}
+
 export async function getCampaignIndexStatus(id: number) {
     const normalizedId = Number(id);
     if (!Number.isFinite(normalizedId)) {
@@ -277,7 +300,9 @@ export async function getPublicCampaignMilestones(onChainId: number) {
             if (response.status === 404) {
                 throw new Error("Chiến dịch chưa được index");
             }
-            throw new Error(payload.error || payload.message || "Request failed");
+            throw new Error(
+                payload.error || payload.message || "Request failed",
+            );
         }
 
         const rawMilestones = Array.isArray(payload.data) ? payload.data : [];

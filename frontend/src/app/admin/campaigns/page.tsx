@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatEther } from "viem";
 import { useAccount, useWaitForTransactionReceipt } from "wagmi";
-import { useAuth, useBackendCampaigns } from "@/lib";
+import { updateCampaignStatus, useAuth, useBackendCampaigns } from "@/lib";
 import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
 import {
     useAdminApproveCampaign,
@@ -23,6 +23,7 @@ export default function AdminCampaignApprovalsPage() {
     const { reviewersByCampaignId } = useReadCampaignReviewersBatch(campaigns.length);
     const { adminApproveCampaign, isPending } = useAdminApproveCampaign();
     const [txHash, setTxHash] = useState<`0x${string}` | undefined>(undefined);
+    const [lastApprovedId, setLastApprovedId] = useState<number | null>(null);
     const lastSyncedTxHashRef = useRef<`0x${string}` | undefined>(undefined);
     const lastNotifiedSuccessTxHashRef = useRef<`0x${string}` | undefined>(
         undefined,
@@ -82,9 +83,22 @@ export default function AdminCampaignApprovalsPage() {
             return;
         if (receipt?.status === "success") {
             showSuccessToast("Duyệt campaign thành công.");
+            if (token && lastApprovedId) {
+                updateCampaignStatus(lastApprovedId, token, "active")
+                    .then(() => {
+                        backendRefetch();
+                    })
+                    .catch((error) => {
+                        showErrorToast(
+                            error instanceof Error
+                                ? error.message
+                                : "Không thể đồng bộ trạng thái campaign.",
+                        );
+                    });
+            }
             lastNotifiedSuccessTxHashRef.current = txHash;
         }
-    }, [isConfirmed, receipt?.status, txHash]);
+    }, [backendRefetch, isConfirmed, lastApprovedId, receipt?.status, token, txHash]);
 
     useEffect(() => {
         if (!txHash || txHash === lastNotifiedFailureTxHashRef.current) return;
@@ -164,6 +178,7 @@ export default function AdminCampaignApprovalsPage() {
                                     try {
                                         setActionError(null);
                                         const hash = await adminApproveCampaign(item.id);
+                                        setLastApprovedId(item.id);
                                         setTxHash(hash as `0x${string}`);
                                     } catch (error) {
                                         setActionError(

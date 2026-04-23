@@ -16,6 +16,7 @@ import {
 } from "@/lib";
 import { getPublicStats, type PublicStatsResponse } from "@/lib/api/campaigns";
 import { useAuth } from "@/lib";
+import { getBackendErrorMessage } from "@/lib/errors/normalize";
 
 /**
  * Shared async state shape used by backend data hooks.
@@ -39,9 +40,10 @@ export function useBackendCampaigns(): QueryState<CampaignRecord[]> {
             setData(await getCampaigns());
         } catch (err) {
             setError(
-                err instanceof Error
-                    ? err.message
-                    : "Không thể tải campaign từ backend",
+                getBackendErrorMessage(err, {
+                    fallback:
+                        "Không thể tải danh sách chiến dịch. Vui lòng thử lại.",
+                }),
             );
         } finally {
             setIsLoading(false);
@@ -70,9 +72,10 @@ export function useBackendCampaign(
             setData(await getCampaignById(id));
         } catch (err) {
             setError(
-                err instanceof Error
-                    ? err.message
-                    : "Không thể tải chi tiết campaign",
+                getBackendErrorMessage(err, {
+                    fallback:
+                        "Không thể tải chi tiết chiến dịch. Vui lòng thử lại.",
+                }),
             );
         } finally {
             setIsLoading(false);
@@ -114,7 +117,10 @@ export function useBackendDonations(
             setData(await getDonationsByWallet(wallet));
         } catch (err) {
             setError(
-                err instanceof Error ? err.message : "Không thể tải donation",
+                getBackendErrorMessage(err, {
+                    fallback:
+                        "Không thể tải danh sách quyên góp. Vui lòng thử lại.",
+                }),
             );
         } finally {
             setIsLoading(false);
@@ -147,9 +153,9 @@ export function useBackendTransactions(
             setData(await getTransactionsByWallet(token, wallet));
         } catch (err) {
             setError(
-                err instanceof Error
-                    ? err.message
-                    : "Không thể tải transaction",
+                getBackendErrorMessage(err, {
+                    fallback: "Không thể tải giao dịch. Vui lòng thử lại.",
+                }),
             );
         } finally {
             setIsLoading(false);
@@ -175,9 +181,9 @@ export function usePublicStats(): QueryState<PublicStatsResponse | null> {
             setData(await getPublicStats());
         } catch (err) {
             setError(
-                err instanceof Error
-                    ? err.message
-                    : "Unable to load public statistics",
+                getBackendErrorMessage(err, {
+                    fallback: "Không thể tải thống kê công khai.",
+                }),
             );
         } finally {
             setIsLoading(false);
