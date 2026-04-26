@@ -591,11 +591,9 @@ export default function CampaignDetailPage() {
         [id],
     );
 
-    console.log("Render CampaignDetailPage", {
-        id,
-        campaign,
-        backendCampaign,
-    });
+    console.log("campaign", campaign)
+    console.log("backend campaign", backendCampaign)
+    console.log("cachedMetadata", cachedMetadata)
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
@@ -623,8 +621,8 @@ export default function CampaignDetailPage() {
                     </div>
                 </header>
 
-                {/* Loading State */}
-                {(isLoading || backendCampaign.isLoading) && (
+                {/* Loading State - chỉ block khi on-chain data chưa sẵn */}
+                {isLoading && (
                     <div className="space-y-6 animate-pulse">
                         <div className="rounded-2xl bg-white border border-slate-200 p-8 shadow-sm">
                             <div className="h-8 w-2/3 rounded bg-slate-200 mb-4" />
@@ -655,9 +653,8 @@ export default function CampaignDetailPage() {
                     </div>
                 )}
 
-                {/* Campaign Content */}
+                {/* Campaign Content - hiển thị khi on-chain data sẵn, backend data được merge khi tải xong */}
                 {!isLoading &&
-                    !backendCampaign.isLoading &&
                     !isError &&
                     campaign && (
                         <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
@@ -708,6 +705,7 @@ export default function CampaignDetailPage() {
                                             ? backendCampaign.data?.description
                                             : cachedMetadata?.description
                                     }
+                                    reviewerSafe={backendCampaign.data?.reviewerSafe}
                                     progress={progress}
                                 />
 

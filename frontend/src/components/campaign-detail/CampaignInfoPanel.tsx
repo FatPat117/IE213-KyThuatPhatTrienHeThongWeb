@@ -146,6 +146,39 @@ export default function CampaignInfoPanel({
                 </div>
             </div>
 
+            {/* Reviewer Safe */}
+            {reviewerSafe && /^0x[a-f0-9]{40}$/i.test(reviewerSafe) && (
+                <div className="rounded-xl bg-violet-50 border border-violet-100 p-4 mb-6">
+                    <p className="text-sm font-medium text-violet-600 mb-1">
+                        Reviewer (Gnosis Safe)
+                    </p>
+                    <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-400 to-violet-600 flex-shrink-0" />
+                        <code className="text-sm font-mono text-slate-900 break-all">
+                            {reviewerSafe.slice(0, 8)}...{reviewerSafe.slice(-6)}
+                        </code>
+                        <a
+                            href={`https://sepolia.etherscan.io/address/${reviewerSafe}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="ml-auto text-xs font-medium text-violet-600 hover:text-violet-700 whitespace-nowrap"
+                        >
+                            Xem Safe →
+                        </a>
+                    </div>
+                </div>
+            )}
+
+            {/* Funding Deadline */}
+            {campaign.deadline > 0 && (
+                <div className="rounded-xl bg-slate-50 border border-slate-100 p-4 mb-6 flex items-center justify-between">
+                    <p className="text-sm font-medium text-slate-600">Hạn gây quỹ</p>
+                    <p className="text-sm font-semibold text-slate-900" suppressHydrationWarning>
+                        {new Date(campaign.deadline * 1000).toLocaleString("vi-VN")}
+                    </p>
+                </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="rounded-xl bg-blue-50 border border-blue-100 p-5">
                     <p className="text-sm font-medium text-blue-600 mb-2">

@@ -71,12 +71,19 @@ export function useBackendCampaign(
             setError(null);
             setData(await getCampaignById(id));
         } catch (err) {
-            setError(
-                getBackendErrorMessage(err, {
-                    fallback:
-                        "Không thể tải chi tiết chiến dịch. Vui lòng thử lại.",
-                }),
-            );
+            // Swallow 404 – campaign may not be indexed yet (just created).
+            const status = (err as { status?: number })?.status;
+            if (status === 404) {
+                setData(null);
+                setError(null);
+            } else {
+                setError(
+                    getBackendErrorMessage(err, {
+                        fallback:
+                            "Không thể tải chi tiết chiến dịch. Vui lòng thử lại.",
+                    }),
+                );
+            }
         } finally {
             setIsLoading(false);
         }

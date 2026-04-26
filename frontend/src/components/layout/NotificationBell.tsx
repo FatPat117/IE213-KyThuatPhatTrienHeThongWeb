@@ -209,37 +209,67 @@ export default function NotificationBell({ token }: { token: string | null }) {
                                     <p className="mt-1 text-[10px] text-slate-500">
                                         {formatTime(item.createdAt)}
                                     </p>
-                                    {item.campaignOnChainId ? (
-                                        <Link
-                                            href={`/campaigns/${item.campaignOnChainId}`}
-                                            className="mt-1 inline-block text-blue-600"
-                                            onClick={async () => {
-                                                if (!item.read) {
-                                                    try {
-                                                        await markNotificationAsRead(
-                                                            token,
-                                                            item._id,
-                                                        );
-                                                        setItems((prev) =>
-                                                            prev.map((entry) =>
-                                                                entry._id === item._id
-                                                                    ? {
-                                                                          ...entry,
-                                                                          read: true,
-                                                                      }
-                                                                    : entry,
-                                                            ),
-                                                        );
-                                                    } catch {
-                                                        // Ignore mark-as-read error on navigation click.
+                                    {(() => {
+                                        // Smart routing: redirect to appropriate page based on notification type
+                                        const reviewerTypes = new Set([
+                                            "milestone_report_submitted",
+                                            "milestone_disbursed",
+                                            "milestone_approved",
+                                            "campaign_assigned",
+                                        ]);
+                                        const adminTypes = new Set([
+                                            "campaign_created",
+                                            "campaign_pending_approval",
+                                        ]);
+
+                                        let href: string | null = null;
+                                        let linkLabel = "Xem chi tiết";
+
+                                        if (reviewerTypes.has(item.type || "")) {
+                                            href = "/reviewer";
+                                            linkLabel = "Vào trang Reviewer";
+                                        } else if (adminTypes.has(item.type || "")) {
+                                            href = "/admin/campaigns";
+                                            linkLabel = "Duyệt campaign";
+                                        } else if (item.campaignOnChainId) {
+                                            href = `/campaigns/${item.campaignOnChainId}`;
+                                            linkLabel = "Mở campaign";
+                                        }
+
+                                        if (!href) return null;
+
+                                        return (
+                                            <Link
+                                                href={href}
+                                                className="mt-1 inline-block text-blue-600 text-[11px] font-medium hover:underline"
+                                                onClick={async () => {
+                                                    if (!item.read) {
+                                                        try {
+                                                            await markNotificationAsRead(
+                                                                token,
+                                                                item._id,
+                                                            );
+                                                            setItems((prev) =>
+                                                                prev.map((entry) =>
+                                                                    entry._id === item._id
+                                                                        ? {
+                                                                              ...entry,
+                                                                              read: true,
+                                                                          }
+                                                                        : entry,
+                                                                ),
+                                                            );
+                                                        } catch {
+                                                            // Ignore mark-as-read error on navigation click.
+                                                        }
                                                     }
-                                                }
-                                                setOpen(false);
-                                            }}
-                                        >
-                                            Mở campaign
-                                        </Link>
-                                    ) : null}
+                                                    setOpen(false);
+                                                }}
+                                            >
+                                                {linkLabel} →
+                                            </Link>
+                                        );
+                                    })()}
                                 </div>
                             ))
                         )}

@@ -312,14 +312,23 @@ export default function CreateCampaignPage() {
 
     useEffect(() => {
         if (transactionStatus !== "success") return;
-        showSuccessToast(
-            "Tạo chiến dịch thành công! Đang chuyển tới trang chi tiết...",
-        );
+        // Chỉ redirect sau khi backend đã index và sync metadata xong,
+        // hoặc sau tối đa 15s hard timeout để tránh chờ mãi khi sync lỗi.
         const target =
             createdCampaignId !== null
                 ? `/campaigns/${createdCampaignId}`
                 : "/campaigns";
-        const timer = setTimeout(() => router.push(target), 3000);
+
+        if (metadataSynced) {
+            // Metadata đã được sync → chuyển hướng ngay
+            showSuccessToast("Tạo chiến dịch thành công! Đang chuyển tới trang chi tiết...");
+            const timer = setTimeout(() => router.push(target), 800);
+            return () => clearTimeout(timer);
+        }
+
+        // Hard timeout: chờ tối đa 15s rồi redirect dù chưa sync xong
+        showSuccessToast("Tạo chiến dịch thành công! Đang đồng bộ dữ liệu...");
+        const timer = setTimeout(() => router.push(target), 15_000);
         return () => clearTimeout(timer);
     }, [createdCampaignId, metadataSynced, router, transactionStatus]);
 

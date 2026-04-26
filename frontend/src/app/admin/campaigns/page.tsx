@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { formatEther } from "viem";
 import { useAccount, useWaitForTransactionReceipt } from "wagmi";
 import { updateCampaignStatus, useAuth, useBackendCampaigns } from "@/lib";
@@ -60,10 +61,11 @@ export default function AdminCampaignApprovalsPage() {
         [campaigns],
     );
     const metadataById = useMemo(() => {
-        const map = new Map<number, { title: string; createdAt?: string }>();
+        const map = new Map<number, { title: string; description?: string; createdAt?: string }>();
         backendCampaigns.data.forEach((item) => {
             map.set(item.onChainId, {
                 title: item.title || `Campaign #${item.onChainId}`,
+                description: item.description,
                 createdAt: item.createdAt,
             });
         });
@@ -168,31 +170,73 @@ export default function AdminCampaignApprovalsPage() {
                 {actionError ? <p className="mt-4 text-sm text-red-600">{actionError}</p> : null}
                 <div className="mt-4 space-y-3">
                     {pendingItems.map((item) => (
-                        <div key={item.id} className="rounded-xl border border-slate-200 p-4">
-                            <p className="font-semibold">
-                                {metadataById.get(item.id)?.title || `Campaign #${item.id}`}
-                            </p>
-                            <p className="text-xs text-slate-600">Người tạo: {item.creator}</p>
-                            <p className="text-xs text-slate-600">
-                                Mục tiêu: {Number(formatEther(item.goal)).toFixed(3)} ETH
-                            </p>
-                            <p className="text-xs text-slate-600">
-                                Reviewer: {reviewersByCampaignId.get(item.id) || "-"}
-                            </p>
-                            <p className="text-xs text-slate-600">
-                                Thời gian tạo:{" "}
-                                <span suppressHydrationWarning>
-                                    {metadataById.get(item.id)?.createdAt
-                                        ? new Date(
-                                              metadataById.get(item.id)?.createdAt || "",
-                                          ).toLocaleString("vi-VN")
-                                        : "-"}
-                                </span>
-                            </p>
+                        <div key={item.id} className="rounded-xl border border-slate-200 p-5 hover:border-blue-200 hover:bg-blue-50/30 transition-colors">
+                            <div className="flex items-start justify-between gap-4 mb-3">
+                                <div className="flex-1 min-w-0">
+                                    <p className="font-semibold text-slate-900 text-base">
+                                        {metadataById.get(item.id)?.title || `Campaign #${item.id}`}
+                                    </p>
+                                    {metadataById.get(item.id)?.description && (
+                                        <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+                                            {metadataById.get(item.id)?.description}
+                                        </p>
+                                    )}
+                                </div>
+                                <Link
+                                    href={`/campaigns/${item.id}`}
+                                    target="_blank"
+                                    className="shrink-0 text-xs text-blue-600 hover:text-blue-700 hover:underline"
+                                >
+                                    Xem chi tiết →
+                                </Link>
+                            </div>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-600 mb-3">
+                                <p>
+                                    <span className="font-medium">Người tạo:</span>{" "}
+                                    <a
+                                        href={`https://sepolia.etherscan.io/address/${item.creator}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="font-mono text-blue-600 hover:underline"
+                                    >
+                                        {item.creator.slice(0, 8)}...{item.creator.slice(-6)}
+                                    </a>
+                                </p>
+                                <p>
+                                    <span className="font-medium">Mục tiêu:</span>{" "}
+                                    {Number(formatEther(item.goal)).toFixed(3)} ETH
+                                </p>
+                                <p className="col-span-2">
+                                    <span className="font-medium">Reviewer:</span>{" "}
+                                    {reviewersByCampaignId.get(item.id)
+                                        ? (
+                                            <a
+                                                href={`https://sepolia.etherscan.io/address/${reviewersByCampaignId.get(item.id)}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="font-mono text-violet-600 hover:underline"
+                                            >
+                                                {(reviewersByCampaignId.get(item.id) || "").slice(0, 8)}...{(reviewersByCampaignId.get(item.id) || "").slice(-6)}
+                                            </a>
+                                        )
+                                        : <span className="text-slate-400">Chưa có</span>
+                                    }
+                                </p>
+                                <p className="col-span-2">
+                                    <span className="font-medium">Thời gian tạo:</span>{" "}
+                                    <span suppressHydrationWarning>
+                                        {metadataById.get(item.id)?.createdAt
+                                            ? new Date(
+                                                  metadataById.get(item.id)?.createdAt || "",
+                                              ).toLocaleString("vi-VN")
+                                            : "-"}
+                                    </span>
+                                </p>
+                            </div>
                             <button
                                 type="button"
                                 disabled={isPending || isConfirming}
-                                className="mt-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white"
+                                className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
                                 onClick={async () => {
                                     try {
                                         setActionError(null);
@@ -208,7 +252,7 @@ export default function AdminCampaignApprovalsPage() {
                                     }
                                 }}
                             >
-                                Duyệt campaign
+                                {isPending || isConfirming ? "Đang xử lý..." : "Duyệt campaign"}
                             </button>
                         </div>
                     ))}

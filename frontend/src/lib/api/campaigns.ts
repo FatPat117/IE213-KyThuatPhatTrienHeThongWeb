@@ -190,7 +190,6 @@ export async function getCampaigns() {
 }
 
 export async function getCampaignById(id: number) {
-    await ensureCampaignIndexed(id);
     return apiRequest<CampaignRecord>(`/campaigns/${id}`);
 }
 

@@ -57,6 +57,8 @@ function getStatusBadgeColor(status: string): string {
 
 function getStatusLabel(status: string): string {
     switch (status) {
+        case "approved":
+            return "Đã hoàn thành";
         case "disbursed":
         case "completed":
             return "Đã giải ngân";
@@ -199,6 +201,8 @@ export default function MilestonePreviewCard({
     if (!hasMilestones) {
         return null;
     }
+
+    console.log("milestonesToRender", milestonesToRender)
 
     return (
         <Link
