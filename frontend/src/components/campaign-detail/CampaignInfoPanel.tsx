@@ -10,6 +10,7 @@ interface CampaignInfoPanelProps {
         creator: string;
         goal: bigint;
         raised: bigint;
+        deadline: number;
         completed: boolean;
         statusLabel?:
             | "active"
@@ -22,6 +23,7 @@ interface CampaignInfoPanelProps {
     };
     backendDescription?: string;
     backendTitle?: string;
+    reviewerSafe?: string;
     progress: number;
 }
 
@@ -91,6 +93,7 @@ export default function CampaignInfoPanel({
     campaign,
     backendDescription,
     backendTitle,
+    reviewerSafe,
     progress,
 }: CampaignInfoPanelProps) {
     const goalEth = Number(formatEther(campaign.goal));

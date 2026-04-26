@@ -24,6 +24,7 @@ export default function AdminCampaignApprovalsPage() {
     const { adminApproveCampaign, isPending } = useAdminApproveCampaign();
     const [txHash, setTxHash] = useState<`0x${string}` | undefined>(undefined);
     const [lastApprovedId, setLastApprovedId] = useState<number | null>(null);
+    const [mounted, setMounted] = useState(false);
     const lastSyncedTxHashRef = useRef<`0x${string}` | undefined>(undefined);
     const lastNotifiedSuccessTxHashRef = useRef<`0x${string}` | undefined>(
         undefined,
@@ -40,6 +41,9 @@ export default function AdminCampaignApprovalsPage() {
         data: receipt,
     } = useWaitForTransactionReceipt({ hash: txHash });
     useRegisterWalletTxOverlay(isPending || isConfirming);
+
+    // mounted guard: chằn SSR khỏi render phân nhánh isAdmin (tài khoản chưa có dữ liệu wallet)
+    useEffect(() => { setMounted(true); }, []);
 
     const normalizedWallet = (address || "").toLowerCase();
     const adminWallets = (process.env.NEXT_PUBLIC_ADMIN_WALLETS || "")
@@ -120,6 +124,19 @@ export default function AdminCampaignApprovalsPage() {
         }
     }, [confirmError, isConfirmError, receipt?.status, txHash]);
 
+    if (!mounted) {
+        return (
+            <div className="min-h-screen bg-slate-50 px-6 py-10">
+                <main className="mx-auto max-w-6xl rounded-2xl border border-slate-200 bg-white p-6">
+                    <div className="space-y-3 animate-pulse">
+                        <div className="h-7 w-40 rounded bg-slate-200" />
+                        <div className="h-4 w-64 rounded bg-slate-100" />
+                    </div>
+                </main>
+            </div>
+        );
+    }
+
     if (!isAdmin) {
         return (
             <div className="min-h-screen bg-slate-50 px-6 py-10">
@@ -164,11 +181,13 @@ export default function AdminCampaignApprovalsPage() {
                             </p>
                             <p className="text-xs text-slate-600">
                                 Thời gian tạo:{" "}
-                                {metadataById.get(item.id)?.createdAt
-                                    ? new Date(
-                                          metadataById.get(item.id)?.createdAt || "",
-                                      ).toLocaleString("vi-VN")
-                                    : "-"}
+                                <span suppressHydrationWarning>
+                                    {metadataById.get(item.id)?.createdAt
+                                        ? new Date(
+                                              metadataById.get(item.id)?.createdAt || "",
+                                          ).toLocaleString("vi-VN")
+                                        : "-"}
+                                </span>
                             </p>
                             <button
                                 type="button"

@@ -167,6 +167,7 @@ export default function MilestoneBuilder({
     const validateField = (
         field: MilestoneField,
         value: string,
+        milestoneIndex?: number,
     ): string | null => {
         if (field === "name") {
             return value.trim() ? null : "Vui lòng nhập tên mốc";
@@ -192,6 +193,16 @@ export default function MilestoneBuilder({
             if (campaignTime !== null && milestoneTime <= campaignTime) {
                 return "Hạn chót mốc phải sau hạn chót gây quỹ";
             }
+            // Kiểm tra: deadline mốc N phải sau mốc N-1
+            if (milestoneIndex !== undefined && milestoneIndex > 0) {
+                const prevMilestone = milestones[milestoneIndex - 1];
+                if (prevMilestone) {
+                    const prevTime = normalizeDateValue(prevMilestone.deadline);
+                    if (prevTime !== null && milestoneTime <= prevTime) {
+                        return `Hạn chót mốc ${milestoneIndex + 1} phải sau hạn chót mốc ${milestoneIndex} (${new Date(prevTime).toLocaleDateString("vi-VN")})`;
+                    }
+                }
+            }
             return null;
         }
 
@@ -206,12 +217,10 @@ export default function MilestoneBuilder({
         return null;
     };
 
-    const validateMilestone = (milestone: MilestoneForm): FieldErrors => {
+    const validateMilestone = (milestone: MilestoneForm, index: number): FieldErrors => {
         const milestoneErrors: FieldErrors = {};
-        (
-            ["name", "goal", "deadline", "description"] as MilestoneField[]
-        ).forEach((field) => {
-            const error = validateField(field, milestone[field]);
+        (["name", "goal", "deadline", "description"] as MilestoneField[]).forEach((field) => {
+            const error = validateField(field, milestone[field], index);
             if (error) milestoneErrors[field] = error;
         });
         return milestoneErrors;
@@ -230,13 +239,25 @@ export default function MilestoneBuilder({
 
         const isTouched = touched[id]?.[field];
         if (isTouched) {
+            const idx = milestones.findIndex((m) => m.id === id);
             setErrors((prev) => {
                 const updated = { ...prev };
                 const current = updated[id] ? { ...updated[id] } : {};
-                const error = validateField(field, value);
+                const error = validateField(field, value, idx);
                 if (error) current[field] = error;
                 else delete current[field];
                 updated[id] = current;
+                // Khi deadline của mốc hiện tại thay đổi, re-validate mốc tiếp theo
+                if (field === "deadline" && idx >= 0) {
+                    const nextMilestone = milestones[idx + 1];
+                    if (nextMilestone) {
+                        const nextError = validateField("deadline", nextMilestone.deadline, idx + 1);
+                        const nextCurrent = updated[nextMilestone.id] ? { ...updated[nextMilestone.id] } : {};
+                        if (nextError) nextCurrent.deadline = nextError;
+                        else delete nextCurrent.deadline;
+                        updated[nextMilestone.id] = nextCurrent;
+                    }
+                }
                 return updated;
             });
         }
@@ -245,6 +266,7 @@ export default function MilestoneBuilder({
     };
 
     const handleBlur = (id: string, field: MilestoneField, value: string) => {
+        const idx = milestones.findIndex((m) => m.id === id);
         setTouched((prev) => ({
             ...prev,
             [id]: { ...prev[id], [field]: true },
@@ -253,7 +275,7 @@ export default function MilestoneBuilder({
         setErrors((prev) => {
             const updated = { ...prev };
             const current = updated[id] ? { ...updated[id] } : {};
-            const error = validateField(field, value);
+            const error = validateField(field, value, idx);
             if (error) current[field] = error;
             else delete current[field];
             updated[id] = current;
@@ -298,8 +320,8 @@ export default function MilestoneBuilder({
         const updatedErrors: Record<string, FieldErrors> = {};
         const updatedTouched: Record<string, FieldTouched> = { ...touched };
 
-        milestones.forEach((milestone) => {
-            updatedErrors[milestone.id] = validateMilestone(milestone);
+        milestones.forEach((milestone, index) => {
+            updatedErrors[milestone.id] = validateMilestone(milestone, index);
             updatedTouched[milestone.id] = {
                 name: true,
                 goal: true,
@@ -336,8 +358,8 @@ export default function MilestoneBuilder({
         onSubmit(payload);
     };
 
-    const allFieldsValid = milestones.every((milestone) => {
-        const milestoneErrors = validateMilestone(milestone);
+    const allFieldsValid = milestones.every((milestone, index) => {
+        const milestoneErrors = validateMilestone(milestone, index);
         return Object.keys(milestoneErrors).length === 0;
     });
 

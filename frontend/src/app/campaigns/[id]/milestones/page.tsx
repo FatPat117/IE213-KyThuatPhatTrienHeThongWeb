@@ -165,7 +165,6 @@ export default function CampaignMilestonesPage() {
         Boolean(campaign?.creator) &&
         campaign?.creator.toLowerCase() === address?.toLowerCase();
 
-    console.log("Milestones to render:", milestonesToRender);
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
             <main className="mx-auto w-full max-w-6xl px-6 py-12 md:px-10">

@@ -64,7 +64,7 @@ function getStatusMeta(status: string) {
         case "review_timeout":
         case "approved":
             return {
-                label: "Đang thi công",
+                label: "Đã hoàn thành",
                 badgeClass: "bg-blue-100 text-blue-700 border-blue-200",
                 dotClass: "bg-blue-500 ring-blue-100",
                 cardClass: "border-blue-100",

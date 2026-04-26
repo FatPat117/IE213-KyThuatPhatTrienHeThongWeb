@@ -38,6 +38,17 @@ async function startCampaignApprovedConsumer() {
                     txHash: payload.txHash || "",
                 });
             }
+            // Thông báo cho reviewer của campaign này biết rằng campaign đã được duyệt
+            if (campaign?.reviewerSafe && /^0x[a-f0-9]{40}$/i.test(campaign.reviewerSafe)) {
+                await notificationService.createNotification({
+                    recipientWallet: campaign.reviewerSafe.toLowerCase(),
+                    type: "campaign_approved",
+                    title: "Campaign bạn quản lý đã được duyệt",
+                    message: `Campaign #${onChainId} mà bạn là reviewer đã được admin duyệt và sắp bắt đầu nhận quyên góp. Hãy chuẩn bị để theo dõi các milestone.`,
+                    campaignOnChainId: onChainId,
+                    txHash: payload.txHash || "",
+                });
+            }
             channel.ack(msg);
         } catch (error) {
             console.error("[campaign-service] campaignApproved consumer error:", error.message);

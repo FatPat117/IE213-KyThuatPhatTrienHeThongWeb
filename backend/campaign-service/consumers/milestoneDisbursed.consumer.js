@@ -1,6 +1,7 @@
 const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const { Campaign, Milestone } = require("../models");
 const { recordTransaction } = require("../utils/recordTransaction");
+const notificationService = require("../services/notification.service");
 
 const QUEUE =
     process.env.RABBITMQ_QUEUE_MILESTONE_DISBURSED ||
@@ -73,6 +74,18 @@ async function startMilestoneDisbursedConsumer() {
                 }
 
                 await campaign.save();
+            }
+
+            // Thông báo cho reviewer biết có milestone mới được mở khóa
+            if (campaign?.reviewerSafe && /^0x[a-f0-9]{40}$/i.test(campaign.reviewerSafe)) {
+                await notificationService.createNotification({
+                    recipientWallet: campaign.reviewerSafe.toLowerCase(),
+                    type: "milestone_disbursed",
+                    title: "Milestone mới được mở khóa",
+                    message: `Milestone #${milestoneId} của campaign #${campaignOnChainId} vừa được giải ngân và đang chờ creator nộp bằng chứng. Hãy chuẩn bị duyệt.`,
+                    campaignOnChainId,
+                    txHash: payload.txHash || "",
+                });
             }
 
             await recordTransaction({

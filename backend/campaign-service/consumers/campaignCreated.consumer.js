@@ -309,9 +309,9 @@ async function startCampaignCreatedConsumer() {
                         notificationService.createNotification({
                             recipientWallet: adminWallet,
                             type: "campaign_created",
-                            title: "Co campaign moi can duyet",
+                            title: "Có campaign mới cần duyệt",
                             message:
-                                "Mot campaign moi vua duoc tao va dang cho duyet.",
+                                "Một campaign mới vừa được tạo và đang chờ phê duyệt.",
                             campaignOnChainId: onChainId,
                             txHash: payload.txHash || "",
                         }),

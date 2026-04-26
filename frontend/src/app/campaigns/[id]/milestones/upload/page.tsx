@@ -42,11 +42,11 @@ function normalizeIpfsUrl(value: string) {
 }
 
 function toOnChainMilestoneIndex(milestoneId: number) {
-    return milestoneId >= 1 ? milestoneId - 1 : milestoneId;
+    return milestoneId;
 }
 
 function toDisplayMilestoneId(milestoneId: number) {
-    return milestoneId >= 1 ? milestoneId : milestoneId + 1;
+    return milestoneId;
 }
 
 export default function MilestoneEvidenceUploadPage() {

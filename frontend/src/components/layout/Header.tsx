@@ -44,9 +44,19 @@ export default function Header() {
     const isSignedIn = isClient ? Boolean(token && user?.wallet) : false;
     const walletAddress = (user?.wallet || "").trim().toLowerCase();
 
-    const { data: isActiveReviewer } = useReadContract({
-        ...contractConfig,
-        functionName: "isActiveReviewer",
+    // Contract exposes `reviewerSafes(address) => bool` (not `isActiveReviewer`)
+    const { data: isReviewerSafeOnChain } = useReadContract({
+        address: contractConfig.address,
+        abi: [
+            {
+                type: "function",
+                name: "reviewerSafes",
+                stateMutability: "view",
+                inputs: [{ name: "safe", type: "address" }],
+                outputs: [{ name: "", type: "bool" }],
+            },
+        ] as const,
+        functionName: "reviewerSafes",
         args: walletAddress ? [walletAddress as `0x${string}`] : undefined,
         query: {
             enabled: Boolean(walletAddress),
@@ -57,7 +67,7 @@ export default function Header() {
 
     const roleFromAuth = (user?.role || "").toString().trim().toLowerCase();
     const isReviewerByRole = roleFromAuth === "reviewer";
-    const isReviewer = isSignedIn && (Boolean(isActiveReviewer) || isReviewerByRole);
+    const isReviewer = isSignedIn && (Boolean(isReviewerSafeOnChain) || isReviewerByRole);
     const adminWallets = (process.env.NEXT_PUBLIC_ADMIN_WALLETS || "")
         .split(",")
         .map((item) => item.trim().toLowerCase())
@@ -72,14 +82,13 @@ export default function Header() {
     const publicLinks: Array<{ href: string; label: string }> = [
         { href: "/", label: "Trang chủ" },
         { href: "/campaigns", label: "Chiến dịch" },
-        { href: "/reviewer-safe", label: "Reviewer Safe" },
     ];
     const roleLinks: Array<{ href: string; label: string }> = [];
     if (isSignedIn && !isAdmin) {
         roleLinks.push({ href: "/my-campaigns", label: "Campaign của tôi" });
     }
     if (isReviewer && !isAdmin) {
-        roleLinks.push({ href: "/reviewer", label: "Campaign cần duyệt (reviewer)" });
+        roleLinks.push({ href: "/reviewer", label: "Duyệt milestone" });
     }
     if (isAdmin) {
         roleLinks.push({ href: "/admin/campaigns", label: "Duyệt campaign" });
@@ -102,7 +111,7 @@ export default function Header() {
               { href: "/settings", label: "Cài đặt" },
           ]
         : isReviewer
-          ? [...accountLinks, { href: "/reviewer", label: "Campaign cần duyệt (reviewer)" }]
+          ? [...accountLinks, { href: "/reviewer", label: "Duyệt milestone (Reviewer)" }]
           : accountLinks;
 
     return (
