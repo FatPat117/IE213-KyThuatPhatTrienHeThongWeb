@@ -255,8 +255,39 @@ services:
             transaction-service:
                 condition: service_started
         restart: unless-stopped
+    frontend:
+        expose:
+            - "3000"
+        build:
+            context: ./frontend
+            dockerfile: Dockerfile
+            args:
+                NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        container_name: frontend
+        env_file:
+            - ./.env
+        restart: unless-stopped
+
+    caddy:
+        image: caddy:2-alpine
+        container_name: caddy
+        restart: unless-stopped
+        env_file:
+            - ./.env
+        ports:
+            - "80:80"
+            - "443:443"
+        volumes:
+            - ./caddy/Caddyfile.prod:/etc/caddy/Caddyfile:ro
+            - caddy_data:/data
+            - caddy_config:/config
+        depends_on:
+            - gateway
+            - frontend
 
 volumes:
     mongo_data:
     rabbitmq_data:
     shared_data:
+    caddy_data:
+    caddy_config:
