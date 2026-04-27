@@ -3,11 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { formatEther } from "viem";
-import {
-    getPublicCampaigns,
-    type PublicCampaignItem,
-    usePublicStats,
-} from "@/lib";
+import { getPublicCampaigns, usePublicStats } from "@/lib";
+import { type PublicCampaignItem } from "@/lib/api/campaigns";
 
 function formatEthFromWei(wei: string): string {
     try {
@@ -157,8 +154,8 @@ export default function TransparencyPage() {
                         Bảng minh bạch dòng tiền
                     </h1>
                     <p className="mt-3 max-w-3xl text-sm leading-relaxed text-slate-600 md:text-base">
-                        Trang này tổng hợp dữ liệu chiến dịch đã index công khai để
-                        nhà tài trợ kiểm tra nhanh hoạt động gây quỹ, tiến độ
+                        Trang này tổng hợp dữ liệu chiến dịch đã index công khai
+                        để nhà tài trợ kiểm tra nhanh hoạt động gây quỹ, tiến độ
                         giải ngân và kết quả cuối cùng.
                     </p>
                     <p className="mt-3 text-xs font-medium text-slate-500">
@@ -250,8 +247,8 @@ export default function TransparencyPage() {
                                 Các chiến dịch công khai mới nhất
                             </h2>
                             <p className="mt-1 text-sm text-slate-600">
-                                Sắp xếp theo lần cập nhật index gần nhất từ
-                                dịch vụ campaign-service.
+                                Sắp xếp theo lần cập nhật index gần nhất từ dịch
+                                vụ campaign-service.
                             </p>
                         </div>
                     </div>

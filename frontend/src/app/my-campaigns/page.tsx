@@ -36,7 +36,7 @@ export default function MyCampaignsPage() {
         creator: string;
         goal: string;
         raised: string;
-        status: 'active' | 'ended' | 'failed' | 'cancelled';
+        status: 'pending_approval' | 'active' | 'in_progress' | 'completed' | 'partial_failed' | 'failed' | 'cancelled' | 'ended';
       }
     >();
 

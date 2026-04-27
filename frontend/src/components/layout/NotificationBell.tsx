@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { getPublicCampaignMilestones } from "@/lib/api/campaigns";
 import {
     getMyNotifications,
     markNotificationAsRead,
@@ -16,6 +18,7 @@ export default function NotificationBell({ token }: { token: string | null }) {
     const [isLoading, setIsLoading] = useState(false);
     const [realtimeConnected, setRealtimeConnected] = useState(false);
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const router = useRouter();
 
     const mergeNotification = (
         prev: NotificationItem[],
@@ -124,6 +127,40 @@ export default function NotificationBell({ token }: { token: string | null }) {
         });
     };
 
+    const resolveMilestoneApprovedHref = async (campaignOnChainId: number) => {
+        const fallback = `/campaigns/${campaignOnChainId}/milestones`;
+        try {
+            const { milestones } = await getPublicCampaignMilestones(
+                campaignOnChainId,
+            );
+            let latestApproved: {
+                milestoneId: number;
+                approvedAt: string | null;
+            } | null = null;
+            for (const milestone of milestones) {
+                if (!milestone.approvedAt) continue;
+                if (!latestApproved) {
+                    latestApproved = milestone;
+                    continue;
+                }
+                const latestTime = new Date(
+                    latestApproved.approvedAt || 0,
+                ).getTime();
+                const currentTime = new Date(
+                    milestone.approvedAt || 0,
+                ).getTime();
+                if (currentTime > latestTime) {
+                    latestApproved = milestone;
+                }
+            }
+
+            if (!latestApproved) return fallback;
+            return `/campaigns/${campaignOnChainId}/milestones/upload?milestone=${latestApproved.milestoneId}`;
+        } catch {
+            return fallback;
+        }
+    };
+
     useEffect(() => {
         const onClickAway = (event: MouseEvent) => {
             if (!containerRef.current) return;
@@ -214,25 +251,32 @@ export default function NotificationBell({ token }: { token: string | null }) {
                                         const reviewerTypes = new Set([
                                             "milestone_report_submitted",
                                             "milestone_disbursed",
-                                            "milestone_approved",
                                             "campaign_assigned",
                                         ]);
                                         const adminTypes = new Set([
                                             "campaign_created",
                                             "campaign_pending_approval",
                                         ]);
+                                        const isMilestoneApproved =
+                                            item.type === "milestone_approved";
+                                        const campaignId = item.campaignOnChainId;
+                                        const hasCampaignId =
+                                            typeof campaignId === "number";
 
                                         let href: string | null = null;
                                         let linkLabel = "Xem chi tiết";
 
-                                        if (reviewerTypes.has(item.type || "")) {
+                                        if (isMilestoneApproved && hasCampaignId) {
+                                            href = `/campaigns/${campaignId}/milestones`;
+                                            linkLabel = "View milestone";
+                                        } else if (reviewerTypes.has(item.type || "")) {
                                             href = "/reviewer";
                                             linkLabel = "Vào trang Reviewer";
                                         } else if (adminTypes.has(item.type || "")) {
                                             href = "/admin/campaigns";
                                             linkLabel = "Duyệt campaign";
-                                        } else if (item.campaignOnChainId) {
-                                            href = `/campaigns/${item.campaignOnChainId}`;
+                                        } else if (hasCampaignId) {
+                                            href = `/campaigns/${campaignId}`;
                                             linkLabel = "Mở campaign";
                                         }
 
@@ -242,7 +286,12 @@ export default function NotificationBell({ token }: { token: string | null }) {
                                             <Link
                                                 href={href}
                                                 className="mt-1 inline-block text-blue-600 text-[11px] font-medium hover:underline"
-                                                onClick={async () => {
+                                                onClick={async (event) => {
+                                                    const shouldResolveMilestone =
+                                                        isMilestoneApproved && hasCampaignId;
+                                                    if (shouldResolveMilestone) {
+                                                        event.preventDefault();
+                                                    }
                                                     if (!item.read) {
                                                         try {
                                                             await markNotificationAsRead(
@@ -264,6 +313,13 @@ export default function NotificationBell({ token }: { token: string | null }) {
                                                         }
                                                     }
                                                     setOpen(false);
+                                                    if (shouldResolveMilestone) {
+                                                        const targetHref =
+                                                            await resolveMilestoneApprovedHref(
+                                                                campaignId,
+                                                            );
+                                                        router.push(targetHref);
+                                                    }
                                                 }}
                                             >
                                                 {linkLabel} →

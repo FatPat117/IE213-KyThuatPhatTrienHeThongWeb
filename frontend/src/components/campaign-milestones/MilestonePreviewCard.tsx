@@ -18,6 +18,7 @@ interface MilestonePreviewCardProps {
     goalWei?: bigint;
     milestoneCount?: number;
     campaignStatusLabel?:
+        | "pending_approval"
         | "active"
         | "in_progress"
         | "completed"
@@ -202,7 +203,7 @@ export default function MilestonePreviewCard({
         return null;
     }
 
-    console.log("milestonesToRender", milestonesToRender)
+    console.log("milestonesToRender", milestonesToRender);
 
     return (
         <Link

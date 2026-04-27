@@ -71,20 +71,20 @@ async function loadAdminWalletsFromUserService() {
             "",
     );
 
-    if (!requesterWallet) {
-        return [];
-    }
-
     try {
+        const headers = {
+            "Content-Type": "application/json",
+            "x-user-role": "admin",
+        };
+        if (requesterWallet) {
+            headers["x-wallet-address"] = requesterWallet;
+        }
+
         const response = await fetch(
             `${userServiceUrl}/api/users/admin/list-admins`,
             {
                 method: "GET",
-                headers: {
-                    "Content-Type": "application/json",
-                    "x-user-role": "admin",
-                    "x-wallet-address": requesterWallet,
-                },
+                headers,
             },
         );
 
@@ -104,12 +104,8 @@ async function loadAdminWalletsFromUserService() {
 
 async function resolveAdminWallets() {
     const envWallets = resolveAdminWalletsFromEnv();
-    if (envWallets.length > 0) {
-        return envWallets;
-    }
-
     const userServiceWallets = await loadAdminWalletsFromUserService();
-    return [...new Set(userServiceWallets)];
+    return [...new Set([...envWallets, ...userServiceWallets])];
 }
 
 function getMilestoneReader() {
@@ -317,6 +313,18 @@ async function startCampaignCreatedConsumer() {
                         }),
                     ),
                 );
+            }
+
+            const reviewerWallet = normalizeWallet(reviewerSafe);
+            if (reviewerWallet) {
+                await notificationService.createNotification({
+                    recipientWallet: reviewerWallet,
+                    type: "campaign_assigned",
+                    title: "New campaign assigned",
+                    message: "You have been assigned to review a new campaign.",
+                    campaignOnChainId: onChainId,
+                    txHash: payload.txHash || "",
+                });
             }
 
             channel.ack(msg);

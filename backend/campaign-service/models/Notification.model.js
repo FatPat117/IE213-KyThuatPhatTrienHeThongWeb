@@ -15,12 +15,14 @@ const NotificationSchema = new mongoose.Schema(
                 "system",
                 "campaign_created", // admin cần duyệt campaign mới
                 "campaign_approved", // campaign đã được duyệt
+                "campaign_assigned",
                 "campaign_succeeded", // chiến dịch đạt mục tiêu
                 "campaign_failed", // chiến dịch thất bại après deadline
                 "campaign_cancelled", // chiến dịch bị hủy
                 "funding_complete", // campaign đủ vốn, chuyển in_progress
                 "milestone_report_submitted", // reviewer có report mới cần duyệt
                 "milestone_approved", // creator được duyệt milestone
+                "milestone_disbursed",
                 "funds_withdrawn", // creator đã rút tiền thành công
             ],
             required: [true, "type là bắt buộc"],

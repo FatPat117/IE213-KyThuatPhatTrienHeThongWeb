@@ -14,6 +14,7 @@ export type MilestoneStatus =
     | "cancelled";
 
 export type CampaignStatusForTimeline =
+    | "pending_approval"
     | "active"
     | "in_progress"
     | "completed"

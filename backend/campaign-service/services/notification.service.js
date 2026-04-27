@@ -4,12 +4,14 @@ const ALLOWED_NOTIFICATION_TYPES = new Set([
     "system",
     "campaign_created",
     "campaign_approved",
+    "campaign_assigned",
     "campaign_succeeded",
     "campaign_failed",
     "campaign_cancelled",
     "funding_complete",
     "milestone_report_submitted",
     "milestone_approved",
+    "milestone_disbursed",
     "funds_withdrawn",
 ]);
 

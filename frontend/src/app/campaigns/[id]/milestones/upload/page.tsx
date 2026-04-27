@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useWaitForTransactionReceipt } from "wagmi";
 import { useAccount } from "wagmi";
 import {
@@ -49,7 +49,8 @@ function toDisplayMilestoneId(milestoneId: number) {
     return milestoneId;
 }
 
-export default function MilestoneEvidenceUploadPage() {
+// ✅ Tách phần dùng useSearchParams ra component riêng
+function MilestoneEvidenceUploadContent() {
     const params = useParams();
     const searchParams = useSearchParams();
     const { token } = useAuth();
@@ -96,7 +97,7 @@ export default function MilestoneEvidenceUploadPage() {
     const isCreator =
         Boolean(address) &&
         Boolean(campaign?.creator) &&
-        campaign.creator.toLowerCase() === address.toLowerCase();
+        campaign?.creator.toLowerCase() === address?.toLowerCase();
     const canUpload = Boolean(token && isConnected && isCreator);
     const isCampaignInProgress = Boolean(campaign?.isInProgress);
 
@@ -456,5 +457,13 @@ export default function MilestoneEvidenceUploadPage() {
                 </section>
             </main>
         </div>
+    );
+}
+
+export default function MilestoneEvidenceUploadPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-slate-500">Đang tải...</div>}>
+            <MilestoneEvidenceUploadContent />
+        </Suspense>
     );
 }
