@@ -5,7 +5,13 @@ import type { TransactionRecord } from './types';
 
 export async function createTransaction(
   token: string | null,
-  payload: { txHash: string; walletAddress: string; action: 'donate' | 'createCampaign' | 'mintNFT'; campaignOnChainId?: number }
+  payload: {
+    txHash: string;
+    walletAddress: string;
+    action: 'donate' | 'createCampaign' | 'mintNFT';
+    status?: 'pending' | 'success' | 'failed';
+    campaignOnChainId?: number;
+  }
 ) {
   return apiRequest<TransactionRecord>('/transactions', {
     method: 'POST',

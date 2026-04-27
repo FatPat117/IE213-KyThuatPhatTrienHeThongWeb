@@ -7,6 +7,21 @@ const { successRes, errorRes } = require("../utils/response");
 const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-change-this";
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
 
+function getAdminWalletSet() {
+    const set = new Set();
+    const initial = (process.env.INITIAL_ADMIN_WALLET || "").trim().toLowerCase();
+    if (/^0x[a-f0-9]{40}$/.test(initial)) {
+        set.add(initial);
+    }
+
+    const list = String(process.env.ADMIN_WALLETS || "")
+        .split(",")
+        .map((item) => item.trim().toLowerCase())
+        .filter((item) => /^0x[a-f0-9]{40}$/.test(item));
+    for (const wallet of list) set.add(wallet);
+    return set;
+}
+
 /**
  * POST /api/auth/nonce
  * Body: { wallet: "0x..." }
@@ -69,6 +84,12 @@ async function verifySignature(req, res, next) {
             return errorRes(res, "Signature không khớp với địa chỉ ví", 401);
         }
 
+        // Đồng bộ role admin từ env mỗi lần đăng nhập.
+        const adminWallets = getAdminWalletSet();
+        if (adminWallets.has(normalizedWallet) && user.role !== "admin") {
+            user.role = "admin";
+        }
+
         // Xoá nonce sau khi đã dùng (one-time use)
         user.nonce = "";
         await user.save();
@@ -117,6 +138,14 @@ async function refreshToken(req, res, next) {
         // Lấy thông tin mới nhất từ DB (phòng role bị thay đổi)
         const user = await User.findOne({ walletAddress: decoded.wallet });
         if (!user) return errorRes(res, "User không tồn tại", 404);
+
+        // Đồng bộ role admin từ env khi refresh token.
+        const adminWallets = getAdminWalletSet();
+        const normalizedWallet = String(user.walletAddress || "").toLowerCase();
+        if (adminWallets.has(normalizedWallet) && user.role !== "admin") {
+            user.role = "admin";
+            await user.save();
+        }
 
         const newToken = jwt.sign(
             { wallet: user.walletAddress, role: user.role },

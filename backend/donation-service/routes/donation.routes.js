@@ -1,5 +1,10 @@
 const express = require("express");
-const { getDonationsByCampaign, getDonationsByDonor, getTopDonors } = require("../controllers/donation.controller");
+const {
+    getDonationsByCampaign,
+    getDonationsByDonor,
+    getDonationsByCampaignAndDonor,
+    getTopDonors,
+} = require("../controllers/donation.controller");
 const validateAddress = require("../middlewares/validateAddress");
 
 const router = express.Router();
@@ -31,6 +36,12 @@ const router = express.Router();
  *         description: Không tìm thấy
  */
 router.get("/campaign/:id", getDonationsByCampaign);
+
+router.get(
+    "/campaign/:id/donor/:wallet",
+    validateAddress,
+    getDonationsByCampaignAndDonor,
+);
 
 /**
  * @swagger

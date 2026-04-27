@@ -58,7 +58,7 @@ export default function LeaderboardPage() {
       } catch {
         // Fallback: on-chain (2.000 block gần nhất, RPC free tier)
         if (!publicClient) {
-          setDonorError('Không thể tải leaderboard. Kiểm tra kết nối backend và ví.');
+          setDonorError('Không thể tải bảng xếp hạng. Kiểm tra kết nối backend và ví.');
           setDonorStats([]);
           return;
         }
@@ -102,7 +102,7 @@ export default function LeaderboardPage() {
           setDonorError(
             err instanceof Error
               ? err.message
-              : 'Không thể tải leaderboard donor từ on-chain.',
+              : 'Không thể tải bảng xếp hạng nhà tài trợ từ on-chain.',
           );
           setDonorStats([]);
         }
@@ -132,7 +132,7 @@ export default function LeaderboardPage() {
         title:
           getCampaignMetadataFromCache(c.onChainId)?.title ||
           c.title ||
-          `Campaign #${c.onChainId}`,
+          `Chiến dịch #${c.onChainId}`,
         goal: BigInt(c.goal || '0'),
         raised: BigInt(c.raised || '0'),
         completed: c.status !== 'active',
@@ -147,7 +147,7 @@ export default function LeaderboardPage() {
         title:
           existing?.title ||
           cached?.title ||
-          `Campaign #${c.id}`,
+          `Chiến dịch #${c.id}`,
         goal: c.goal,
         raised: c.raised,
         completed: c.completed,
@@ -189,10 +189,10 @@ export default function LeaderboardPage() {
           <div>
             <p className="mb-1 text-sm font-semibold uppercase tracking-wider text-indigo-600">Bảng xếp hạng</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-              Top chiến dịch & nhà hảo tâm
+              Bảng xếp hạng chiến dịch và nhà hảo tâm
             </h1>
             <p className="mt-2 max-w-xl text-slate-600">
-              Dữ liệu on-chain. Top chiến dịch theo tổng ETH raised, top donor theo tổng quyên góp.
+              Dữ liệu on-chain. Chiến dịch được xếp hạng theo tổng ETH đã huy động, nhà tài trợ được xếp hạng theo tổng quyên góp.
             </p>
           </div>
           {chain?.id !== 11155111 && (
@@ -295,19 +295,19 @@ export default function LeaderboardPage() {
                 Nhà hảo tâm đóng góp nhiều nhất
               </h2>
               <p className="mt-1 text-xs text-slate-600">
-                Tổng hợp từ backend indexer sự kiện Donated (fallback on-chain 2.000 block gần nhất nếu API lỗi).
+                Tổng hợp từ backend indexer sự kiện Donated (dự phòng on-chain 2.000 block gần nhất nếu API lỗi).
               </p>
             </div>
 
             {isDonorLoading ? (
               <p className="text-sm text-slate-600">
-                Đang tải dữ liệu donor...
+                Đang tải dữ liệu nhà tài trợ...
               </p>
             ) : donorError ? (
               <p className="text-sm text-red-700">{donorError}</p>
             ) : topDonors.length === 0 ? (
               <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-                Chưa có dữ liệu quyên góp để xếp hạng. Nếu đã có donate trên chain, hãy đảm bảo backend (gateway + donation-service + listener) đang chạy để index event Donated.
+                Chưa có dữ liệu quyên góp để xếp hạng. Nếu đã có giao dịch donate trên chuỗi, hãy đảm bảo backend (gateway + donation-service + listener) đang chạy để index sự kiện Donated.
               </p>
             ) : (
               <div className="space-y-2">
@@ -340,9 +340,7 @@ export default function LeaderboardPage() {
         </div>
 
         <div className="mt-8 rounded-xl border border-slate-200/80 bg-slate-900 p-6 text-sm text-slate-100 shadow-sm ring-1 ring-slate-900/5">
-          <h2 className="mb-2 text-lg font-bold text-white">
-            Cách tính leaderboard
-          </h2>
+          <h2 className="mb-2 text-lg font-bold text-white">Cách tính bảng xếp hạng</h2>
           <p className="mb-1">
             • <span className="font-semibold">Chiến dịch</span> dựa trên dữ liệu kết hợp backend campaign-service và contract on-chain.
           </p>

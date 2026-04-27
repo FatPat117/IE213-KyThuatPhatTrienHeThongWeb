@@ -25,8 +25,17 @@ const TransactionSchema = new mongoose.Schema(
                 "mintNFT", // user mint NFT (nếu có)
                 "withdrawFunds", // creator rút tiền về sau khi campaign thành công
                 "claimRefund", // user rút tiền về sau khi campaign thất bại
+                "claimFundingRefund",
                 "cancelCampaign", // creator hủy campaign
                 "markAsFailed", // listener/service đánh dấu campaign thất bại nếu deadline trôi qua mà chưa đạt goal
+                "milestoneDisburse",
+                "milestoneApprove",
+                "milestoneFail",
+                "submitReport",
+                "campaignFail",
+                "campaignStop",
+                "claimMilestoneRefund",
+                "assignReviewer",
             ],
             required: [true, "action là bắt buộc"],
         },

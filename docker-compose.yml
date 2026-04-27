@@ -77,6 +77,8 @@ services:
             - MONGO_URI=${MONGO_URI_USERS}
             - JWT_SECRET=${JWT_SECRET}
             - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
+            - INITIAL_ADMIN_WALLET=${INITIAL_ADMIN_WALLET}
+            - ADMIN_WALLETS=${ADMIN_WALLETS}
         volumes:
             - ./backend/auth-service:/app
             - /app/node_modules
@@ -98,6 +100,7 @@ services:
             - NODE_ENV=${NODE_ENV}
             - MONGO_URI=${MONGO_URI_USERS}
             - INITIAL_ADMIN_WALLET=${INITIAL_ADMIN_WALLET}
+            - BODY_SIZE_LIMIT=${USER_SERVICE_BODY_SIZE_LIMIT:-25mb}
         volumes:
             - ./backend/user-service:/app
             - /app/node_modules
@@ -127,6 +130,10 @@ services:
             - RABBITMQ_RKEY_WITHDRAWN=${RABBITMQ_RKEY_WITHDRAWN}
             - RABBITMQ_RKEY_CAMP_FAILED=${RABBITMQ_RKEY_CAMP_FAILED}
             - RABBITMQ_QUEUE_CAMP_FAILED=${RABBITMQ_QUEUE_CAMP_FAILED}
+            - RABBITMQ_HEALTHCHECK_INTERVAL_MS=${RABBITMQ_HEALTHCHECK_INTERVAL_MS}
+            - PINATA_API_KEY=${PINATA_API_KEY}
+            - PINATA_API_SECRET=${PINATA_API_SECRET}
+            - PINATA_GATEWAY_URL=${PINATA_GATEWAY_URL}
         volumes:
             - ./backend/campaign-service:/app
             - /app/node_modules
@@ -249,27 +256,40 @@ services:
             transaction-service:
                 condition: service_started
         restart: unless-stopped
-
-    # ─────────────────────────────────────────────────────────
-    # Frontend
-    # ─────────────────────────────────────────────────────────
     frontend:
-        build: ./frontend
+        expose:
+            - "3000"
+        build:
+            context: ./frontend
+            dockerfile: Dockerfile
+            args:
+                NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+                NEXT_PUBLIC_ADMIN_WALLETS: ${NEXT_PUBLIC_ADMIN_WALLETS}
+        container_name: frontend
+        env_file:
+            - ./.env
+        restart: unless-stopped
+
+    caddy:
+        image: caddy:2-alpine
+        container_name: caddy
+        restart: unless-stopped
+        env_file:
+            - ./.env
         ports:
-            - "${FRONTEND_PORT}:${FRONTEND_PORT}"
-        environment:
-            - NODE_ENV=${NODE_ENV}
-            - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-            - NEXT_PUBLIC_SEPOLIA_RPC_URL=${NEXT_PUBLIC_SEPOLIA_RPC_URL}
-            - NEXT_PUBLIC_CROWDFUNDING_CONTRACT_ADDRESS=${NEXT_PUBLIC_CROWDFUNDING_CONTRACT_ADDRESS}
+            - "80:80"
+            - "443:443"
         volumes:
-            - ./frontend:/app
-            - /app/node_modules
+            - ./caddy/Caddyfile.prod:/etc/caddy/Caddyfile:ro
+            - caddy_data:/data
+            - caddy_config:/config
         depends_on:
             - gateway
-        restart: unless-stopped
+            - frontend
 
 volumes:
     mongo_data:
     rabbitmq_data:
     shared_data:
+    caddy_data:
+    caddy_config:

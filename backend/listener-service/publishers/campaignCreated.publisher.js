@@ -1,24 +1,29 @@
 const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const axios = require("axios");
 
-/**
- * Khi contract emit event CampaignCreated(id, creator, beneficiary, goal, deadline):
- *  1. PUBLISH to RabbitMQ → campaign-service consume → lưu MongoDB (async)
- *  2. PATCH transaction-service → update tx status = success (HTTP REST sync)
- */
 async function publishCampaignCreated(eventData) {
-    const { campaignId, creator, beneficiary, goal, deadline, txHash } =
-        eventData;
+    const {
+        campaignId,
+        creator,
+        beneficiary,
+        goal,
+        fundingDeadline,
+        milestoneCount,
+        txHash,
+        blockNumber,
+    } = eventData;
 
     const channel = getChannel();
     if (channel) {
         const payload = {
-            onChainId: Number(campaignId),
+            onChainId: campaignId.toString(),
             creator,
             beneficiary,
-            goal: goal.toString(),
-            deadline: Number(deadline),
+            goalWei: goal.toString(),
+            deadline: fundingDeadline.toString(),
+            milestoneCount: milestoneCount.toString(),
             txHash,
+            blockNumber: blockNumber?.toString?.() || "0",
         };
         channel.publish(
             EXCHANGE,
@@ -39,7 +44,7 @@ async function publishCampaignCreated(eventData) {
             );
         } catch (err) {
             console.error(
-                "[listener-service] Không thể cập nhật tx status:",
+                "[listener-service] Could not update tx status:",
                 err.message,
             );
         }

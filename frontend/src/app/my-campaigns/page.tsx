@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { formatEther } from 'viem';
 import { useAccount } from 'wagmi';
 import {
+  getPublicCampaignMilestones,
   getCampaignMetadataFromCache,
   isPlaceholderCampaignDescription,
   isPlaceholderCampaignTitle,
@@ -23,6 +24,7 @@ export default function MyCampaignsPage() {
   const { address, isConnected, chain } = useAccount();
   const campaignsQuery = useBackendCampaigns();
   const onChainQuery = useReadAllCampaigns();
+  const [milestoneStatusByCampaignId, setMilestoneStatusByCampaignId] = useState<Record<number, string>>({});
 
   const mergedCampaigns = useMemo(() => {
     const map = new Map<
@@ -34,7 +36,7 @@ export default function MyCampaignsPage() {
         creator: string;
         goal: string;
         raised: string;
-        status: 'active' | 'ended' | 'failed' | 'cancelled';
+        status: 'pending_approval' | 'active' | 'in_progress' | 'completed' | 'partial_failed' | 'failed' | 'cancelled' | 'ended';
       }
     >();
 
@@ -76,7 +78,7 @@ export default function MyCampaignsPage() {
         map.set(campaign.id, {
           onChainId: campaign.id,
           title: cached?.title || `Campaign #${campaign.id}`,
-          description: cached?.description || 'Campaign data is stored on-chain without off-chain metadata.',
+          description: cached?.description || 'Dữ liệu campaign hiện chỉ có on-chain, chưa có metadata off-chain.',
           creator: campaign.creator,
           goal: campaign.goal.toString(),
           raised: campaign.raised.toString(),
@@ -95,6 +97,50 @@ export default function MyCampaignsPage() {
       ),
     [address, mergedCampaigns]
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadMilestoneStatuses = async () => {
+      const mine = mergedCampaigns.filter(
+        (campaign) => !!address && campaign.creator.toLowerCase() === address.toLowerCase()
+      );
+      if (!mine.length) {
+        setMilestoneStatusByCampaignId({});
+        return;
+      }
+
+      const entries = await Promise.all(
+        mine.map(async (campaign) => {
+          try {
+            const milestoneData = await getPublicCampaignMilestones(campaign.onChainId);
+            const m0 = milestoneData.milestones.find((item) => item.milestoneId === 0);
+            const raw = (m0?.status || '').toLowerCase();
+            const isFunded = BigInt(campaign.raised || '0') >= BigInt(campaign.goal || '0');
+            if (raw === 'pending_verification' || raw === 'submitted') {
+              return [campaign.onChainId, 'Chờ xác nhận'] as const;
+            }
+            if (raw === 'pending_funding' && isFunded) {
+              return [campaign.onChainId, 'Đang thi công'] as const;
+            }
+            return [campaign.onChainId, ''] as const;
+          } catch {
+            return [campaign.onChainId, ''] as const;
+          }
+        })
+      );
+
+      if (!cancelled) {
+        setMilestoneStatusByCampaignId(
+          Object.fromEntries(entries.filter(([, value]) => Boolean(value)))
+        );
+      }
+    };
+
+    loadMilestoneStatuses();
+    return () => {
+      cancelled = true;
+    };
+  }, [address, mergedCampaigns]);
 
   if (!isConnected) {
     return (
@@ -134,12 +180,20 @@ export default function MyCampaignsPage() {
         <div className="mb-6">
           <BackButton fallbackHref="/" />
         </div>
-        <header className="mb-8">
-          <h1 className="text-4xl font-bold text-slate-900">Chiến dịch bạn đã tạo</h1>
-          <p className="text-slate-600 mt-2">Dữ liệu đồng bộ từ backend campaign-service.</p>
-          <p className="text-xs text-slate-500 mt-2">
-            Rút tiền thực hiện trong trang chi tiết từng campaign sau khi chiến dịch kết thúc và đạt mục tiêu.
-          </p>
+        <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-4xl font-bold text-slate-900">Chiến dịch bạn đã tạo</h1>
+            <p className="mt-2 text-slate-600">Dữ liệu đồng bộ từ backend campaign-service.</p>
+            <p className="mt-2 text-xs text-slate-500">
+              Rút tiền thực hiện trong trang chi tiết từng campaign sau khi chiến dịch kết thúc và đạt mục tiêu.
+            </p>
+          </div>
+          <Link
+            href="/campaigns/create"
+            className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 hover:shadow-md"
+          >
+            + Tạo campaign mới
+          </Link>
         </header>
 
         {(campaignsQuery.isLoading || onChainQuery.isLoading) && (
@@ -214,6 +268,14 @@ export default function MyCampaignsPage() {
                             : campaign.status === 'ended'
                             ? 'bg-slate-400'
                             : 'bg-red-500';
+                        const statusLabel =
+                          campaign.status === 'active'
+                            ? 'đang diễn ra'
+                            : campaign.status === 'ended'
+                            ? 'đã kết thúc'
+                            : campaign.status === 'failed'
+                            ? 'thất bại'
+                            : 'đã hủy';
 
                         return (
                           <div
@@ -230,13 +292,13 @@ export default function MyCampaignsPage() {
                               <span
                                 className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold capitalize ${statusStyles}`}
                               >
-                                {campaign.status}
+                                {statusLabel}
                               </span>
                             </div>
 
                             {/* Body */}
                             <p className="mb-4 line-clamp-3 text-sm text-slate-600">
-                              {campaign.description || 'No description'}
+                              {campaign.description || 'Chưa có mô tả'}
                             </p>
 
                             <div className="mb-4 space-y-2">
@@ -263,8 +325,13 @@ export default function MyCampaignsPage() {
                                 ? 'Đang diễn ra - chưa thể rút tiền'
                                 : campaign.status === 'ended'
                                 ? 'Đủ điều kiện rút tiền trong trang chi tiết'
-                                : 'Chiến dịch failed - không thể rút, donor sẽ yêu cầu refund'}
+                                : 'Chiến dịch thất bại - không thể rút, nhà tài trợ sẽ yêu cầu hoàn tiền'}
                             </p>
+                            {milestoneStatusByCampaignId[campaign.onChainId] && (
+                              <p className="mt-2 text-xs font-semibold text-blue-700">
+                                M0: {milestoneStatusByCampaignId[campaign.onChainId]}
+                              </p>
+                            )}
 
                             {/* Footer */}
                             <div className="mt-4">

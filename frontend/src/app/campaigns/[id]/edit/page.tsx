@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -87,12 +87,12 @@ export default function EditCampaignPage() {
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 1500));
 
-      setSuccessMessage('Cập nhật thành công! (Chỉ metadata – dữ liệu on-chain không đổi)');
+      setSuccessMessage('Cập nhật thành công! (Chỉ thông tin mô tả – dữ liệu on-chain không đổi)');
       setTimeout(() => {
         router.push(`/campaigns/${campaignId}`);
       }, 2000);
     } catch (err) {
-      console.error('Error updating campaign:', err);
+      console.error('Lỗi cập nhật chiến dịch:', err);
       setFormErrors({
         submit: err instanceof Error ? err.message : 'Cập nhật thất bại',
       });

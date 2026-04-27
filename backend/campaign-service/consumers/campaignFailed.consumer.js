@@ -1,19 +1,16 @@
 const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const campaignService = require("../services/campaign.service");
 const notificationService = require("../services/notification.service");
+const { recordTransaction } = require("../utils/recordTransaction");
 
 const QUEUE = process.env.RABBITMQ_QUEUE_CAMP_FAILED || "campaign.failed.queue";
 const ROUTING_KEY = process.env.RABBITMQ_RKEY_CAMP_FAILED || "campaign.failed";
 
-/**
- * Lắng nghe event campaign.failed nội bộ do markFailed.job publish.
- * Cập nhật status = "failed" và gửi notification cho creator.
- */
 async function startCampaignFailedConsumer() {
     const channel = getChannel();
     if (!channel) {
         console.warn(
-            "[campaign-service] RabbitMQ channel không có – bỏ qua campaign.failed consumer",
+            "[campaign-service] RabbitMQ channel unavailable. Skip campaign.failed consumer.",
         );
         return;
     }
@@ -22,28 +19,46 @@ async function startCampaignFailedConsumer() {
     await channel.bindQueue(QUEUE, EXCHANGE, ROUTING_KEY);
     channel.prefetch(1);
 
-    console.log(`[campaign-service] Consumer đang lắng nghe queue: ${QUEUE}`);
+    console.log(
+        `[campaign-service] Listening for ${ROUTING_KEY} on queue: ${QUEUE}`,
+    );
 
     channel.consume(QUEUE, async (msg) => {
         if (!msg) return;
         try {
             const payload = JSON.parse(msg.content.toString());
-            const { campaignOnChainId } = payload;
+            const campaignOnChainId = Number(
+                payload.campaignOnChainId ?? payload.campaignId,
+            );
+
+            if (!Number.isFinite(campaignOnChainId)) {
+                throw new Error(
+                    "Missing campaignId in campaign.failed payload",
+                );
+            }
 
             const campaign = await campaignService.updateCampaignStatus(
                 campaignOnChainId,
                 "failed",
             );
             console.log(
-                `[campaign-service] Campaign ${campaignOnChainId} → failed`,
+                `[campaign-service] Campaign ${campaignOnChainId} -> failed`,
             );
+
+            await recordTransaction({
+                txHash: payload.txHash,
+                walletAddress: campaign?.creator,
+                action: "campaignFail",
+                campaignOnChainId,
+                campaignTitle: campaign?.title,
+            });
 
             if (campaign?.creator) {
                 await notificationService.createNotification({
                     recipientWallet: campaign.creator,
                     type: "campaign_failed",
-                    title: "Chiến dịch đã thất bại",
-                    message: `Chiến dịch "${campaign.title || `#${campaignOnChainId}`}" đã hết hạn mà chưa đạt mục tiêu. Người quyên góp có thể yêu cầu hoàn tiền.`,
+                    title: "Campaign failed",
+                    message: `Campaign "${campaign.title || `#${campaignOnChainId}`}" expired before reaching its goal. Donors can claim refunds.`,
                     campaignOnChainId: Number(campaignOnChainId),
                     txHash: payload.txHash || "",
                 });

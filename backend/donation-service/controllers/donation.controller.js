@@ -17,6 +17,17 @@ async function getDonationsByDonor(req, res, next) {
     } catch (err) { next(err); }
 }
 
+// GET /api/donations/campaign/:id/donor/:wallet
+async function getDonationsByCampaignAndDonor(req, res, next) {
+    try {
+        const donations = await donationService.getMergedDonationsByCampaignAndDonor(
+            req.params.id,
+            req.params.wallet,
+        );
+        return successRes(res, donations);
+    } catch (err) { next(err); }
+}
+
 // GET /api/donations/leaderboard/top-donors?limit=10
 async function getTopDonors(req, res, next) {
     try {
@@ -26,4 +37,9 @@ async function getTopDonors(req, res, next) {
     } catch (err) { next(err); }
 }
 
-module.exports = { getDonationsByCampaign, getDonationsByDonor, getTopDonors };
+module.exports = {
+    getDonationsByCampaign,
+    getDonationsByDonor,
+    getDonationsByCampaignAndDonor,
+    getTopDonors,
+};

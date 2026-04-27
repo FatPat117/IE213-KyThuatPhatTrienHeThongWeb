@@ -1,10 +1,12 @@
 "use client";
 
+import NotificationBell from "@/components/layout/NotificationBell";
+import WalletConnectButton from "@/components/wallet/WalletConnectButton";
+import { contractConfig, useAuth, useReadContractOwner } from "@/lib";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
-import { useAuth } from "@/lib";
+import { useReadContract } from "wagmi";
 
 function isLinkActive(href: string, pathname: string): boolean {
     if (href === "/campaigns") {
@@ -20,20 +22,13 @@ function isLinkActive(href: string, pathname: string): boolean {
     return pathname === href || pathname.startsWith(href + "/");
 }
 
-const WalletConnectButton = dynamic(
-    () => import("@/components/wallet/WalletConnectButton"),
-    {
-        ssr: false,
-    },
-);
-
 export default function Header() {
     const pathname = usePathname();
-    const [isMounted, setIsMounted] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [isMounted, setIsMounted] = useState(false);
     const { token, user } = useAuth();
+    const { owner } = useReadContractOwner();
 
-    // Avoid hydration mismatch: first render must match SSR output.
     useEffect(() => {
         setIsMounted(true);
     }, []);
@@ -42,23 +37,79 @@ export default function Header() {
         ? true
         : Boolean((window as Window & { ethereum?: unknown }).ethereum);
     const isSignedIn = isMounted ? Boolean(token && user?.wallet) : false;
+    const walletAddress = (user?.wallet || "").trim().toLowerCase();
 
-    // Public navigation always hiển thị trên header
-    const publicLinks = [
+    // Contract exposes `reviewerSafes(address) => bool` (not `isActiveReviewer`)
+    const { data: isReviewerSafeOnChain } = useReadContract({
+        address: contractConfig.address,
+        abi: [
+            {
+                type: "function",
+                name: "reviewerSafes",
+                stateMutability: "view",
+                inputs: [{ name: "safe", type: "address" }],
+                outputs: [{ name: "", type: "bool" }],
+            },
+        ] as const,
+        functionName: "reviewerSafes",
+        args: walletAddress ? [walletAddress as `0x${string}`] : undefined,
+        query: {
+            enabled: Boolean(walletAddress),
+            staleTime: 30_000,
+            refetchOnWindowFocus: true,
+        },
+    });
+
+    const roleFromAuth = (user?.role || "").toString().trim().toLowerCase();
+    const isReviewerByRole = roleFromAuth === "reviewer";
+    const isReviewer = isSignedIn && (Boolean(isReviewerSafeOnChain) || isReviewerByRole);
+    const adminWallets = (process.env.NEXT_PUBLIC_ADMIN_WALLETS || "")
+        .split(",")
+        .map((item) => item.trim().toLowerCase())
+        .filter((item) => /^0x[a-f0-9]{40}$/.test(item));
+    const isAdminByOwner =
+        Boolean(walletAddress) && Boolean(owner) && walletAddress === owner;
+    const isAdminByRole = roleFromAuth === "admin";
+    const isAdminByConfig =
+        Boolean(walletAddress) && adminWallets.includes(walletAddress);
+    const isAdmin =
+        Boolean(walletAddress) &&
+        (isAdminByOwner || isAdminByRole || isAdminByConfig);
+
+    const publicLinks: Array<{ href: string; label: string }> = [
+        { href: "/", label: "Trang chủ" },
         { href: "/campaigns", label: "Chiến dịch" },
-        { href: "/leaderboard", label: "Bảng xếp hạng" },
-        { href: "/status", label: "Trạng thái" },
     ];
+    const roleLinks: Array<{ href: string; label: string }> = [];
+    if (isSignedIn && !isAdmin) {
+        roleLinks.push({ href: "/my-campaigns", label: "Campaign của tôi" });
+    }
+    if (isReviewer && !isAdmin) {
+        roleLinks.push({ href: "/reviewer", label: "Duyệt milestone" });
+    }
+    if (isAdmin) {
+        roleLinks.push({ href: "/admin/campaigns", label: "Duyệt campaign" });
+        roleLinks.push({ href: "/admin/reviewers", label: "Quản lý Reviewer" });
+    }
+    const navLinks = [...publicLinks, ...roleLinks];
 
     // Các trang cá nhân gom vào nhóm "Tài khoản" để header gọn hơn
     const accountLinks = [
-        { href: "/dashboard", label: "Tổng quan" },
-        { href: "/my-campaigns", label: "Chiến dịch của tôi" },
-        { href: "/campaigns/create", label: "Tạo mới campaign" },
+        { href: "/my-campaigns", label: "Campaign của tôi" },
+        { href: "/campaigns/create", label: "Tạo campaign mới" },
         { href: "/donations", label: "Quyên góp của tôi" },
-        { href: "/certificates", label: "Chứng chỉ của tôi" },
         { href: "/settings", label: "Cài đặt" },
     ];
+    const visibleAccountLinks = isAdmin
+        ? [
+              { href: "/admin/campaigns", label: "Duyệt campaign" },
+              { href: "/admin/reviewers", label: "Quản lý Reviewer" },
+              { href: "/donations", label: "Quyên góp của tôi" },
+              { href: "/settings", label: "Cài đặt" },
+          ]
+        : isReviewer
+          ? [...accountLinks, { href: "/reviewer", label: "Duyệt milestone (Reviewer)" }]
+          : accountLinks;
 
     return (
         <>
@@ -109,7 +160,7 @@ export default function Header() {
 
                     {/* Desktop Navigation Links */}
                     <div className="hidden lg:flex items-center gap-2">
-                        {publicLinks.map((link) => {
+                        {navLinks.map((link) => {
                             const active = isLinkActive(
                                 link.href,
                                 pathname ?? "",
@@ -133,12 +184,13 @@ export default function Header() {
 
                     {/* Right Section - Wallet Button + Account Dropdown */}
                     <div className="flex items-center gap-3">
+                        {isSignedIn && <NotificationBell token={token} />}
                         {isSignedIn ? (
                             <div className="relative hidden md:block group">
                                 <WalletConnectButton />
                                 {/* THE INVISIBLE BRIDGE FIX IS ADDED HERE */}
                                 <div className="invisible absolute right-0 top-full z-40 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 text-sm text-slate-700 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 before:absolute before:-top-2 before:left-0 before:h-2 before:w-full before:content-['']">
-                                    {accountLinks.map((link) => {
+                                    {visibleAccountLinks.map((link) => {
                                         const active = isLinkActive(
                                             link.href,
                                             pathname ?? "",
@@ -201,7 +253,7 @@ export default function Header() {
                 {isMobileMenuOpen && (
                     <div className="lg:hidden border-t border-slate-200/50 bg-gradient-to-b from-slate-50 to-white">
                         <div className="px-4 py-4 space-y-2">
-                            {publicLinks.map((link) => {
+                            {navLinks.map((link) => {
                                 const active = isLinkActive(
                                     link.href,
                                     pathname ?? "",
@@ -229,7 +281,7 @@ export default function Header() {
                                     <p className="pt-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
                                         Tài khoản
                                     </p>
-                                    {accountLinks.map((link) => {
+                                    {visibleAccountLinks.map((link) => {
                                         const active = isLinkActive(
                                             link.href,
                                             pathname ?? "",
