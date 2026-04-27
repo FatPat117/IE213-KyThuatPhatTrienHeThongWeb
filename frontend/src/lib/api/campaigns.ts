@@ -6,6 +6,7 @@ import type { CampaignRecord } from "./types";
 export interface PublicCampaignItem {
     onChainId: number;
     title: string;
+    description: string;
     creator: string;
     reviewerSafe: string;
     goalWei: string;
@@ -110,6 +111,15 @@ const DISBURSED_MILESTONE_COUNT_CACHE_TTL_MS = 45_000;
 let disbursedMilestoneCountCache: { value: number; expiresAt: number } | null =
     null;
 let disbursedMilestoneCountInFlight: Promise<number> | null = null;
+const PUBLIC_MILESTONES_CACHE_TTL_MS = 20_000;
+const publicMilestonesCache = new Map<
+    number,
+    { data: PublicCampaignMilestonesResponse; expiresAt: number }
+>();
+const publicMilestonesInFlight = new Map<
+    number,
+    Promise<PublicCampaignMilestonesResponse>
+>();
 
 function readCachedCampaignIndexStatus(id: number): boolean | null {
     const cached = campaignIndexStatusCache.get(id);
@@ -280,13 +290,33 @@ export async function getPublicStats() {
 }
 
 export async function getPublicCampaignMilestones(onChainId: number) {
+    const normalizedId = Number(onChainId);
+    if (!Number.isFinite(normalizedId)) {
+        throw new Error("Invalid campaign id");
+    }
+    const cached = publicMilestonesCache.get(normalizedId);
+    if (cached && Date.now() <= cached.expiresAt) {
+        return cached.data;
+    }
+    const pending = publicMilestonesInFlight.get(normalizedId);
+    if (pending) {
+        return pending;
+    }
+
+    const run = async () => {
     try {
-        await ensureCampaignIndexed(onChainId);
+        await ensureCampaignIndexed(normalizedId);
         // Prefer public campaign endpoint to avoid protected milestone route issues
         // in guest sessions and keep response shape consistent.
-        return await apiRequest<PublicCampaignMilestonesResponse>(
-            `/campaigns/public/campaigns/${onChainId}/milestones`,
+        const data = await apiRequest<PublicCampaignMilestonesResponse>(
+            `/campaigns/public/campaigns/${normalizedId}/milestones`,
+            { timeoutMs: 7000 },
         );
+        publicMilestonesCache.set(normalizedId, {
+            data,
+            expiresAt: Date.now() + PUBLIC_MILESTONES_CACHE_TTL_MS,
+        });
+        return data;
     } catch (error) {
         const message =
             error instanceof Error ? error.message.toLowerCase() : "";
@@ -302,7 +332,7 @@ export async function getPublicCampaignMilestones(onChainId: number) {
         // Backward compatible fallback for environments that still expose
         // milestone timeline via milestone-service endpoint.
         const response = await fetch(
-            `${API_BASE_URL}/milestones/campaigns/${onChainId}`,
+            `${API_BASE_URL}/milestones/campaigns/${normalizedId}`,
             {
                 cache: "no-store",
                 headers: {
@@ -316,11 +346,23 @@ export async function getPublicCampaignMilestones(onChainId: number) {
             throw new Error(payload.error || payload.message || "Request failed");
         }
         const rawMilestones = Array.isArray(payload.data) ? payload.data : [];
-        return {
-            campaignOnChainId: onChainId,
+        const data = {
+            campaignOnChainId: normalizedId,
             milestones: rawMilestones.map(mapMilestoneRecord),
         };
+        publicMilestonesCache.set(normalizedId, {
+            data,
+            expiresAt: Date.now() + PUBLIC_MILESTONES_CACHE_TTL_MS,
+        });
+        return data;
     }
+    };
+
+    const task = run().finally(() => {
+        publicMilestonesInFlight.delete(normalizedId);
+    });
+    publicMilestonesInFlight.set(normalizedId, task);
+    return task;
 }
 
 export async function getMilestoneApprovalStatus(

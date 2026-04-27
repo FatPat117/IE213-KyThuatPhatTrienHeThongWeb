@@ -100,6 +100,7 @@ services:
             - NODE_ENV=${NODE_ENV}
             - MONGO_URI=${MONGO_URI_USERS}
             - INITIAL_ADMIN_WALLET=${INITIAL_ADMIN_WALLET}
+            - BODY_SIZE_LIMIT=${USER_SERVICE_BODY_SIZE_LIMIT:-25mb}
         volumes:
             - ./backend/user-service:/app
             - /app/node_modules
@@ -263,6 +264,7 @@ services:
             dockerfile: Dockerfile
             args:
                 NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+                NEXT_PUBLIC_ADMIN_WALLETS: ${NEXT_PUBLIC_ADMIN_WALLETS}
         container_name: frontend
         env_file:
             - ./.env
@@ -275,8 +277,8 @@ services:
         env_file:
             - ./.env
         ports:
-            - "80:80"
-            - "443:443"
+            - "8080:80"
+            - "8443:443"
         volumes:
             - ./caddy/Caddyfile.prod:/etc/caddy/Caddyfile:ro
             - caddy_data:/data

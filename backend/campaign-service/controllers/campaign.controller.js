@@ -235,6 +235,7 @@ function normalizeCampaignItem(campaignDoc) {
     return {
         onChainId: campaignDoc.onChainId,
         title: campaignDoc.title || "",
+        description: campaignDoc.description || "",
         creator: campaignDoc.creator,
         reviewerSafe: campaignDoc.reviewerSafe || "",
         goalWei: campaignDoc.goalWei || campaignDoc.goal || "0",

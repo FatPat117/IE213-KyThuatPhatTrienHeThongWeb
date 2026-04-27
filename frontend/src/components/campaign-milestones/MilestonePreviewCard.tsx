@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
-    getCampaignIndexStatus,
     getPublicCampaignMilestones,
     PublicCampaignMilestone,
 } from "@/lib/api/campaigns";
@@ -103,6 +102,16 @@ export default function MilestonePreviewCard({
     const [isLoading, setIsLoading] = useState(true);
     const [isAwaitingIndex, setIsAwaitingIndex] = useState(false);
     const expectedMilestoneCount = Math.max(0, Number(milestoneCount || 0));
+    const fallbackMilestones = buildTimelineMilestones({
+        campaignId,
+        campaignDeadline,
+        campaignCreatedAt,
+        progressPercent,
+        goalWei,
+        milestoneCount,
+        campaignStatusLabel,
+        currentMilestoneId,
+    });
 
     // Fetch real milestones from API
     useEffect(() => {
@@ -111,15 +120,6 @@ export default function MilestonePreviewCard({
         const fetchMilestones = async () => {
             try {
                 setIsLoading(true);
-                const indexStatus = await getCampaignIndexStatus(campaignId);
-                if (!indexStatus.indexed) {
-                    if (!cancelled) {
-                        setIsAwaitingIndex(true);
-                        setApiMilestones([]);
-                    }
-                    return;
-                }
-
                 const data = await getPublicCampaignMilestones(campaignId);
                 if (!cancelled) {
                     setApiMilestones(data.milestones || []);
@@ -132,6 +132,7 @@ export default function MilestonePreviewCard({
                 // Silently fail - we'll use fallback
                 if (!cancelled) {
                     setApiMilestones([]);
+                    setIsAwaitingIndex(expectedMilestoneCount > 0);
                 }
             } finally {
                 if (!cancelled) {
@@ -153,11 +154,8 @@ export default function MilestonePreviewCard({
         if (!isAwaitingIndex || campaignId <= 0) return;
 
         const retryTimer = window.setInterval(() => {
-            setIsLoading(true);
-            getCampaignIndexStatus(campaignId)
-                .then(async (status) => {
-                    if (!status.indexed) return;
-                    const data = await getPublicCampaignMilestones(campaignId);
+            getPublicCampaignMilestones(campaignId)
+                .then((data) => {
                     const milestones = data.milestones || [];
                     setApiMilestones(milestones);
                     setIsAwaitingIndex(
@@ -166,9 +164,6 @@ export default function MilestonePreviewCard({
                 })
                 .catch(() => {
                     // Keep waiting until indexer catches up.
-                })
-                .finally(() => {
-                    setIsLoading(false);
                 });
         }, 5000);
 
@@ -176,18 +171,6 @@ export default function MilestonePreviewCard({
             window.clearInterval(retryTimer);
         };
     }, [campaignId, expectedMilestoneCount, isAwaitingIndex]);
-
-    // Use API milestones if available, otherwise use mock data
-    const fallbackMilestones = buildTimelineMilestones({
-        campaignId,
-        campaignDeadline,
-        campaignCreatedAt,
-        progressPercent,
-        goalWei,
-        milestoneCount,
-        campaignStatusLabel,
-        currentMilestoneId,
-    });
 
     const hasMilestones =
         apiMilestones.length > 0 || fallbackMilestones.length > 0;
@@ -202,8 +185,6 @@ export default function MilestonePreviewCard({
     if (!hasMilestones) {
         return null;
     }
-
-    console.log("milestonesToRender", milestonesToRender);
 
     return (
         <Link
@@ -243,7 +224,7 @@ export default function MilestonePreviewCard({
                         />
                     </div>
 
-                    {isLoading && (
+                    {isLoading && apiMilestones.length === 0 && (
                         <div className="space-y-3">
                             {[1, 2, 3].map((i) => (
                                 <div

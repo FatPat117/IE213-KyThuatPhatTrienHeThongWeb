@@ -1,12 +1,12 @@
 "use client";
 
+import NotificationBell from "@/components/layout/NotificationBell";
+import WalletConnectButton from "@/components/wallet/WalletConnectButton";
+import { contractConfig, useAuth, useReadContractOwner } from "@/lib";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 import { useReadContract } from "wagmi";
-import { contractConfig, useAuth, useReadContractOwner } from "@/lib";
-import WalletConnectButton from "@/components/wallet/WalletConnectButton";
-import NotificationBell from "@/components/layout/NotificationBell";
 
 function isLinkActive(href: string, pathname: string): boolean {
     if (href === "/campaigns") {
@@ -25,23 +25,18 @@ function isLinkActive(href: string, pathname: string): boolean {
 export default function Header() {
     const pathname = usePathname();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [isMounted, setIsMounted] = useState(false);
     const { token, user } = useAuth();
     const { owner } = useReadContractOwner();
 
-    // Stable SSR/CSR hydration gate:
-    // - server snapshot: false
-    // - first client hydration snapshot: false
-    // - then flips to true after hydration without mismatch.
-    const isClient = useSyncExternalStore(
-        () => () => {},
-        () => true,
-        () => false,
-    );
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
 
-    const hasProvider = !isClient
+    const hasProvider = !isMounted
         ? true
         : Boolean((window as Window & { ethereum?: unknown }).ethereum);
-    const isSignedIn = isClient ? Boolean(token && user?.wallet) : false;
+    const isSignedIn = isMounted ? Boolean(token && user?.wallet) : false;
     const walletAddress = (user?.wallet || "").trim().toLowerCase();
 
     // Contract exposes `reviewerSafes(address) => bool` (not `isActiveReviewer`)
@@ -77,7 +72,9 @@ export default function Header() {
     const isAdminByRole = roleFromAuth === "admin";
     const isAdminByConfig =
         Boolean(walletAddress) && adminWallets.includes(walletAddress);
-    const isAdmin = isSignedIn && (isAdminByOwner || isAdminByRole || isAdminByConfig);
+    const isAdmin =
+        Boolean(walletAddress) &&
+        (isAdminByOwner || isAdminByRole || isAdminByConfig);
 
     const publicLinks: Array<{ href: string; label: string }> = [
         { href: "/", label: "Trang chủ" },

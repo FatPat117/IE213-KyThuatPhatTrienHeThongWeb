@@ -23,7 +23,7 @@ import {
 import { getChainErrorMessage } from "@/lib/errors/normalize";
 import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatEther, parseAbiItem, parseEther } from "viem";
 import {
     useAccount,
@@ -61,13 +61,18 @@ export default function CampaignDetailPage() {
         null,
     );
     const [donations, setDonations] = useState<DonationEvent[]>([]);
-    const [donationReloadNonce, setDonationReloadNonce] = useState(0);
+    const [isDonationHistoryLoading, setIsDonationHistoryLoading] =
+        useState(false);
     const [mintProfileSaving, setMintProfileSaving] = useState(false);
     const [mintFlowError, setMintFlowError] = useState<string | null>(null);
     const publicClient = usePublicClient({ chainId: contractConfig.chainId });
     const [donationHistoryWarning, setDonationHistoryWarning] = useState<
         string | null
     >(null);
+    const lastDonationSuccessTxRef = useRef<string | null>(null);
+    const lastDisburseSuccessTxRef = useRef<string | null>(null);
+    const lastRefundSuccessTxRef = useRef<string | null>(null);
+    const lastMarkAsFailedSuccessTxRef = useRef<string | null>(null);
     const {
         donate,
         hash,
@@ -180,10 +185,10 @@ export default function CampaignDetailPage() {
         );
     };
 
-    useEffect(() => {
-        const loadInitialDonations = async () => {
-            if (!Number.isFinite(id)) return;
-
+    const loadDonationHistory = useCallback(async () => {
+        if (!Number.isFinite(id)) return;
+        setIsDonationHistoryLoading(true);
+        try {
             const merged: DonationEvent[] = [];
             let hasAtLeastOneSource = false;
 
@@ -296,10 +301,27 @@ export default function CampaignDetailPage() {
                     ? null
                     : "Không thể tải lịch sử quyên góp từ backend/on-chain. Vui lòng thử lại sau.",
             );
-        };
+        } catch {
+            setDonationHistoryWarning(
+                "Không thể tải lịch sử quyên góp từ backend/on-chain. Vui lòng thử lại sau.",
+            );
+        } finally {
+            setIsDonationHistoryLoading(false);
+        }
+    }, [address, id, publicClient]);
 
-        loadInitialDonations();
-    }, [address, donationReloadNonce, id, publicClient]);
+    useEffect(() => {
+        setDonations([]);
+        setDonationHistoryWarning(null);
+        loadDonationHistory();
+    }, [loadDonationHistory]);
+
+    useEffect(() => {
+        if (!campaign || !Number.isFinite(id)) return;
+        // Trigger an additional fetch when campaign data is ready to avoid
+        // missing initial history in slower RPC/backend startup.
+        loadDonationHistory();
+    }, [campaign, id, loadDonationHistory]);
 
     // Check if user is creator
     const isCreator =
@@ -404,7 +426,8 @@ export default function CampaignDetailPage() {
     };
 
     useEffect(() => {
-        if (isConfirmed) {
+        if (isConfirmed && hash && lastDonationSuccessTxRef.current !== hash) {
+            lastDonationSuccessTxRef.current = hash;
             if (hash && address && lastDonatedAmount) {
                 try {
                     setDonations((prev) =>
@@ -425,9 +448,6 @@ export default function CampaignDetailPage() {
             refetch();
             setAmount("0.01");
             setLastDonatedAmount(null);
-            showSuccessToast(
-                "Quyên góp thành công! Giao dịch đang được xác nhận.",
-            );
         }
     }, [address, hash, id, isConfirmed, lastDonatedAmount, refetch]);
 
@@ -524,7 +544,7 @@ export default function CampaignDetailPage() {
         }
     };
     const handleReloadDonations = () => {
-        setDonationReloadNonce((prev) => prev + 1);
+        loadDonationHistory();
     };
     const handleMarkAsFailed = () => {
         if (!Number.isFinite(id)) return;
@@ -540,23 +560,41 @@ export default function CampaignDetailPage() {
     };
 
     useEffect(() => {
-        if (markAsFailedConfirmed) {
+        if (
+            markAsFailedConfirmed &&
+            markAsFailedHash &&
+            lastMarkAsFailedSuccessTxRef.current !== markAsFailedHash
+        ) {
+            lastMarkAsFailedSuccessTxRef.current = markAsFailedHash;
             refetch();
             showSuccessToast("Đã cập nhật campaign sang trạng thái thất bại.");
         }
-    }, [markAsFailedConfirmed, refetch]);
+    }, [markAsFailedConfirmed, markAsFailedHash, refetch]);
 
     useEffect(() => {
-        if (!disburseConfirmed) return;
+        if (
+            !disburseConfirmed ||
+            !disburseHash ||
+            lastDisburseSuccessTxRef.current === disburseHash
+        )
+            return;
+        lastDisburseSuccessTxRef.current = disburseHash;
         refetch();
         showSuccessToast("Giải ngân milestone thành công.");
-    }, [disburseConfirmed, refetch]);
+    }, [disburseConfirmed, disburseHash, refetch]);
 
     useEffect(() => {
-        if (!refundConfirmed) return;
+        const refundTxHash = milestoneRefundHash || fundingRefundHash;
+        if (
+            !refundConfirmed ||
+            !refundTxHash ||
+            lastRefundSuccessTxRef.current === refundTxHash
+        )
+            return;
+        lastRefundSuccessTxRef.current = refundTxHash;
         refetch();
         showSuccessToast("Hoàn tiền thành công.");
-    }, [refundConfirmed, refetch]);
+    }, [fundingRefundHash, milestoneRefundHash, refundConfirmed, refetch]);
 
     useEffect(() => {
         const txHash = mintHash || hash;
@@ -590,12 +628,8 @@ export default function CampaignDetailPage() {
         [id],
     );
 
-    console.log("campaign", campaign)
-    console.log("backend campaign", backendCampaign)
-    console.log("cachedMetadata", cachedMetadata)
-
     return (
-        <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
+        <div className="min-h-screen bg-linear-to-b from-slate-50 to-white text-slate-900">
             <main className="mx-auto w-full max-w-6xl px-6 py-12 md:px-10">
                 {/* Page Header */}
                 <header className="flex flex-col gap-4 mb-8">
@@ -734,6 +768,11 @@ export default function CampaignDetailPage() {
                                             {donationHistoryWarning}
                                         </p>
                                     )}
+                                    {isDonationHistoryLoading && (
+                                        <p className="mb-4 text-xs text-slate-500">
+                                            Đang tải lịch sử quyên góp...
+                                        </p>
+                                    )}
 
                                     {donations.length === 0 ? (
                                         <div className="text-center py-12">
@@ -760,7 +799,7 @@ export default function CampaignDetailPage() {
                                                         >
                                                             <div className="flex items-center justify-between mb-2">
                                                                 <div className="flex items-center gap-2">
-                                                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-green-600" />
+                                                                    <div className="w-8 h-8 rounded-full bg-linear-to-br from-green-400 to-green-600" />
                                                                     <div>
                                                                         <code className="text-sm font-mono text-slate-900">
                                                                             {donation.donor.slice(
