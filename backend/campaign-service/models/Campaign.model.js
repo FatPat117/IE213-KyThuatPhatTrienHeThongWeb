@@ -88,6 +88,7 @@ const CampaignSchema = new mongoose.Schema(
         status: {
             type: String,
             enum: [
+                "pending_approval",
                 "active",
                 "in_progress",
                 "completed",
@@ -95,7 +96,7 @@ const CampaignSchema = new mongoose.Schema(
                 "failed",
                 "cancelled",
             ],
-            default: "active",
+            default: "pending_approval",
         },
         milestoneIds: {
             type: [mongoose.Schema.Types.ObjectId],

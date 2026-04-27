@@ -10,6 +10,7 @@ interface CampaignInfoPanelProps {
         creator: string;
         goal: bigint;
         raised: bigint;
+        deadline: number;
         completed: boolean;
         statusLabel?:
             | "active"
@@ -17,11 +18,14 @@ interface CampaignInfoPanelProps {
             | "completed"
             | "partial_failed"
             | "failed"
-            | "cancelled";
+            | "cancelled"
+            | "pending_approval";
     };
     backendDescription?: string;
     backendTitle?: string;
+    reviewerSafe?: string;
     progress: number;
+    thumbnailUrl?: string | null;
 }
 
 function formatEthAmount(value: number) {
@@ -35,6 +39,11 @@ function getStatusBadge(
     completed?: boolean,
 ) {
     switch (statusLabel) {
+        case "pending_approval":
+            return {
+                className: "bg-amber-100 text-amber-700",
+                label: "● Chờ duyệt",
+            };
         case "active":
             return {
                 className: "bg-emerald-100 text-emerald-700",
@@ -85,7 +94,9 @@ export default function CampaignInfoPanel({
     campaign,
     backendDescription,
     backendTitle,
+    reviewerSafe,
     progress,
+    thumbnailUrl,
 }: CampaignInfoPanelProps) {
     const goalEth = Number(formatEther(campaign.goal));
     const raisedEth = Number(formatEther(campaign.raised));
@@ -96,6 +107,20 @@ export default function CampaignInfoPanel({
 
     return (
         <div className="rounded-2xl bg-white border border-slate-200 p-8 shadow-sm">
+
+            {thumbnailUrl && (
+                <div className="w-full h-56 sm:h-64 bg-slate-100 overflow-hidden">
+                    <img
+                        src={thumbnailUrl}
+                        alt={`Thumbnail chiến dịch ${backendTitle || campaign.title || `Campaign ${campaign.id}`}`}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).style.display = 'none';
+                        }}
+                    />
+                </div>
+            )}
+
             <div className="mb-6">
                 <h2 className="mb-3 break-words text-3xl font-bold text-slate-900">
                     {backendTitle ||
@@ -112,13 +137,13 @@ export default function CampaignInfoPanel({
                 <p className="text-slate-600 leading-relaxed">
                     {backendDescription ||
                         campaign.description ||
-                        "This campaign is powered by smart contracts for transparent fundraising."}
+                        "Chiến dịch này sử dụng hợp đồng thông minh để gây quỹ minh bạch."}
                 </p>
             </div>
 
             <div className="rounded-xl bg-slate-50 p-4 mb-6">
                 <p className="text-sm font-medium text-slate-600 mb-1">
-                    Campaign Creator
+                    Người tạo campaign
                 </p>
                 <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600" />
@@ -132,15 +157,48 @@ export default function CampaignInfoPanel({
                         rel="noopener noreferrer"
                         className="ml-auto text-xs font-medium text-blue-600 hover:text-blue-700"
                     >
-                        View on Explorer →
+                        Xem trên explorer →
                     </a>
                 </div>
             </div>
 
+            {/* Reviewer Safe */}
+            {reviewerSafe && /^0x[a-f0-9]{40}$/i.test(reviewerSafe) && (
+                <div className="rounded-xl bg-violet-50 border border-violet-100 p-4 mb-6">
+                    <p className="text-sm font-medium text-violet-600 mb-1">
+                        Reviewer (Gnosis Safe)
+                    </p>
+                    <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-400 to-violet-600 flex-shrink-0" />
+                        <code className="text-sm font-mono text-slate-900 break-all">
+                            {reviewerSafe.slice(0, 8)}...{reviewerSafe.slice(-6)}
+                        </code>
+                        <a
+                            href={`https://sepolia.etherscan.io/address/${reviewerSafe}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="ml-auto text-xs font-medium text-violet-600 hover:text-violet-700 whitespace-nowrap"
+                        >
+                            Xem Safe →
+                        </a>
+                    </div>
+                </div>
+            )}
+
+            {/* Funding Deadline */}
+            {campaign.deadline > 0 && (
+                <div className="rounded-xl bg-slate-50 border border-slate-100 p-4 mb-6 flex items-center justify-between">
+                    <p className="text-sm font-medium text-slate-600">Hạn gây quỹ</p>
+                    <p className="text-sm font-semibold text-slate-900" suppressHydrationWarning>
+                        {new Date(campaign.deadline * 1000).toLocaleString("vi-VN")}
+                    </p>
+                </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="rounded-xl bg-blue-50 border border-blue-100 p-5">
                     <p className="text-sm font-medium text-blue-600 mb-2">
-                        Funding Goal
+                        Mục tiêu gây quỹ
                     </p>
                     <p className="text-2xl font-bold text-slate-900">
                         {formatEthAmount(goalEth)}{" "}
@@ -151,7 +209,7 @@ export default function CampaignInfoPanel({
                 </div>
                 <div className="rounded-xl bg-green-50 border border-green-100 p-5">
                     <p className="text-sm font-medium text-green-600 mb-2">
-                        Total Raised
+                        Tổng đã huy động
                     </p>
                     <p className="text-2xl font-bold text-slate-900">
                         {formatEthAmount(raisedEth)}{" "}
@@ -165,7 +223,7 @@ export default function CampaignInfoPanel({
             <div>
                 <div className="flex items-center justify-between text-sm mb-2">
                     <span className="font-semibold text-slate-900">
-                        {progress.toFixed(1)}% Funded
+                        Đã đạt {progress.toFixed(1)}%
                     </span>
                     <span className="text-slate-600">
                         {formatEthAmount(raisedEth)} /{" "}

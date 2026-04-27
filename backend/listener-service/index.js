@@ -277,6 +277,17 @@ async function startListener() {
         },
     );
 
+    onIfSupported("CampaignApproved", async (campaignId, approvedBy, event) => {
+        const meta = normalizeMeta(event);
+        await publish("campaign.approved", {
+            campaignId: campaignId.toString(),
+            approvedBy: (approvedBy || "").toLowerCase(),
+            txHash: meta.txHash,
+            blockNumber: meta.blockNumber,
+            logIndex: meta.logIndex,
+        });
+    });
+
     onIfSupported(
         "Donated",
         async (campaignId, donor, amount, totalRaised, event) => {

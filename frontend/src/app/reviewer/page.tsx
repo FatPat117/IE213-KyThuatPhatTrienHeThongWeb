@@ -1,13 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { formatEther } from "viem";
-import { useAccount } from "wagmi";
+import { useAccount, useWaitForTransactionReceipt } from "wagmi";
 import {
     getMilestoneApprovalStatus,
     getPublicCampaignMilestones,
     getPublicCampaigns,
+    rejectMilestone,
     useApproveMilestone,
     useAuth,
 } from "@/lib";
@@ -16,6 +17,8 @@ import type {
     PublicCampaignItem,
     PublicCampaignMilestone,
 } from "@/lib/api/campaigns";
+import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
+import { openNotificationStream } from "@/lib/api/notifications";
 
 type ReviewFilter = "all" | "pending" | "processed";
 
@@ -25,19 +28,43 @@ type ReviewerCampaignRow = {
     processedMilestones: PublicCampaignMilestone[];
 };
 
-const PENDING_STATUSES = new Set([
+// Các status rõ ràng là đang chờ reviewer xem xét (không cần nhìn vào approvedAt)
+const CLEARLY_PENDING_STATUSES = new Set([
     "submitted",
     "pending_verification",
     "resubmittable",
 ]);
-const PROCESSED_STATUSES = new Set([
-    "approved",
-    "disbursed",
+
+// Các status rõ ràng là đã xử lý xong (không cần nhìn vào approvedAt)
+const CLEARLY_DONE_STATUSES = new Set([
     "failed",
     "refunded",
     "review_timeout",
     "deadline_exceeded",
 ]);
+
+/**
+ * Milestone "disbursed" trong DB = tiền đã được giải ngân tới creator (bắt đầu làm việc).
+ * Trạng thái này chưa có nghĩa là milestone đã hoàn thành — reviewer vẫn cần approve.
+ * Milestone chỉ thực sự xong khi có approvedAt (backend set khi MilestoneApproved event tới).
+ *
+ * "approved" là trạng thái tạm thời backend ghi ngay khi MilestoneApproved event tới,
+ * trước khi MilestoneDisbursed event kế tiếp tới và overwrite thành "disbursed" cho milestone đó.
+ */
+function isMilestoneNeedingReview(milestone: PublicCampaignMilestone): boolean {
+    if (CLEARLY_PENDING_STATUSES.has(milestone.status)) return true;
+    // disbursed nhưng chưa có approvedAt = tiền đã gửi, creator đang làm, cần reviewer duyệt
+    if (milestone.status === "disbursed" && !milestone.approvedAt) return true;
+    return false;
+}
+
+function isMilestoneFullyCompleted(milestone: PublicCampaignMilestone): boolean {
+    if (CLEARLY_DONE_STATUSES.has(milestone.status)) return true;
+    if (milestone.status === "approved") return true;
+    // disbursed + approvedAt = đã được reviewer duyệt và hoàn thành
+    if (milestone.status === "disbursed" && Boolean(milestone.approvedAt)) return true;
+    return false;
+}
 
 const DEFAULT_APPROVAL_STATUS: MilestoneApprovalStatus = {
     safeAddress: "",
@@ -53,7 +80,9 @@ const STATUS_LABELS: Record<string, string> = {
     pending_verification: "Chờ xác minh",
     resubmittable: "Cần nộp lại",
     approved: "Đã phê duyệt",
-    disbursed: "Đã giải ngân",
+    // disbursed có 2 ý nghĩa — label hiển thị theo approvedAt, xem getStatusLabel bên dưới
+    disbursed: "Đã giải ngân (chờ duyệt)",
+    disbursed_done: "Đã hoàn thành",
     failed: "Thất bại",
     refunded: "Đã hoàn tiền",
     review_timeout: "Quá hạn duyệt",
@@ -65,7 +94,8 @@ const STATUS_BADGE: Record<string, string> = {
     pending_verification: "bg-sky-100 text-sky-800 border-sky-200",
     resubmittable: "bg-orange-100 text-orange-800 border-orange-200",
     approved: "bg-emerald-100 text-emerald-800 border-emerald-200",
-    disbursed: "bg-teal-100 text-teal-800 border-teal-200",
+    disbursed: "bg-amber-100 text-amber-800 border-amber-200",       // chờ duyệt
+    disbursed_done: "bg-teal-100 text-teal-800 border-teal-200",    // đã xong
     failed: "bg-rose-100 text-rose-800 border-rose-200",
     refunded: "bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200",
     review_timeout: "bg-violet-100 text-violet-800 border-violet-200",
@@ -77,6 +107,7 @@ const PRIMARY_FILTER_OPTIONS: Array<{ value: ReviewFilter; label: string }> = [
     { value: "pending", label: "Đang chờ duyệt" },
     { value: "processed", label: "Đã xử lý" },
 ];
+const REVIEWER_CAMPAIGN_PAGE_SIZE = 10;
 
 function collectMilestonesByFilter(
     row: ReviewerCampaignRow,
@@ -123,11 +154,20 @@ function formatEth(wei: string) {
     }
 }
 
-function getStatusLabel(status: string) {
+function getStatusLabel(status: string, milestone?: PublicCampaignMilestone) {
+    if (status === "disbursed" && milestone) {
+        return milestone.approvedAt
+            ? (STATUS_LABELS["disbursed_done"] ?? "Đã hoàn thành")
+            : (STATUS_LABELS["disbursed"] ?? "Đã giải ngân (chờ duyệt)");
+    }
     return STATUS_LABELS[status] || status;
 }
 
-function getStatusBadge(status: string) {
+function getStatusBadge(status: string, milestone?: PublicCampaignMilestone) {
+    if (status === "disbursed" && milestone) {
+        const key = milestone.approvedAt ? "disbursed_done" : "disbursed";
+        return STATUS_BADGE[key] ?? "bg-slate-100 text-slate-700 border-slate-200";
+    }
     return (
         STATUS_BADGE[status] || "bg-slate-100 text-slate-700 border-slate-200"
     );
@@ -153,6 +193,78 @@ function buildSignatureProgressLabel(status: MilestoneApprovalStatus) {
     }
 
     return `${status.confirmed}/${status.required} kiểm duyệt viên đã ký - đang chờ ${waiting} người nữa`;
+}
+
+function RejectModal({
+    isOpen,
+    isSubmitting,
+    onClose,
+    onConfirm,
+}: {
+    isOpen: boolean;
+    isSubmitting: boolean;
+    onClose: () => void;
+    onConfirm: (reason: string) => void;
+}) {
+    const [reason, setReason] = useState("");
+    const MIN_CHARS = 10;
+    const isValid = reason.trim().length >= MIN_CHARS;
+
+    useEffect(() => {
+        if (!isOpen) setReason("");
+    }, [isOpen]);
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+                className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+                onClick={!isSubmitting ? onClose : undefined}
+            />
+            <div className="relative w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+                <div className="mb-4 flex items-center gap-3">
+                    <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-rose-100 text-xl">
+                        ❌
+                    </span>
+                    <div>
+                        <h3 className="text-lg font-bold text-slate-900">Từ chối milestone</h3>
+                        <p className="text-sm text-slate-500">Nhập lý do từ chối để creator có thể cải thiện bằng chứng.</p>
+                    </div>
+                </div>
+
+                <textarea
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    disabled={isSubmitting}
+                    rows={4}
+                    placeholder="Ví dụ: Bằng chứng chưa đủ rõ ràng, cần bổ sung hình ảnh hoàn công và tài liệu kiểm tra..."
+                    className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60"
+                />
+                <p className={`mt-1 text-right text-xs ${reason.trim().length < MIN_CHARS ? "text-rose-500" : "text-emerald-600"}`}>
+                    {reason.trim().length}/{MIN_CHARS} ký tự tối thiểu
+                </p>
+
+                <div className="mt-4 flex justify-end gap-3">
+                    <button
+                        onClick={onClose}
+                        disabled={isSubmitting}
+                        className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                    >
+                        Huỷ
+                    </button>
+                    <button
+                        onClick={() => isValid && onConfirm(reason.trim())}
+                        disabled={!isValid || isSubmitting}
+                        className="rounded-xl bg-rose-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                        {isSubmitting ? "Đang gửi..." : "Xác nhận từ chối"}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
 }
 
 function EvidenceCard({
@@ -222,12 +334,23 @@ function EvidenceCard({
             )}
 
             {resolvedKind === "image" && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                    src={evidenceUrl}
-                    alt="Evidence preview"
-                    className="mt-2 h-40 w-full rounded-lg border border-slate-200 bg-white object-contain"
-                />
+                <div className="mt-2">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                        src={evidenceUrl}
+                        alt="Evidence preview"
+                        className="h-40 w-full rounded-lg border border-slate-200 bg-white object-contain"
+                    />
+                    <a
+                        href={evidenceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-1.5 inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                        Mở IPFS
+                    </a>
+                </div>
             )}
 
             {resolvedKind === "pdf" && (
@@ -235,9 +358,10 @@ function EvidenceCard({
                     href={evidenceUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="mt-2 inline-flex rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                    className="mt-2 inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
                 >
-                    Mở PDF
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                    Mở PDF trên IPFS
                 </a>
             )}
 
@@ -246,9 +370,10 @@ function EvidenceCard({
                     href={evidenceUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="mt-2 inline-flex rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                    className="mt-2 inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
                 >
-                    Mở tài liệu
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                    Mở tài liệu trên IPFS
                 </a>
             )}
         </div>
@@ -272,11 +397,22 @@ export default function ReviewerWorkspacePage() {
     >({});
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [currentPage, setCurrentPage] = useState(0);
+    const [hasMoreCampaigns, setHasMoreCampaigns] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
     const [approvingKey, setApprovingKey] = useState<string | null>(null);
+    const [approvingTxHash, setApprovingTxHash] = useState<`0x${string}` | undefined>(undefined);
     const [rejectingKey, setRejectingKey] = useState<string | null>(null);
     const [actionMessage, setActionMessage] = useState<string | null>(null);
+    const [actionIsSuccess, setActionIsSuccess] = useState(false);
+    const [rejectModalTarget, setRejectModalTarget] = useState<{ campaignId: number; milestoneId: number } | null>(null);
+    const loadMoreRef = useRef<HTMLDivElement | null>(null);
+    const { isLoading: isApproveConfirming } = useWaitForTransactionReceipt({
+        hash: approvingTxHash,
+    });
+    useRegisterWalletTxOverlay(Boolean(approvingKey) || isApproveConfirming);
 
     const assignedCampaignCount = useMemo(
         () =>
@@ -293,21 +429,37 @@ export default function ReviewerWorkspacePage() {
     const reviewerName =
         user?.displayName?.trim() || shortenAddress(walletAddress);
 
-    const loadReviewerCampaigns = useCallback(async () => {
+    const loadReviewerCampaigns = useCallback(async (options?: { reset?: boolean; page?: number }) => {
+        const reset = options?.reset ?? false;
+        const targetPage = options?.page ?? 1;
+
         try {
+            if (reset) {
+                setIsLoading(true);
+            } else {
+                setIsLoadingMore(true);
+            }
             setIsRefreshing(true);
             setErrorMessage(null);
 
             const campaignsResponse = await getPublicCampaigns({
-                page: 1,
-                limit: 100,
+                page: targetPage,
+                limit: REVIEWER_CAMPAIGN_PAGE_SIZE,
+                reviewerSafe: walletAddress || undefined,
                 sort: "updatedAt",
                 order: "desc",
             });
+
+            // 🐞 LOG 1: Xem toàn bộ response của Campaigns trả về
+            console.log("📦 [API] Raw Campaigns Response:", campaignsResponse);
+
             const campaigns = campaignsResponse.items.filter((campaign) => {
                 const safe = (campaign.reviewerSafe || "").trim().toLowerCase();
-                return /^0x[a-f0-9]{40}$/.test(safe);
+                return /^0x[a-f0-9]{40}$/.test(safe) && safe === walletAddress;
             });
+
+            // 🐞 LOG 2: Xem các Campaigns đã được lọc đúng với ví của reviewer hiện tại
+            console.log("🎯 [Filter] Campaigns của reviewer này:", campaigns);
 
             const milestonesResults = await Promise.allSettled(
                 campaigns.map((campaign) =>
@@ -315,17 +467,30 @@ export default function ReviewerWorkspacePage() {
                 ),
             );
 
+            // 🐞 LOG 3: Xem toàn bộ response của Milestones tương ứng với các Campaigns trên
+            console.log("📑 [API] Raw Milestones Results:", milestonesResults);
+
             const nextRows: ReviewerCampaignRow[] = [];
             milestonesResults.forEach((result, index) => {
-                if (result.status !== "fulfilled") return;
+                if (result.status !== "fulfilled") {
+                    console.error(`❌ [Lỗi] Không lấy được milestone cho campaign ID ${campaigns[index].onChainId}`, result.reason);
+                    return;
+                }
 
                 const campaign = campaigns[index];
                 const pendingMilestones = result.value.milestones.filter(
-                    (milestone) => PENDING_STATUSES.has(milestone.status),
+                    isMilestoneNeedingReview,
                 );
                 const processedMilestones = result.value.milestones.filter(
-                    (milestone) => PROCESSED_STATUSES.has(milestone.status),
+                    isMilestoneFullyCompleted,
                 );
+
+                // 🐞 LOG 4: Xem chi tiết phân loại trạng thái milestone của từng campaign
+                console.log(`🔍 [Phân loại] Campaign ID ${campaign.onChainId}:`, {
+                    totalFetched: result.value.milestones.length,
+                    pending: pendingMilestones,
+                    processed: processedMilestones
+                });
 
                 if (
                     pendingMilestones.length === 0 &&
@@ -341,6 +506,9 @@ export default function ReviewerWorkspacePage() {
                 });
             });
 
+            // 🐞 LOG 5: Xem Dữ liệu cuối cùng sẽ được đưa vào State (để render ra UI)
+            console.log("🚀 [State] Final Rows data:", nextRows);
+
             nextRows.sort((a, b) => {
                 if (b.pendingMilestones.length !== a.pendingMilestones.length) {
                     return (
@@ -353,7 +521,35 @@ export default function ReviewerWorkspacePage() {
                 );
             });
 
-            setRows(nextRows);
+            setRows((prev) => {
+                if (reset) return nextRows;
+
+                const mergedMap = new Map<number, ReviewerCampaignRow>();
+                prev.forEach((row) => {
+                    mergedMap.set(row.campaign.onChainId, row);
+                });
+                nextRows.forEach((row) => {
+                    mergedMap.set(row.campaign.onChainId, row);
+                });
+
+                return Array.from(mergedMap.values()).sort((a, b) => {
+                    if (
+                        b.pendingMilestones.length !== a.pendingMilestones.length
+                    ) {
+                        return (
+                            b.pendingMilestones.length - a.pendingMilestones.length
+                        );
+                    }
+                    return (
+                        new Date(b.campaign.createdAt).getTime() -
+                        new Date(a.campaign.createdAt).getTime()
+                    );
+                });
+            });
+            setCurrentPage(targetPage);
+            setHasMoreCampaigns(
+                targetPage < (campaignsResponse.pagination?.totalPages || 1),
+            );
             setLastUpdatedAt(new Date().toLocaleTimeString("vi-VN"));
         } catch (error) {
             setErrorMessage(
@@ -363,9 +559,10 @@ export default function ReviewerWorkspacePage() {
             );
         } finally {
             setIsRefreshing(false);
+            setIsLoadingMore(false);
             setIsLoading(false);
         }
-    }, []);
+    }, [walletAddress]);
 
     const refreshApprovalStatuses = useCallback(async () => {
         if (!token || rows.length === 0) return;
@@ -404,8 +601,28 @@ export default function ReviewerWorkspacePage() {
     }, [rows, token]);
 
     useEffect(() => {
-        loadReviewerCampaigns();
+        setRows([]);
+        setCurrentPage(0);
+        setHasMoreCampaigns(false);
+        loadReviewerCampaigns({ reset: true, page: 1 });
     }, [loadReviewerCampaigns]);
+
+    useEffect(() => {
+        const node = loadMoreRef.current;
+        if (!node || isLoading || isLoadingMore || !hasMoreCampaigns) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                const first = entries[0];
+                if (!first?.isIntersecting) return;
+                loadReviewerCampaigns({ page: currentPage + 1 });
+            },
+            { rootMargin: "240px 0px" },
+        );
+
+        observer.observe(node);
+        return () => observer.disconnect();
+    }, [currentPage, hasMoreCampaigns, isLoading, isLoadingMore, loadReviewerCampaigns]);
 
     useEffect(() => {
         if (!normalizedIsReviewer || rows.length === 0) return;
@@ -417,6 +634,56 @@ export default function ReviewerWorkspacePage() {
 
         return () => window.clearInterval(timer);
     }, [normalizedIsReviewer, refreshApprovalStatuses, rows.length]);
+
+    // Tự động làm mới dữ liệu campaign/milestone mỗi 20 giây
+    useEffect(() => {
+        if (!walletAddress) return;
+        const timer = window.setInterval(() => {
+            loadReviewerCampaigns({ reset: true, page: 1 });
+        }, 20_000);
+        return () => window.clearInterval(timer);
+    }, [loadReviewerCampaigns, walletAddress]);
+
+    // Lắng nghe SSE notification: khi nhận thông báo milestone mới → reload ngay
+    useEffect(() => {
+        if (!token || !walletAddress) return;
+        const controller = new AbortController();
+        let active = true;
+        const RELOAD_TYPES = new Set([
+            "milestone_report_submitted",
+            "milestone_disbursed",
+            "campaign_created",
+            "campaign_approved",
+        ]);
+        const connect = async () => {
+            try {
+                await openNotificationStream(
+                    token,
+                    (notification) => {
+                        if (!active) return;
+                        if (RELOAD_TYPES.has(notification.type)) {
+                            loadReviewerCampaigns({ reset: true, page: 1 });
+                        }
+                    },
+                    undefined,
+                    controller.signal,
+                );
+                // Tự reconnect khi stream kết thúc
+                if (active && !controller.signal.aborted) {
+                    window.setTimeout(connect, 2000);
+                }
+            } catch {
+                if (active && !controller.signal.aborted) {
+                    window.setTimeout(connect, 4000);
+                }
+            }
+        };
+        connect();
+        return () => {
+            active = false;
+            controller.abort();
+        };
+    }, [token, walletAddress, loadReviewerCampaigns]);
 
     const filteredRows = useMemo(() => {
         return rows
@@ -434,6 +701,7 @@ export default function ReviewerWorkspacePage() {
     const handleApprove = useCallback(
         async (campaignId: number, milestoneId: number) => {
             if (!isConnected || !walletAddress) {
+                setActionIsSuccess(false);
                 setActionMessage("Vui lòng kết nối ví để gửi phê duyệt.");
                 return;
             }
@@ -446,7 +714,7 @@ export default function ReviewerWorkspacePage() {
 
             if (!campaignReviewerSafe) {
                 setActionMessage(
-                    "Campaign chưa có reviewerSafe nên không thể gửi approve on-chain.",
+                    "Chiến dịch chưa có reviewerSafe nên không thể gửi duyệt on-chain.",
                 );
                 return;
             }
@@ -464,10 +732,17 @@ export default function ReviewerWorkspacePage() {
 
             try {
                 const txHash = await approveMilestone(campaignId, milestoneId);
-
-                setActionMessage(`Đã gửi giao dịch phê duyệt: ${txHash}`);
+                setApprovingTxHash(txHash as `0x${string}`);
+                setActionIsSuccess(true);
+                setActionMessage(`✅ Đã gửi giao dịch phê duyệt! Đang chờ xác nhận on-chain... TX: ${(txHash as string).slice(0, 10)}...`);
                 await refreshApprovalStatuses();
+                // Backend listener sẽ cập nhật DB sau khi tx được xác nhận on-chain.
+                // Chờ ~4s rồi reload để bắt kịp dữ liệu mới từ backend.
+                window.setTimeout(() => {
+                    loadReviewerCampaigns({ reset: true, page: 1 });
+                }, 4000);
             } catch (error) {
+                setActionIsSuccess(false);
                 setActionMessage(
                     error instanceof Error
                         ? error.message
@@ -486,47 +761,62 @@ export default function ReviewerWorkspacePage() {
         ],
     );
 
-    const handleReject = useCallback(
-        async (campaignId: number, milestoneId: number) => {
-            const key = toApprovalKey(campaignId, milestoneId);
-
+    const openRejectModal = useCallback(
+        (campaignId: number, milestoneId: number) => {
             if (!isConnected || !walletAddress) {
+                setActionIsSuccess(false);
                 setActionMessage("Vui lòng kết nối ví để gửi từ chối.");
                 return;
             }
-
+            if (!token) {
+                setActionIsSuccess(false);
+                setActionMessage("Bạn cần đăng nhập để gửi từ chối milestone.");
+                return;
+            }
             const campaignReviewerSafe =
                 rows
                     .find((item) => item.campaign.onChainId === campaignId)
                     ?.campaign.reviewerSafe?.trim()
                     .toLowerCase() || "";
-
             if (!campaignReviewerSafe) {
-                setActionMessage(
-                    "Campaign chưa có reviewerSafe nên không thể gửi từ chối on-chain.",
-                );
+                setActionIsSuccess(false);
+                setActionMessage("Chiến dịch chưa có reviewerSafe nên không thể gửi từ chối on-chain.");
                 return;
             }
-
             if (campaignReviewerSafe !== walletAddress) {
-                setActionMessage(
-                    "Ví hiện tại không trùng reviewerSafe của campaign này. Nếu dùng Gnosis Safe, hãy tạo giao dịch reject/fail milestone trong Safe UI.",
-                );
+                setActionIsSuccess(false);
+                setActionMessage("Ví hiện tại không trùng reviewerSafe của campaign này. Nếu dùng Gnosis Safe, hãy tạo giao dịch reject/fail milestone trong Safe UI.");
                 return;
             }
+            setRejectModalTarget({ campaignId, milestoneId });
+        },
+        [isConnected, rows, token, walletAddress],
+    );
 
+    const handleRejectConfirm = useCallback(
+        async (reason: string) => {
+            if (!rejectModalTarget || !token) return;
+            const { campaignId, milestoneId } = rejectModalTarget;
+            const key = toApprovalKey(campaignId, milestoneId);
             setRejectingKey(key);
             setActionMessage(null);
-
             try {
+                await rejectMilestone(campaignId, milestoneId, token, reason);
+                setRejectModalTarget(null);
+                setActionIsSuccess(true);
+                setActionMessage("✅ Đã ghi nhận từ chối milestone. Creator có thể nộp lại minh chứng.");
+                await loadReviewerCampaigns({ reset: true, page: 1 });
+                await refreshApprovalStatuses();
+            } catch (error) {
+                setActionIsSuccess(false);
                 setActionMessage(
-                    "Tính năng từ chối on-chain sẽ được mở khi smart contract hỗ trợ reject milestone.",
+                    error instanceof Error ? error.message : "Không thể từ chối milestone",
                 );
             } finally {
                 setRejectingKey(null);
             }
         },
-        [isConnected, rows, walletAddress],
+        [loadReviewerCampaigns, refreshApprovalStatuses, rejectModalTarget, token],
     );
 
     if (isLoading) {
@@ -549,7 +839,7 @@ export default function ReviewerWorkspacePage() {
                         <div className="max-w-3xl">
                             <div className="flex flex-wrap items-center gap-2">
                                 <span className="rounded-full bg-indigo-100 px-4 py-1 text-xs font-bold uppercase tracking-[0.12em] text-indigo-600">
-                                    Reviewer Dashboard
+                                    Khu vực reviewer
                                 </span>
                                 <span className="rounded-full bg-emerald-100 px-4 py-1 text-xs font-bold text-emerald-700">
                                     {normalizedIsReviewer
@@ -559,7 +849,7 @@ export default function ReviewerWorkspacePage() {
                             </div>
 
                             <h1 className="mt-4 text-3xl font-extrabold leading-[1.15] tracking-tight text-slate-900 md:text-[3.2rem]">
-                                Không gian kiểm duyệt viên
+                                Chiến dịch của tôi (Reviewer)
                             </h1>
 
                             <p className="mt-4 max-w-2xl text-lg leading-8 text-slate-600">
@@ -574,11 +864,11 @@ export default function ReviewerWorkspacePage() {
                                         "Chưa kết nối"}
                                 </p>
                                 <p>
-                                    Reviewer profile:{" "}
+                                    Hồ sơ reviewer:{" "}
                                     {reviewerName || "Chưa có tên hiển thị"}
                                 </p>
                                 <p>
-                                    Campaigns assigned to this wallet:{" "}
+                                    Số campaign gán cho ví này:{" "}
                                     {assignedCampaignCount}
                                 </p>
                             </div>
@@ -592,7 +882,13 @@ export default function ReviewerWorkspacePage() {
                                 </button>
                                 <button
                                     onClick={async () => {
-                                        await loadReviewerCampaigns();
+                                        setRows([]);
+                                        setCurrentPage(0);
+                                        setHasMoreCampaigns(false);
+                                        await loadReviewerCampaigns({
+                                            reset: true,
+                                            page: 1,
+                                        });
                                         await refreshApprovalStatuses();
                                     }}
                                     disabled={isRefreshing}
@@ -651,7 +947,7 @@ export default function ReviewerWorkspacePage() {
                 )}
 
                 {actionMessage && (
-                    <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+                    <div className={`mb-4 rounded-2xl border px-4 py-3 text-sm ${actionIsSuccess ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-blue-200 bg-blue-50 text-blue-700"}`}>
                         {actionMessage}
                     </div>
                 )}
@@ -677,14 +973,14 @@ export default function ReviewerWorkspacePage() {
                                             <div>
                                                 <h2 className="text-2xl font-bold text-slate-900">
                                                     {row.campaign.title ||
-                                                        `Campaign #${row.campaign.onChainId}`}
+                                                        `Chiến dịch #${row.campaign.onChainId}`}
                                                 </h2>
                                                 <p className="mt-1 text-sm text-slate-600">
-                                                    Campaign ID: #
+                                                    Mã campaign: #
                                                     {row.campaign.onChainId}
                                                 </p>
                                                 <p className="mt-1 text-sm text-slate-600">
-                                                    Reviewer Safe:{" "}
+                                                    Ví reviewer safe:{" "}
                                                     {row.campaign
                                                         .reviewerSafe ||
                                                         "Chưa cài đặt"}
@@ -694,7 +990,7 @@ export default function ReviewerWorkspacePage() {
                                                 href={`/campaigns/${row.campaign.onChainId}/milestones`}
                                                 className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
                                             >
-                                                Xem timeline
+                                                Xem dòng thời gian
                                             </Link>
                                         </div>
                                     </div>
@@ -714,9 +1010,7 @@ export default function ReviewerWorkspacePage() {
                                         const isRejecting =
                                             rejectingKey === key;
                                         const isPendingMilestone =
-                                            PENDING_STATUSES.has(
-                                                milestone.status,
-                                            );
+                                            isMilestoneNeedingReview(milestone);
                                         const hasEvidence =
                                             milestone.reportCids.length > 0;
                                         const canWalletApproveMilestone =
@@ -741,10 +1035,11 @@ export default function ReviewerWorkspacePage() {
                                                                 }
                                                             </span>
                                                             <span
-                                                                className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusBadge(milestone.status)}`}
+                                                                className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusBadge(milestone.status, milestone)}`}
                                                             >
                                                                 {getStatusLabel(
                                                                     milestone.status,
+                                                                    milestone,
                                                                 )}
                                                             </span>
                                                         </div>
@@ -787,8 +1082,7 @@ export default function ReviewerWorkspacePage() {
                                                         <button
                                                             onClick={() =>
                                                                 handleApprove(
-                                                                    row.campaign
-                                                                        .onChainId,
+                                                                    row.campaign.onChainId,
                                                                     milestone.milestoneId,
                                                                 )
                                                             }
@@ -798,7 +1092,8 @@ export default function ReviewerWorkspacePage() {
                                                                 !hasEvidence ||
                                                                 !canWalletApproveMilestone
                                                             }
-                                                            className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                                            title={!hasEvidence ? "Milestone chưa có bằng chứng" : !canWalletApproveMilestone ? "Ví không trùng reviewerSafe" : undefined}
+                                                            className="flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                                                         >
                                                             {isApproving
                                                                 ? "Đang gửi phê duyệt..."
@@ -807,9 +1102,8 @@ export default function ReviewerWorkspacePage() {
 
                                                         <button
                                                             onClick={() =>
-                                                                handleReject(
-                                                                    row.campaign
-                                                                        .onChainId,
+                                                                openRejectModal(
+                                                                    row.campaign.onChainId,
                                                                     milestone.milestoneId,
                                                                 )
                                                             }
@@ -818,7 +1112,8 @@ export default function ReviewerWorkspacePage() {
                                                                 isRejecting ||
                                                                 !canWalletApproveMilestone
                                                             }
-                                                            className="rounded-xl border border-rose-600 bg-rose-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                                            title={!canWalletApproveMilestone ? "Ví không trùng reviewerSafe" : undefined}
+                                                            className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-5 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                                                         >
                                                             {isRejecting
                                                                 ? "Đang xử lý từ chối..."
@@ -873,7 +1168,25 @@ export default function ReviewerWorkspacePage() {
                         );
                     })}
                 </div>
+                <div ref={loadMoreRef} className="h-2 w-full" />
+                {isLoadingMore && (
+                    <p className="py-2 text-center text-sm text-slate-500">
+                        Đang tải thêm chiến dịch...
+                    </p>
+                )}
+                {!isLoading && !isLoadingMore && !hasMoreCampaigns && rows.length > 0 && (
+                    <p className="py-2 text-center text-xs text-slate-500">
+                        Đã tải hết danh sách chiến dịch của reviewer.
+                    </p>
+                )}
             </main>
+
+            <RejectModal
+                isOpen={rejectModalTarget !== null}
+                isSubmitting={rejectingKey !== null}
+                onClose={() => setRejectModalTarget(null)}
+                onConfirm={handleRejectConfirm}
+            />
         </div>
     );
 }

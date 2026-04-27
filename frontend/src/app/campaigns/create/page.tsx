@@ -1,25 +1,39 @@
 "use client";
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { decodeEventLog, parseEther } from "viem";
-import { useAccount, useChainId, useWaitForTransactionReceipt } from "wagmi";
+import {
+    useAccount,
+    useChainId,
+    useReadContract,
+    useWaitForTransactionReceipt,
+} from "wagmi";
 import {
     contractConfig,
     createTransaction,
     getCampaignIndexStatus,
-    getReviewerAggregates,
     saveCampaignMetadataToCache,
     updateCampaignMetadata,
     useAuth,
     useCreateCampaign,
+    useReadReviewerSafes,
 } from "@/lib";
+import {
+    getBackendErrorMessage,
+    getChainErrorMessage,
+} from "@/lib/errors/normalize";
 import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
 import CreateCampaignForm from "@/components/campaign-create/CreateCampaignForm";
 import CreateCampaignGuardCard from "@/components/campaign-create/CreateCampaignGuardCard";
 import CreateCampaignHeader from "@/components/campaign-create/CreateCampaignHeader";
 import CreateCampaignSuccessCard from "@/components/campaign-create/CreateCampaignSuccessCard";
 import MilestoneBuilder from "@/components/campaign-create/MilestoneBuilder";
+import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
+import {
+    uploadImageToCloud,
+    validateImageFile,
+} from "@/lib/utils/uploadImage";
 
 const SEPOLIA_CHAIN_ID = 11155111;
 
@@ -64,6 +78,29 @@ export default function CreateCampaignPage() {
     const [reviewerOptions, setReviewerOptions] = useState<
         Array<{ value: string; label: string }>
     >([]);
+    // Thumbnail upload state
+    const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
+    const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
+    const [thumbnailUploadProgress, setThumbnailUploadProgress] = useState<number | null>(null);
+    const [thumbnailUploadError, setThumbnailUploadError] = useState<string | null>(null);
+    const [uploadedThumbnailUrl, setUploadedThumbnailUrl] = useState<string | null>(null);
+    const reviewerSafesQuery = useReadReviewerSafes();
+    const normalizedReviewerSafe = formData.reviewerSafe.trim().toLowerCase();
+    const reviewerSafeLooksValid = /^0x[a-f0-9]{40}$/.test(
+        normalizedReviewerSafe,
+    );
+    const { data: isReviewerActive, isLoading: isCheckingReviewerSafe } =
+        useReadContract({
+            ...contractConfig,
+            functionName: "isActiveReviewer",
+            args: reviewerSafeLooksValid
+                ? [normalizedReviewerSafe as `0x${string}`]
+                : undefined,
+            query: {
+                enabled: reviewerSafeLooksValid,
+                staleTime: 30_000,
+            },
+        });
 
     const {
         createCampaign,
@@ -78,6 +115,7 @@ export default function CreateCampaignPage() {
         hash: submittedTxHash,
     });
     const isTxReverted = receipt?.status === "reverted";
+    useRegisterWalletTxOverlay(isPending || isConfirming);
 
     const etherscanLink = useMemo(() => {
         if (!submittedTxHash) return null;
@@ -118,27 +156,10 @@ export default function CreateCampaignPage() {
     }, [receipt, isConfirmed]);
 
     const parsedCreateError = useMemo(() => {
-        if (!createError?.message) return null;
-        const msg = createError.message.toLowerCase();
-        if (msg.includes("user rejected") || msg.includes("user denied"))
-            return "Bạn đã từ chối giao dịch.";
-        if (
-            msg.includes("does not match the target chain") ||
-            msg.includes("expected chain id") ||
-            msg.includes("wrong network") ||
-            msg.includes("chain id")
-        ) {
-            return "Sai mạng. Vui lòng chuyển ví sang Sepolia trước khi tạo chiến dịch.";
-        }
-        if (msg.includes("insufficient funds")) {
-            return "Không đủ ETH để trả phí gas. Vui lòng kiểm tra số dư.";
-        }
-        if (msg.includes("gas limit too high")) {
-            return "Ước lượng gas vượt giới hạn block. Vui lòng thử lại, hệ thống sẽ dùng gas an toàn.";
-        }
-        if (msg.includes("network") || msg.includes("rpc"))
-            return "Lỗi mạng/RPC. Vui lòng kiểm tra kết nối.";
-        return createError.message;
+        if (!createError) return null;
+        return getChainErrorMessage(createError, {
+            fallback: "Không thể gửi giao dịch. Vui lòng thử lại.",
+        });
     }, [createError]);
 
     const transactionError = manualError || parsedCreateError;
@@ -161,41 +182,18 @@ export default function CreateCampaignPage() {
     const isFormBusy = isPending || isConfirming;
 
     useEffect(() => {
-        let cancelled = false;
-        const run = async () => {
-            try {
-                const aggregates = await getReviewerAggregates();
-                if (cancelled) return;
-
-                const options = aggregates.map((item) => ({
-                    value: item.reviewerSafe,
-                    label: `${item.reviewerSafe.slice(0, 10)}...${item.reviewerSafe.slice(-6)} (${item.campaignCount} campaign)`,
-                }));
-                setReviewerOptions(options);
-            } catch {
-                if (!cancelled) {
-                    setReviewerOptions([]);
-                }
-            }
-        };
-
-        run();
-        return () => {
-            cancelled = true;
-        };
-    }, []);
-
-    useEffect(() => {
-        if (!address) return;
-        const walletOption = {
-            value: address.toLowerCase(),
-            label: `Ví của bạn (${address.slice(0, 10)}...${address.slice(-6)})`,
-        };
-        setReviewerOptions((prev) => {
-            const exists = prev.some((item) => item.value === walletOption.value);
-            return exists ? prev : [walletOption, ...prev];
-        });
-    }, [address]);
+        const options = Array.from(
+            new Set(
+                reviewerSafesQuery.reviewerSafes
+                    .map((safe) => safe.toLowerCase().trim())
+                    .filter((safe) => /^0x[a-f0-9]{40}$/.test(safe)),
+            ),
+        ).map((safe) => ({
+            value: safe,
+            label: `${safe.slice(0, 10)}...${safe.slice(-6)}`,
+        }));
+        setReviewerOptions(options);
+    }, [reviewerSafesQuery.reviewerSafes]);
 
     useEffect(() => {
         if (!formData.reviewerSafe && reviewerOptions.length > 0) {
@@ -248,33 +246,46 @@ export default function CreateCampaignPage() {
         const run = async () => {
             setIsMetadataSyncing(true);
             setMetadataSyncError(null);
-            // Wait for backend to index the campaign event, then patch metadata.
-            // This avoids the frequent 202 "not yet indexed" response.
-            let indexed = false;
-            for (let attempt = 0; attempt < 12; attempt += 1) {
-                if (cancelled) return;
+
+            // --- Upload thumbnail to Cloudinary if a file was picked ---
+            let thumbnailUrl = uploadedThumbnailUrl;
+            if (thumbnailFile && !thumbnailUrl) {
+                try {
+                    setThumbnailUploadProgress(0);
+                    const result = await uploadImageToCloud(
+                        thumbnailFile,
+                        (progress) => setThumbnailUploadProgress(progress),
+                    );
+                    thumbnailUrl = result.url;
+                    setUploadedThumbnailUrl(result.url);
+                    setThumbnailUploadProgress(100);
+                } catch (uploadErr) {
+                    const errMsg =
+                        uploadErr instanceof Error
+                            ? uploadErr.message
+                            : 'Upload ảnh thất bại.';
+                    setThumbnailUploadError(errMsg);
+                    setThumbnailUploadProgress(null);
+                    // Fall back to placeholder - don't abort the whole metadata sync
+                }
+            }
+
+            // Wait until backend has indexed this campaign before patching metadata.
+            // Do not hard-timeout here because indexing lag can fluctuate a lot.
+            let retryDelayMs = 2000;
+            while (!cancelled) {
                 try {
                     const status =
                         await getCampaignIndexStatus(createdCampaignId);
-                    if (status.indexed) {
-                        indexed = true;
-                        break;
-                    }
+                    if (status.indexed) break;
                 } catch {
-                    // ignore and retry
+                    // Ignore transient status failures and retry.
                 }
-                await sleep(2500);
+                await sleep(retryDelayMs);
+                retryDelayMs = Math.min(retryDelayMs + 1000, 10000);
             }
 
             if (cancelled) return;
-            if (!indexed) {
-                const errorMessage =
-                    "Campaign đã lên chain nhưng backend chưa index kịp để cập nhật metadata. Vui lòng thử lại sau.";
-                setMetadataSyncError(errorMessage);
-                setIsMetadataSyncing(false);
-                showErrorToast(errorMessage);
-                return;
-            }
 
             try {
                 const normalizedTitle = formData.title.trim();
@@ -286,7 +297,7 @@ export default function CreateCampaignPage() {
                 await updateCampaignMetadata(createdCampaignId, token, {
                     title: normalizedTitle,
                     description: formData.description,
-                    thumbnailUrl: fallbackThumbnailUrl,
+                    thumbnailUrl: thumbnailUrl || fallbackThumbnailUrl,
                     reviewerSafe: normalizedReviewerSafe,
                     milestones: milestoneMetadata.map((milestone, index) => ({
                         milestoneId: index,
@@ -299,14 +310,21 @@ export default function CreateCampaignPage() {
                     setIsMetadataSyncing(false);
                 }
             } catch (error) {
-                const message =
-                    error instanceof Error
-                        ? error.message
-                        : "Không thể cập nhật metadata campaign sau khi tạo.";
+                const message = getBackendErrorMessage(error, {
+                    fallback:
+                        "Không thể đồng bộ metadata chiến dịch sau khi tạo.",
+                });
+                const normalizedMessage = message.toLowerCase();
                 if (!cancelled) {
                     setMetadataSyncError(message);
                     setIsMetadataSyncing(false);
-                    showErrorToast(message);
+                    if (
+                        !normalizedMessage.includes(
+                            "only the campaign creator can update metadata",
+                        )
+                    ) {
+                        showErrorToast(message);
+                    }
                 }
             }
         };
@@ -323,19 +341,30 @@ export default function CreateCampaignPage() {
         isConfirmed,
         metadataSynced,
         milestoneMetadata,
+        thumbnailFile,
         token,
+        uploadedThumbnailUrl,
     ]);
 
     useEffect(() => {
-        if (transactionStatus !== "success" || !metadataSynced) return;
-        showSuccessToast(
-            "Tạo chiến dịch thành công! Đang chuyển tới trang chi tiết...",
-        );
+        if (transactionStatus !== "success") return;
+        // Chỉ redirect sau khi backend đã index và sync metadata xong,
+        // hoặc sau tối đa 15s hard timeout để tránh chờ mãi khi sync lỗi.
         const target =
             createdCampaignId !== null
                 ? `/campaigns/${createdCampaignId}`
                 : "/campaigns";
-        const timer = setTimeout(() => router.push(target), 3000);
+
+        if (metadataSynced) {
+            // Metadata đã được sync → chuyển hướng ngay
+            showSuccessToast("Tạo chiến dịch thành công! Đang chuyển tới trang chi tiết...");
+            const timer = setTimeout(() => router.push(target), 800);
+            return () => clearTimeout(timer);
+        }
+
+        // Hard timeout: chờ tối đa 15s rồi redirect dù chưa sync xong
+        showSuccessToast("Tạo chiến dịch thành công! Đang đồng bộ dữ liệu...");
+        const timer = setTimeout(() => router.push(target), 15_000);
         return () => clearTimeout(timer);
     }, [createdCampaignId, metadataSynced, router, transactionStatus]);
 
@@ -372,6 +401,9 @@ export default function CreateCampaignPage() {
             errors.reviewerSafe = "Vui lòng nhập địa chỉ reviewerSafe";
         } else if (!/^0x[a-f0-9]{40}$/.test(reviewerSafe)) {
             errors.reviewerSafe = "Địa chỉ reviewerSafe không hợp lệ";
+        } else if (isReviewerActive === false) {
+            errors.reviewerSafe =
+                "ReviewerSafe chưa được duyệt on-chain. Hãy chọn ví reviewer đã được phê duyệt.";
         }
 
         setFormErrors(errors);
@@ -389,6 +421,29 @@ export default function CreateCampaignPage() {
         }
         if (manualError) setManualError(null);
     };
+
+    const handleThumbnailFileChange = useCallback((file: File | null) => {
+        // Revoke previous object URL to prevent memory leaks
+        if (thumbnailPreview && thumbnailPreview.startsWith('blob:')) {
+            URL.revokeObjectURL(thumbnailPreview);
+        }
+        setThumbnailUploadError(null);
+        setUploadedThumbnailUrl(null);
+        if (!file) {
+            setThumbnailFile(null);
+            setThumbnailPreview(null);
+            setThumbnailUploadProgress(null);
+            return;
+        }
+        const validationError = validateImageFile(file);
+        if (validationError) {
+            setThumbnailUploadError(validationError);
+            return;
+        }
+        setThumbnailFile(file);
+        setThumbnailPreview(URL.createObjectURL(file));
+        setThumbnailUploadProgress(null);
+    }, [thumbnailPreview]);
 
     const handleSubmit = async (event: React.FormEvent) => {
         event.preventDefault();
@@ -418,6 +473,20 @@ export default function CreateCampaignPage() {
             return;
         }
         if (!validateForm()) return;
+        if (isCheckingReviewerSafe) {
+            const msg =
+                "Đang kiểm tra reviewerSafe trên blockchain, vui lòng thử lại sau vài giây.";
+            setManualError(msg);
+            showErrorToast(msg);
+            return;
+        }
+        if (isReviewerActive === false) {
+            const msg =
+                "ReviewerSafe chưa được duyệt on-chain nên không thể tạo campaign.";
+            setManualError(msg);
+            showErrorToast(msg);
+            return;
+        }
         setMetadataSynced(false);
         setMetadataSyncError(null);
         setIsMetadataSyncing(false);
@@ -628,10 +697,10 @@ export default function CreateCampaignPage() {
                                         `Đã gửi giao dịch ${shortenHash(txHash)}. Đang chờ xác nhận trên blockchain...`,
                                     );
                                 } catch (err) {
-                                    const message =
-                                        err instanceof Error
-                                            ? err.message
-                                            : "Có lỗi xảy ra";
+                                    const message = getChainErrorMessage(err, {
+                                        fallback:
+                                            "Không thể gửi giao dịch. Vui lòng thử lại.",
+                                    });
                                     setManualError(message);
                                     showErrorToast(message);
                                 }
@@ -665,13 +734,17 @@ export default function CreateCampaignPage() {
                             txHash={submittedTxHash}
                             etherscanLink={etherscanLink}
                             errorMessage={transactionError}
+                            thumbnailPreview={thumbnailPreview}
+                            thumbnailUploadProgress={thumbnailUploadProgress}
+                            thumbnailUploadError={thumbnailUploadError}
                             onFieldChange={handleFieldChange}
+                            onThumbnailFileChange={handleThumbnailFileChange}
                             onSubmit={handleSubmit}
                         />
                     )}
                     {isMetadataSyncing && (
                         <p className="mt-4 text-sm text-slate-600">
-                            Dang dong bo metadata campaign voi backend...
+                            Backend đang index campaign và đồng bộ metadata...
                         </p>
                     )}
                     {metadataSyncError && (

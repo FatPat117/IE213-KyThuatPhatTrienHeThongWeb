@@ -76,6 +76,7 @@ const upload = multer({
 router.post(
     "/:campaignOnChainId/:milestoneIndex/evidence",
     requireAuth,
+    upload.single("file"),
     uploadProgressEvidence,
 );
 
@@ -118,7 +119,11 @@ router.post(
  *       403: { description: Không có quyền }
  *       404: { description: Campaign hoặc milestone không tồn tại }
  */
-router.post("/:campaignOnChainId/:milestoneIndex/reject", rejectMilestone);
+router.post(
+    "/:campaignOnChainId/:milestoneIndex/reject",
+    requireAuth,
+    rejectMilestone,
+);
 
 /**
  * @swagger
@@ -161,7 +166,11 @@ router.post("/:campaignOnChainId/:milestoneIndex/reject", rejectMilestone);
  *       404: { description: Campaign hoặc milestone không tồn tại }
  *       409: { description: Milestone không ở trạng thái cho phép hoặc đã quá hạn }
  */
-router.put("/:campaignOnChainId/:milestoneIndex/resubmit", resubmitMilestone);
+router.put(
+    "/:campaignOnChainId/:milestoneIndex/resubmit",
+    requireAuth,
+    resubmitMilestone,
+);
 
 // ── Contribution Query ───────────────────────────────────────
 

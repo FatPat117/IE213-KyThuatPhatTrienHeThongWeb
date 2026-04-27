@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
+    getCampaignIndexStatus,
     getPublicCampaignMilestones,
     PublicCampaignMilestone,
 } from "@/lib/api/campaigns";
@@ -17,6 +18,7 @@ interface MilestonePreviewCardProps {
     goalWei?: bigint;
     milestoneCount?: number;
     campaignStatusLabel?:
+        | "pending_approval"
         | "active"
         | "in_progress"
         | "completed"
@@ -56,30 +58,32 @@ function getStatusBadgeColor(status: string): string {
 
 function getStatusLabel(status: string): string {
     switch (status) {
+        case "approved":
+            return "Đã hoàn thành";
         case "disbursed":
         case "completed":
-            return "Disbursed";
+            return "Đã giải ngân";
         case "submitted":
-            return "Proof submitted";
+            return "Đã nộp minh chứng";
         case "pending_verification":
-            return "Pending review";
+            return "Chờ xét duyệt";
         case "in_progress":
-            return "In progress";
+            return "Đang thực hiện";
         case "deadline_exceeded":
         case "delayed":
-            return "Deadline exceeded";
+            return "Quá hạn";
         case "verification_failed":
-            return "Review rejected";
+            return "Bị từ chối duyệt";
         case "failed":
-            return "Failed";
+            return "Thất bại";
         case "cancelled":
-            return "Stopped";
+            return "Đã dừng";
         case "upcoming":
-            return "Upcoming";
+            return "Sắp tới";
         case "pending_funding":
-            return "Awaiting funding";
+            return "Chờ đủ vốn";
         default:
-            return "No report yet";
+            return "Chưa có báo cáo";
     }
 }
 
@@ -97,26 +101,81 @@ export default function MilestonePreviewCard({
         PublicCampaignMilestone[]
     >([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isAwaitingIndex, setIsAwaitingIndex] = useState(false);
+    const expectedMilestoneCount = Math.max(0, Number(milestoneCount || 0));
 
     // Fetch real milestones from API
     useEffect(() => {
+        let cancelled = false;
+
         const fetchMilestones = async () => {
             try {
                 setIsLoading(true);
+                const indexStatus = await getCampaignIndexStatus(campaignId);
+                if (!indexStatus.indexed) {
+                    if (!cancelled) {
+                        setIsAwaitingIndex(true);
+                        setApiMilestones([]);
+                    }
+                    return;
+                }
+
                 const data = await getPublicCampaignMilestones(campaignId);
-                setApiMilestones(data.milestones || []);
+                if (!cancelled) {
+                    setApiMilestones(data.milestones || []);
+                    setIsAwaitingIndex(
+                        expectedMilestoneCount > 0 &&
+                            (data.milestones || []).length === 0,
+                    );
+                }
             } catch {
                 // Silently fail - we'll use fallback
-                setApiMilestones([]);
+                if (!cancelled) {
+                    setApiMilestones([]);
+                }
             } finally {
-                setIsLoading(false);
+                if (!cancelled) {
+                    setIsLoading(false);
+                }
             }
         };
 
         if (campaignId > 0) {
             fetchMilestones();
         }
-    }, [campaignId]);
+
+        return () => {
+            cancelled = true;
+        };
+    }, [campaignId, expectedMilestoneCount]);
+
+    useEffect(() => {
+        if (!isAwaitingIndex || campaignId <= 0) return;
+
+        const retryTimer = window.setInterval(() => {
+            setIsLoading(true);
+            getCampaignIndexStatus(campaignId)
+                .then(async (status) => {
+                    if (!status.indexed) return;
+                    const data = await getPublicCampaignMilestones(campaignId);
+                    const milestones = data.milestones || [];
+                    setApiMilestones(milestones);
+                    setIsAwaitingIndex(
+                        expectedMilestoneCount > 0 && milestones.length === 0,
+                    );
+                })
+                .catch(() => {
+                    // Keep waiting until indexer catches up.
+                })
+                .finally(() => {
+                    setIsLoading(false);
+                });
+        }, 5000);
+
+        return () => {
+            window.clearInterval(retryTimer);
+        };
+    }, [campaignId, expectedMilestoneCount, isAwaitingIndex]);
 
     // Use API milestones if available, otherwise use mock data
     const fallbackMilestones = buildTimelineMilestones({
@@ -132,11 +191,19 @@ export default function MilestonePreviewCard({
 
     const hasMilestones =
         apiMilestones.length > 0 || fallbackMilestones.length > 0;
+    const milestonesToRender =
+        apiMilestones.length > 0
+            ? apiMilestones
+            : isAwaitingIndex
+              ? []
+              : fallbackMilestones;
 
     // If no milestones at all, hide the section
     if (!hasMilestones) {
         return null;
     }
+
+    console.log("milestonesToRender", milestonesToRender);
 
     return (
         <Link
@@ -193,10 +260,7 @@ export default function MilestonePreviewCard({
 
                     {!isLoading && (
                         <div className="space-y-3">
-                            {(apiMilestones.length > 0
-                                ? apiMilestones
-                                : fallbackMilestones
-                            ).map((milestone) => {
+                            {milestonesToRender.map((milestone) => {
                                 // Handle both API and mock milestone types
                                 const isApiMilestone =
                                     "milestoneId" in milestone;
@@ -294,6 +358,14 @@ export default function MilestonePreviewCard({
                                     </article>
                                 );
                             })}
+                        </div>
+                    )}
+
+                    {!isLoading && isAwaitingIndex && (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                            Milestone đang được backend đồng bộ sau khi tạo
+                            campaign. Dữ liệu thật sẽ tự cập nhật trong vài
+                            giây.
                         </div>
                     )}
 

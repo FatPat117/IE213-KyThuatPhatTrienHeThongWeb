@@ -41,8 +41,8 @@ export default function SettingsPage() {
     getUserProfile(walletAddress)
       .then((profile) => {
         if (cancelled) return;
-        setDisplayName(profile.displayName || '');
-        setAvatarDataUrl(profile.avatarUrl || '');
+        setDisplayName(profile?.displayName || '');
+        setAvatarDataUrl(profile?.avatarUrl || '');
       })
       .catch((err) => {
         if (cancelled) return;
@@ -140,7 +140,7 @@ export default function SettingsPage() {
           <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
             <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Ví đang dùng</p>
             <p className="mt-1 font-mono text-sm text-slate-800 break-all">{walletAddress}</p>
-            <p className="mt-2 text-xs text-slate-500">Role: {user?.role || 'user'}</p>
+            <p className="mt-2 text-xs text-slate-500">Vai trò: {user?.role || 'user'}</p>
           </div>
 
           {isLoading ? (
@@ -178,7 +178,7 @@ export default function SettingsPage() {
                   <div className="mt-3 flex items-center gap-3">
                     <img
                       src={avatarDataUrl}
-                      alt="Avatar preview"
+                      alt="Xem trước ảnh đại diện"
                       className="h-14 w-14 rounded-full border border-slate-200 object-cover"
                     />
                     <button

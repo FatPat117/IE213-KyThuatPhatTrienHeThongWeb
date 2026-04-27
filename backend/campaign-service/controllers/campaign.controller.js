@@ -1,7 +1,218 @@
 const axios = require("axios");
+const { getAddress, ethers } = require("ethers");
 const campaignService = require("../services/campaign.service");
 const { Campaign, Milestone, Donation } = require("../models");
 const { successRes, errorRes } = require("../utils/response");
+
+const CHAIN_READER_ABI = [
+    {
+        type: "function",
+        name: "getCampaign",
+        stateMutability: "view",
+        inputs: [{ name: "campaignId", type: "uint256" }],
+        outputs: [
+            {
+                type: "tuple",
+                components: [
+                    { name: "id", type: "uint256" },
+                    { name: "creator", type: "address" },
+                    { name: "beneficiary", type: "address" },
+                    { name: "goal", type: "uint256" },
+                    { name: "totalRaised", type: "uint256" },
+                    { name: "totalDisbursed", type: "uint256" },
+                    { name: "deadline", type: "uint256" },
+                    { name: "withdrawn", type: "bool" },
+                    { name: "status", type: "uint8" },
+                    { name: "milestoneCount", type: "uint256" },
+                    { name: "currentMilestoneId", type: "uint256" },
+                ],
+            },
+        ],
+    },
+    {
+        type: "function",
+        name: "getMilestone",
+        stateMutability: "view",
+        inputs: [
+            { name: "campaignId", type: "uint256" },
+            { name: "milestoneId", type: "uint256" },
+        ],
+        outputs: [
+            {
+                type: "tuple",
+                components: [
+                    { name: "id", type: "uint256" },
+                    { name: "allocationBps", type: "uint16" },
+                    { name: "deadline", type: "uint256" },
+                    { name: "proofIpfsCid", type: "string" },
+                    { name: "status", type: "uint8" },
+                    { name: "approvedBy", type: "address" },
+                    { name: "approvedAt", type: "uint256" },
+                    { name: "disbursedAt", type: "uint256" },
+                    { name: "failedAt", type: "uint256" },
+                ],
+            },
+        ],
+    },
+    {
+        type: "function",
+        name: "campaignReviewerSafe",
+        stateMutability: "view",
+        inputs: [{ name: "campaignId", type: "uint256" }],
+        outputs: [{ name: "", type: "address" }],
+    },
+];
+
+const STATUS_MAP = {
+    0: "pending_approval",
+    1: "active",
+    2: "in_progress",
+    3: "completed",
+    4: "partial_failed",
+    5: "failed",
+    6: "cancelled",
+};
+
+let chainReader = null;
+
+function getChainReader() {
+    if (chainReader) return chainReader;
+    const rpcUrl = process.env.SEPOLIA_RPC_URL;
+    const contractAddress = process.env.CROWDFUNDING_CONTRACT_ADDRESS;
+    if (!rpcUrl || !contractAddress) return null;
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    chainReader = new ethers.Contract(
+        contractAddress,
+        CHAIN_READER_ABI,
+        provider,
+    );
+    return chainReader;
+}
+
+function isEvmAddress(value) {
+    return /^0x[a-fA-F0-9]{40}$/.test((value || "").toString());
+}
+
+async function hydrateCampaignFromChain(onChainId) {
+    const reader = getChainReader();
+    if (!reader) return false;
+
+    try {
+        const rawCampaign = await reader.getCampaign(BigInt(onChainId));
+        const creator = (rawCampaign?.creator || "").toString().toLowerCase();
+        const beneficiary = (rawCampaign?.beneficiary || "")
+            .toString()
+            .toLowerCase();
+        if (!isEvmAddress(creator) || !isEvmAddress(beneficiary)) {
+            return false;
+        }
+
+        const goalWei = (rawCampaign?.goal || 0n).toString();
+        const raisedWei = (rawCampaign?.totalRaised || 0n).toString();
+        const disbursedWei = (rawCampaign?.totalDisbursed || 0n).toString();
+        const milestoneCount = Number(rawCampaign?.milestoneCount || 0n);
+        const currentMilestoneId = Number(rawCampaign?.currentMilestoneId || 0n);
+        const deadlineSeconds = Number(rawCampaign?.deadline || 0n);
+        const statusCode = Number(rawCampaign?.status ?? 1);
+
+        const reviewerSafeRaw = await reader
+            .campaignReviewerSafe(BigInt(onChainId))
+            .catch(() => "");
+        const reviewerSafe = isEvmAddress(reviewerSafeRaw)
+            ? reviewerSafeRaw.toString().toLowerCase()
+            : "";
+
+        const campaign = await Campaign.findOneAndUpdate(
+            { onChainId },
+            {
+                $set: {
+                    creator,
+                    beneficiary,
+                    goalWei,
+                    goal: goalWei,
+                    totalRaisedWei: raisedWei,
+                    raised: raisedWei,
+                    totalDisbursedWei: disbursedWei,
+                    deadline: new Date(deadlineSeconds * 1000),
+                    milestoneCount,
+                    currentMilestoneId,
+                    reviewerSafe,
+                    status: STATUS_MAP[statusCode] || "active",
+                },
+                $setOnInsert: {
+                    title: "",
+                    description: "",
+                    thumbnailUrl: "",
+                    remainingWei: "0",
+                },
+            },
+            { upsert: true, new: true, runValidators: true },
+        );
+
+        if (!campaign || milestoneCount <= 0) return Boolean(campaign);
+
+        const goal = toBigInt(goalWei);
+        const milestoneSeeds = [];
+        for (let milestoneId = 0; milestoneId < milestoneCount; milestoneId += 1) {
+            const rawMilestone = await reader
+                .getMilestone(BigInt(onChainId), BigInt(milestoneId))
+                .catch(() => null);
+            const allocationBps = Number(rawMilestone?.allocationBps || 0);
+            const amountWei =
+                goal > 0n && allocationBps > 0
+                    ? ((goal * BigInt(allocationBps)) / 10_000n).toString()
+                    : "0";
+            const milestoneDeadline = Number(
+                rawMilestone?.deadline || rawCampaign?.deadline || 0n,
+            );
+
+            milestoneSeeds.push({
+                milestoneId,
+                allocationBps,
+                financialTargetWei: amountWei,
+                deadline: new Date(milestoneDeadline * 1000),
+            });
+        }
+
+        await Milestone.bulkWrite(
+            milestoneSeeds.map((item) => ({
+                updateOne: {
+                    filter: {
+                        campaignOnChainId: onChainId,
+                        milestoneId: item.milestoneId,
+                    },
+                    update: {
+                        $set: {
+                            campaignId: campaign._id,
+                            campaignOnChainId: onChainId,
+                            milestoneId: item.milestoneId,
+                            milestoneIndex: item.milestoneId,
+                            allocationBps: item.allocationBps,
+                            financialTargetWei: item.financialTargetWei,
+                            deadline: item.deadline,
+                        },
+                        $setOnInsert: {
+                            title: "",
+                            description: "",
+                            status: "pending_funding",
+                            reportCids: [],
+                            evidenceCids: [],
+                        },
+                    },
+                    upsert: true,
+                },
+            })),
+            { ordered: false },
+        );
+
+        return true;
+    } catch (error) {
+        console.warn(
+            `[campaign.controller] hydrateCampaignFromChain failed for ${onChainId}: ${error.message}`,
+        );
+        return false;
+    }
+}
 
 function toBigInt(value) {
     try {
@@ -75,6 +286,7 @@ async function updateCampaignStatus(req, res, next) {
         }
 
         const allowed = [
+            "pending_approval",
             "active",
             "in_progress",
             "completed",
@@ -222,7 +434,12 @@ async function getCampaignIndexStatus(req, res, next) {
             return errorRes(res, "Invalid campaign id", 400);
         }
 
-        const campaign = await Campaign.findOne({ onChainId }).select("_id");
+        let campaign = await Campaign.findOne({ onChainId }).select("_id");
+        if (!campaign) {
+            await hydrateCampaignFromChain(onChainId);
+            campaign = await Campaign.findOne({ onChainId }).select("_id");
+        }
+
         return successRes(res, { indexed: Boolean(campaign) });
     } catch (err) {
         return next(err);
@@ -291,6 +508,11 @@ async function getPublicCampaigns(req, res, next) {
         const query = {};
         if (req.query.status) {
             query.status = req.query.status;
+        }
+        if (req.query.reviewerSafe) {
+            query.reviewerSafe = String(req.query.reviewerSafe)
+                .trim()
+                .toLowerCase();
         }
 
         const totalItems = await Campaign.countDocuments(query);
@@ -454,12 +676,19 @@ async function getMilestoneApprovalStatus(req, res, next) {
             return errorRes(res, "Campaign not found", 404);
         }
 
-        const safeAddress = (campaign.reviewerSafe || "").toLowerCase();
+        const safeAddress = (campaign.reviewerSafe || "").trim();
         if (!safeAddress) {
             return errorRes(res, "Campaign reviewerSafe is not set", 404);
         }
 
-        const safeApiUrl = `https://safe-transaction-sepolia.safe.global/api/v1/safes/${safeAddress}/multisig-transactions/`;
+        let checksumSafe;
+        try {
+            checksumSafe = getAddress(safeAddress);
+        } catch {
+            return errorRes(res, "Campaign reviewerSafe is invalid", 400);
+        }
+
+        const safeApiUrl = `https://safe-transaction-sepolia.safe.global/api/v1/safes/${checksumSafe}/multisig-transactions/`;
 
         const response = await axios.get(safeApiUrl, {
             timeout: 15_000,
@@ -479,7 +708,7 @@ async function getMilestoneApprovalStatus(req, res, next) {
 
         if (!pendingTx) {
             return successRes(res, {
-                safeAddress,
+                safeAddress: checksumSafe,
                 required: 0,
                 confirmed: 0,
                 executed: false,
@@ -496,7 +725,7 @@ async function getMilestoneApprovalStatus(req, res, next) {
             .filter((owner) => typeof owner === "string");
 
         return successRes(res, {
-            safeAddress,
+            safeAddress: checksumSafe,
             required: Number(
                 pendingTx.confirmationsRequired ||
                     pendingTx.confirmations_required ||

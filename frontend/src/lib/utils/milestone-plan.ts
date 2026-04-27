@@ -14,6 +14,7 @@ export type MilestoneStatus =
     | "cancelled";
 
 export type CampaignStatusForTimeline =
+    | "pending_approval"
     | "active"
     | "in_progress"
     | "completed"
@@ -38,6 +39,8 @@ type BuildMilestonesInput = {
     campaignCreatedAt?: string;
     progressPercent: number;
     goalWei?: bigint;
+    /** Tổng đã huy động — dùng tính mục tiêu tài chính từng mốc: totalRaised * allocationBps / 10000 */
+    totalRaisedWei?: bigint;
     milestoneCount?: number;
     campaignStatusLabel?: CampaignStatusForTimeline;
     currentMilestoneId?: number;
@@ -118,6 +121,7 @@ export function buildTimelineMilestones({
     campaignCreatedAt,
     progressPercent,
     goalWei = 0n,
+    totalRaisedWei = 0n,
     milestoneCount,
     campaignStatusLabel,
     currentMilestoneId,
@@ -156,7 +160,11 @@ export function buildTimelineMilestones({
           )
         : null;
 
-    const timelineCampaignStatus = campaignStatusLabel;
+    const fundingComplete = goalWei > 0n && totalRaisedWei >= goalWei;
+    const rawStatus = campaignStatusLabel ?? "active";
+    /** Khi đã đủ vốn nhưng indexer còn ghi Active, coi như in_progress để M0 không còn “Sắp tới”. */
+    const timelineCampaignStatus: CampaignStatusForTimeline =
+        rawStatus === "active" && fundingComplete ? "in_progress" : rawStatus;
 
     return milestoneTemplates.map((template, index) => {
         const expectedDate = calcEstimatedMilestoneDate(
@@ -208,9 +216,10 @@ export function buildTimelineMilestones({
             status = "in_progress";
         }
 
+        const allocationBps = Math.round(template.allocationPercent * 100);
         const targetAmountWei =
-            goalWei > 0n
-                ? (goalWei * BigInt(template.allocationPercent)) / 100n
+            totalRaisedWei > 0n && allocationBps > 0
+                ? (totalRaisedWei * BigInt(allocationBps)) / 10000n
                 : 0n;
 
         return {

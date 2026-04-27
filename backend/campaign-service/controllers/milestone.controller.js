@@ -12,6 +12,16 @@ const {
     getTimeRemaining,
 } = require("../utils/deadlineHelper");
 const { publishMilestoneFailed } = require("../utils/publishMilestoneFailed");
+const { successRes, errorRes } = require("../utils/response");
+
+function toBigIntWei(value) {
+    try {
+        const s = String(value ?? "0").trim();
+        return BigInt(s || "0");
+    } catch {
+        return 0n;
+    }
+}
 
 /**
  * Milestone Controller
@@ -28,32 +38,21 @@ const { publishMilestoneFailed } = require("../utils/publishMilestoneFailed");
 const uploadProgressEvidence = async (req, res) => {
     try {
         const { campaignOnChainId, milestoneIndex } = req.params;
-        const { title, description, evidenceType = "report", cid, filename, fileSize } = req.body;
+        const { title, description, evidenceType = "report" } = req.body || {};
         const creatorAddress = req.headers["x-wallet-address"];
+        const file = req.file;
 
         // Validation
-        if (!campaignOnChainId || !milestoneIndex) {
-            return res.status(400).json({
-                status: "error",
-                code: "INVALID_PARAMS",
-                message: "campaignOnChainId and milestoneIndex required",
-            });
+        if (!campaignOnChainId || milestoneIndex === undefined || milestoneIndex === null) {
+            return errorRes(res, "campaignOnChainId and milestoneIndex required", 400);
         }
 
-        if (!cid) {
-            return res.status(400).json({
-                status: "error",
-                code: "MISSING_CID",
-                message: "CID is required. Please upload file to IPFS first.",
-            });
+        if (!file || !file.buffer) {
+            return errorRes(res, "file is required (multipart field: file)", 400);
         }
 
         if (!creatorAddress) {
-            return res.status(403).json({
-                status: "error",
-                code: "PERMISSION_DENIED",
-                message: "x-wallet-address header required",
-            });
+            return errorRes(res, "x-wallet-address header required", 403);
         }
 
         // Find campaign and milestone
@@ -62,20 +61,16 @@ const uploadProgressEvidence = async (req, res) => {
         });
 
         if (!campaign) {
-            return res.status(404).json({
-                status: "error",
-                code: "CAMPAIGN_NOT_FOUND",
-                message: `Campaign with onChainId ${campaignOnChainId} not found`,
-            });
+            return errorRes(
+                res,
+                `Campaign with onChainId ${campaignOnChainId} not found`,
+                404,
+            );
         }
 
         const normalizedMilestoneIndex = Number.parseInt(milestoneIndex, 10);
         if (!Number.isFinite(normalizedMilestoneIndex) || normalizedMilestoneIndex < 0) {
-            return res.status(400).json({
-                status: "error",
-                code: "INVALID_PARAMS",
-                message: "milestoneIndex must be a non-negative integer",
-            });
+            return errorRes(res, "milestoneIndex must be a non-negative integer", 400);
         }
 
         let milestone = await Milestone.findOne({
@@ -130,73 +125,78 @@ const uploadProgressEvidence = async (req, res) => {
         }
 
         if (!milestone) {
-            return res.status(404).json({
-                status: "error",
-                code: "MILESTONE_NOT_FOUND",
-                message: `Milestone ${milestoneIndex} in campaign ${campaignOnChainId} not found`,
-            });
+            return errorRes(
+                res,
+                `Milestone ${milestoneIndex} in campaign ${campaignOnChainId} not found`,
+                404,
+            );
         }
 
         // Authorization: only campaign creator can upload evidence
         if (campaign.creator.toLowerCase() !== creatorAddress.toLowerCase()) {
-            return res.status(403).json({
-                status: "error",
-                code: "PERMISSION_DENIED",
-                message: "Only campaign creator can upload evidence",
-            });
+            return errorRes(res, "Only campaign creator can upload evidence", 403);
         }
 
-        // Upload to IPFS
-        console.log(
-            `[milestoneController.uploadProgressEvidence] Saving evidence metadata: ` +
-            `campaign=${campaignOnChainId}, milestone=${milestoneIndex}, cid=${cid}`,
+        const pinataGatewayUrl = process.env.PINATA_GATEWAY_URL || "https://gateway.pinata.cloud";
+        const originalName = file.originalname || "evidence";
+        const safeTitle = (title || "").trim() || "Báo cáo minh chứng";
+
+        const { cid, ipfsUrl, pinataUrl } = await uploadService.uploadToIPFS(
+            file.buffer,
+            originalName,
+            {
+                campaignOnChainId: String(campaignOnChainId),
+                milestoneIndex: String(milestoneIndex),
+                evidenceType: String(evidenceType),
+            },
         );
 
-        const pinataGatewayUrl = process.env.PINATA_GATEWAY_URL || "https://gateway.pinata.cloud";
+        console.log(
+            `[milestoneController.uploadProgressEvidence] IPFS ok: campaign=${campaignOnChainId}, milestone=${milestoneIndex}, cid=${cid}`,
+        );
 
-        // Save ProgressReport to DB
         const progressReport = new ProgressReport({
             campaignId: campaign._id,
-            campaignOnChainId: parseInt(campaignOnChainId),
+            campaignOnChainId: parseInt(campaignOnChainId, 10),
             milestoneId: milestone._id,
-            milestoneIndex: parseInt(milestoneIndex),
-            creatorAddress,
-            title,
-            description,
-            contentHash: cid,
-            ipfsUrl: `ipfs://${cid}`,
-            pinataUrl: `${pinataGatewayUrl}/ipfs/${cid}`,
-            evidenceType,
-            filename: filename || cid,
-            fileSize: fileSize || 0,
+            milestoneIndex: parseInt(milestoneIndex, 10),
+            creatorWallet: creatorAddress.toLowerCase(),
+            cid,
+            gatewayUrl: pinataUrl || ipfsUrl || `${pinataGatewayUrl}/ipfs/${cid}`,
+            mimeType: file.mimetype || "application/octet-stream",
+            fileName: originalName,
             submittedAt: new Date(),
-            status: "submitted",
         });
 
         await progressReport.save();
 
-        console.log(
-            `[milestoneController.uploadProgressEvidence] SUCCESS: ` +
-            `progressReportId=${progressReport._id}, cid=${cid}`,
-        );
-
-        return res.status(200).json({
-            status: "success",
-            data: {
-                _id: progressReport._id,
-                campaignOnChainId,
-                milestoneIndex,
-                creatorAddress,
-                title,
-                description,
-                contentHash: cid,
-                ipfsUrl: progressReport.ipfsUrl,
-                pinataUrl: progressReport.pinataUrl,
-                evidenceType,
-                submittedAt: progressReport.submittedAt,
-                status: "submitted",
+        const submittedAt = new Date();
+        await Milestone.findByIdAndUpdate(milestone._id, {
+            $push: {
+                reportCids: { cid, submittedAt },
+                evidenceCids: cid,
             },
         });
+
+        const payload = {
+            _id: progressReport._id,
+            evidenceCid: cid,
+            cid,
+            ipfsCid: cid,
+            campaignOnChainId: parseInt(campaignOnChainId, 10),
+            milestoneIndex: parseInt(milestoneIndex, 10),
+            creatorAddress,
+            title: safeTitle,
+            description: (description || "").trim(),
+            contentHash: cid,
+            ipfsUrl,
+            pinataUrl: progressReport.pinataUrl,
+            evidenceType,
+            submittedAt: progressReport.submittedAt,
+            status: "submitted",
+        };
+
+        return successRes(res, payload);
     } catch (error) {
         console.error(
             `[milestoneController.uploadProgressEvidence] Error: ${error.message}`,
@@ -206,18 +206,10 @@ const uploadProgressEvidence = async (req, res) => {
             error.message.includes("PINATA") ||
             error.message.includes("IPFS")
         ) {
-            return res.status(503).json({
-                status: "error",
-                code: "UPLOAD_FAILED",
-                message: `IPFS upload failed: ${error.message}`,
-            });
+            return errorRes(res, `IPFS upload failed: ${error.message}`, 503);
         }
 
-        return res.status(500).json({
-            status: "error",
-            code: "INTERNAL_ERROR",
-            message: error.message,
-        });
+        return errorRes(res, error.message, 500);
     }
 };
 
@@ -680,6 +672,20 @@ const rejectMilestone = async (req, res) => {
             });
         }
 
+        const assignedReviewerSafe = (campaign.reviewerSafe || "")
+            .trim()
+            .toLowerCase();
+        if (
+            !assignedReviewerSafe ||
+            assignedReviewerSafe !== reviewerWallet.toLowerCase()
+        ) {
+            return res.status(403).json({
+                status: "error",
+                code: "PERMISSION_DENIED",
+                message: "Only assigned reviewerSafe can reject this milestone",
+            });
+        }
+
         const milestone = await Milestone.findOne({
             campaignId: campaign._id,
             milestoneIndex: Number(milestoneIndex),
@@ -918,6 +924,7 @@ const createMilestoneForCampaign = async (req, res) => {
             description = "",
             financialTargetWei,
             deadline,
+            allocationBps,
         } = req.body || {};
 
         const callerWallet = req.headers["x-wallet-address"];
@@ -979,10 +986,12 @@ const createMilestoneForCampaign = async (req, res) => {
         const milestone = await Milestone.create({
             campaignId: campaign._id,
             campaignOnChainId: Number(campaignOnChainId),
+            milestoneId: indexToUse,
             milestoneIndex: indexToUse,
             title,
             description,
             financialTargetWei: String(financialTargetWei),
+            allocationBps: Number.isFinite(Number(allocationBps)) ? Number(allocationBps) : 0,
             deadline: new Date(deadline),
         });
 
@@ -1024,7 +1033,8 @@ const getMilestonesForCampaign = async (req, res) => {
 
         const campaign = await Campaign.findOne({
             onChainId: Number(campaignOnChainId),
-        });
+        })
+            .lean();
         if (!campaign) {
             return res.status(404).json({
                 status: "error",
@@ -1035,11 +1045,28 @@ const getMilestonesForCampaign = async (req, res) => {
 
         const milestones = await Milestone.find({
             campaignOnChainId: Number(campaignOnChainId),
-        }).sort({ milestoneIndex: 1 });
+        })
+            .sort({ milestoneIndex: 1 })
+            .lean();
+
+        const totalRaised = toBigIntWei(campaign.totalRaisedWei || campaign.raised);
+
+        const data = milestones.map((milestone) => {
+            const allocationBps = Number(milestone.allocationBps || 0);
+            const amountWei =
+                allocationBps > 0 && totalRaised > 0n
+                    ? ((totalRaised * BigInt(allocationBps)) / 10000n).toString()
+                    : "0";
+            return {
+                ...milestone,
+                amountWei,
+                financialTargetWei: amountWei,
+            };
+        });
 
         return res.status(200).json({
             status: "success",
-            data: milestones,
+            data,
         });
     } catch (error) {
         console.error(

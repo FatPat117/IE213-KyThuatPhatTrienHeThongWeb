@@ -22,6 +22,16 @@ function decodeAddressFromTopic(topic) {
     return `0x${topic.slice(-40)}`.toLowerCase();
 }
 
+/** Donated event data: amount (uint256) + totalRaised (uint256) — two 32-byte words */
+function decodeDonatedLogData(dataHex) {
+    if (!dataHex || typeof dataHex !== "string") return { amountWei: 0n, totalRaisedWei: 0n };
+    const hex = dataHex.startsWith("0x") ? dataHex.slice(2) : dataHex;
+    if (hex.length < 128) return { amountWei: 0n, totalRaisedWei: 0n };
+    const amountWei = BigInt(`0x${hex.slice(0, 64)}`);
+    const totalRaisedWei = BigInt(`0x${hex.slice(64, 128)}`);
+    return { amountWei, totalRaisedWei };
+}
+
 async function fetchOnChainDonationsByCampaign(campaignOnChainId) {
     const apiKey = process.env.ETHERSCAN_API_KEY;
     const contractAddress = process.env.CROWDFUNDING_CONTRACT_ADDRESS;
@@ -67,7 +77,7 @@ async function fetchOnChainDonationsByCampaign(campaignOnChainId) {
 
     return rows
         .map((item) => {
-            const amountWei = item?.data ? BigInt(item.data) : 0n;
+            const { amountWei } = decodeDonatedLogData(item?.data);
             return {
                 txHash: String(item.transactionHash || "").toLowerCase(),
                 campaignOnChainId: Number(campaignOnChainId),
@@ -115,8 +125,39 @@ async function getMergedDonationsByCampaign(campaignOnChainId) {
 }
 
 async function getDonationsByDonor(donorWallet) {
-    return Donation.find({ donorWallet: donorWallet.toLowerCase() })
-        .sort({ donatedAt: -1 });
+    const normalized = String(donorWallet || "").trim().toLowerCase();
+    return Donation.find({ donorWallet: normalized }).sort({ donatedAt: -1 });
+}
+
+async function getDonationsByCampaignAndDonor(campaignOnChainId, donorWallet) {
+    const normalized = String(donorWallet || "").trim().toLowerCase();
+    return Donation.find({
+        campaignOnChainId: Number(campaignOnChainId),
+        donorWallet: normalized,
+    }).sort({ donatedAt: -1 });
+}
+
+async function getMergedDonationsByCampaignAndDonor(campaignOnChainId, donorWallet) {
+    const campaignId = Number(campaignOnChainId);
+    const normalized = String(donorWallet || "").trim().toLowerCase();
+    const [dbRows, onChainRows] = await Promise.all([
+        getDonationsByCampaignAndDonor(campaignId, normalized),
+        fetchOnChainDonationsByCampaign(campaignId).catch(() => []),
+    ]);
+
+    const filteredOnChain = onChainRows.filter(
+        (row) => (row.donorWallet || "").toLowerCase() === normalized,
+    );
+
+    const byTxHash = new Map();
+    dbRows.forEach((row) => byTxHash.set(String(row.txHash).toLowerCase(), row));
+    filteredOnChain.forEach((row) => {
+        if (!byTxHash.has(row.txHash)) byTxHash.set(row.txHash, row);
+    });
+
+    return Array.from(byTxHash.values()).sort(
+        (a, b) => new Date(b.donatedAt).getTime() - new Date(a.donatedAt).getTime(),
+    );
 }
 
 async function getTotalDonatedByCampaign(campaignOnChainId) {
@@ -149,6 +190,8 @@ module.exports = {
     getDonationsByCampaign,
     getMergedDonationsByCampaign,
     getDonationsByDonor,
+    getDonationsByCampaignAndDonor,
+    getMergedDonationsByCampaignAndDonor,
     getTotalDonatedByCampaign,
     getTopDonors,
 };

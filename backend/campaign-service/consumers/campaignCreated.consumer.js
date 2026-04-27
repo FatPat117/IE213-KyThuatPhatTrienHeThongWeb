@@ -1,6 +1,7 @@
 const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const { ethers } = require("ethers");
 const { Milestone, Campaign } = require("../models");
+const notificationService = require("../services/notification.service");
 
 const QUEUE = process.env.RABBITMQ_QUEUE_CAMP_CREATED || "campaign.created.queue";
 const ROUTING_KEY = process.env.RABBITMQ_RKEY_CAMP_CREATED || "campaign.created";
@@ -42,6 +43,70 @@ const MILESTONE_READER_ABI = [
 ];
 
 let milestoneReader = null;
+
+function resolveAdminWalletsFromEnv() {
+    const combined = [
+        process.env.ADMIN_WALLETS || "",
+        process.env.INITIAL_ADMIN_WALLET || "",
+    ]
+        .join(",")
+        .split(/[,\s;]+/)
+        .map((item) => item.trim().toLowerCase())
+        .filter((item) => /^0x[a-f0-9]{40}$/.test(item));
+
+    return [...new Set(combined)];
+}
+
+function normalizeWallet(value) {
+    const wallet = (value || "").toString().trim().toLowerCase();
+    return /^0x[a-f0-9]{40}$/.test(wallet) ? wallet : "";
+}
+
+async function loadAdminWalletsFromUserService() {
+    const userServiceUrl =
+        process.env.USER_SERVICE_URL || "http://user-service:4001";
+    const requesterWallet = normalizeWallet(
+        process.env.INITIAL_ADMIN_WALLET ||
+            process.env.DEFAULT_ADMIN_WALLET ||
+            "",
+    );
+
+    try {
+        const headers = {
+            "Content-Type": "application/json",
+            "x-user-role": "admin",
+        };
+        if (requesterWallet) {
+            headers["x-wallet-address"] = requesterWallet;
+        }
+
+        const response = await fetch(
+            `${userServiceUrl}/api/users/admin/list-admins`,
+            {
+                method: "GET",
+                headers,
+            },
+        );
+
+        if (!response.ok) {
+            return [];
+        }
+
+        const payload = await response.json();
+        const admins = Array.isArray(payload?.data) ? payload.data : [];
+        return admins
+            .map((item) => normalizeWallet(item?.walletAddress || item?.wallet))
+            .filter(Boolean);
+    } catch {
+        return [];
+    }
+}
+
+async function resolveAdminWallets() {
+    const envWallets = resolveAdminWalletsFromEnv();
+    const userServiceWallets = await loadAdminWalletsFromUserService();
+    return [...new Set([...envWallets, ...userServiceWallets])];
+}
 
 function getMilestoneReader() {
     if (milestoneReader) {
@@ -166,7 +231,7 @@ async function startCampaignCreatedConsumer() {
                         reviewerSafe: reviewerSafe || "",
                     },
                     $setOnInsert: {
-                        status: "active",
+                        status: "pending_approval",
                         title: "",
                         description: "",
                         thumbnailUrl: "",
@@ -227,6 +292,39 @@ async function startCampaignCreatedConsumer() {
                     })),
                     { ordered: false },
                 );
+            }
+
+            const adminWallets = await resolveAdminWallets();
+            if (adminWallets.length === 0) {
+                console.warn(
+                    "[campaign-service] campaign.created received but no admin wallet found from env/user-service",
+                );
+            } else {
+                await Promise.all(
+                    adminWallets.map((adminWallet) =>
+                        notificationService.createNotification({
+                            recipientWallet: adminWallet,
+                            type: "campaign_created",
+                            title: "Có campaign mới cần duyệt",
+                            message:
+                                "Một campaign mới vừa được tạo và đang chờ phê duyệt.",
+                            campaignOnChainId: onChainId,
+                            txHash: payload.txHash || "",
+                        }),
+                    ),
+                );
+            }
+
+            const reviewerWallet = normalizeWallet(reviewerSafe);
+            if (reviewerWallet) {
+                await notificationService.createNotification({
+                    recipientWallet: reviewerWallet,
+                    type: "campaign_assigned",
+                    title: "New campaign assigned",
+                    message: "You have been assigned to review a new campaign.",
+                    campaignOnChainId: onChainId,
+                    txHash: payload.txHash || "",
+                });
             }
 
             channel.ack(msg);

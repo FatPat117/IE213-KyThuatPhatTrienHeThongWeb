@@ -5,6 +5,7 @@ import {
     createTransaction,
     getCampaignMetadataFromCache,
     getDonationsByCampaign,
+    getDonationsByCampaignAndWallet,
     isPlaceholderCampaignDescription,
     isPlaceholderCampaignTitle,
     toAuthUserProfile,
@@ -13,16 +14,17 @@ import {
     useBackendCampaign,
     useClaimFundingRefund,
     useClaimMilestoneRefund,
-    useDonateToCampaign,
     useDisburseMilestone,
+    useDonateToCampaign,
     useMarkAsFailed,
     useMintCertificate,
     useReadCampaign,
 } from "@/lib";
+import { getChainErrorMessage } from "@/lib/errors/normalize";
 import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { formatEther, parseAbiItem } from "viem";
+import { formatEther, parseAbiItem, parseEther } from "viem";
 import {
     useAccount,
     usePublicClient,
@@ -32,10 +34,10 @@ import {
 } from "wagmi";
 import CampaignInfoPanel from "@/components/campaign-detail/CampaignInfoPanel";
 import { MilestonePreviewCard } from "@/components/campaign-milestones";
-import CreatorActionsPanel from "@/components/campaign-detail/CreatorActionsPanel";
 import DonatePanel from "@/components/campaign-detail/DonatePanel";
 import RefundAndMintPanel from "@/components/campaign-detail/RefundAndMintPanel";
 import BackButton from "@/components/navigation/BackButton";
+import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 
 interface DonationEvent {
     campaignId: number;
@@ -55,6 +57,9 @@ export default function CampaignDetailPage() {
     const backendCampaign = useBackendCampaign(Number.isFinite(id) ? id : null);
     const { token, user, setAuth } = useAuth();
     const [amount, setAmount] = useState("0.01");
+    const [lastDonatedAmount, setLastDonatedAmount] = useState<string | null>(
+        null,
+    );
     const [donations, setDonations] = useState<DonationEvent[]>([]);
     const [donationReloadNonce, setDonationReloadNonce] = useState(0);
     const [mintProfileSaving, setMintProfileSaving] = useState(false);
@@ -125,6 +130,19 @@ export default function CampaignDetailPage() {
     } = useWaitForTransactionReceipt({
         hash: markAsFailedHash,
     });
+    useRegisterWalletTxOverlay(
+        isPending ||
+            isConfirming ||
+            disbursePending ||
+            disburseConfirming ||
+            fundingRefundPending ||
+            milestoneRefundPending ||
+            refundConfirming ||
+            mintPending ||
+            mintConfirming ||
+            markAsFailedPending ||
+            markAsFailedConfirming,
+    );
 
     const { data: hasMintedCertificate } = useReadContract({
         ...contractConfig,
@@ -184,18 +202,62 @@ export default function CampaignDetailPage() {
             } catch {
                 // Backend can lag behind indexer; keep loading from on-chain logs.
             }
+            if (address) {
+                try {
+                    const mine = await getDonationsByCampaignAndWallet(
+                        id,
+                        address,
+                    );
+                    merged.push(
+                        ...mine.map((item) => ({
+                            campaignId: item.campaignOnChainId,
+                            donor: item.donorWallet,
+                            amount: BigInt(item.amount),
+                            transactionHash: item.txHash,
+                            timestamp: new Date(item.donatedAt).getTime(),
+                        })),
+                    );
+                    hasAtLeastOneSource = true;
+                } catch {
+                    // Keep all-campaign snapshot if donor scoped query fails.
+                }
+            }
 
             if (publicClient) {
                 try {
-                    const logs = await publicClient.getLogs({
-                        address: contractConfig.address,
-                        event: parseAbiItem(
-                            "event Donated(uint256 indexed campaignId, address indexed donor, uint256 amount, uint256 totalRaised)",
-                        ),
-                        args: { campaignId: BigInt(id) },
-                        fromBlock: "earliest",
-                        toBlock: "latest",
-                    });
+                    const donatedEvent = parseAbiItem(
+                        "event Donated(uint256 indexed campaignId, address indexed donor, uint256 amount, uint256 totalRaised)",
+                    );
+                    const latestBlock = await publicClient.getBlockNumber();
+                    const maxBlocksToScan = 500n;
+                    const chunkSize = 10n;
+                    const fromBlock =
+                        latestBlock > maxBlocksToScan
+                            ? latestBlock - maxBlocksToScan + 1n
+                            : 0n;
+                    const logs: Awaited<ReturnType<typeof publicClient.getLogs>> =
+                        [];
+
+                    for (
+                        let chunkFrom = fromBlock;
+                        chunkFrom <= latestBlock;
+                        chunkFrom += chunkSize
+                    ) {
+                        const chunkTo =
+                            chunkFrom + chunkSize - 1n > latestBlock
+                                ? latestBlock
+                                : chunkFrom + chunkSize - 1n;
+                        const chunkLogs = await publicClient.getLogs({
+                            address: contractConfig.address,
+                            event: donatedEvent,
+                            args: { campaignId: BigInt(id) },
+                            fromBlock: chunkFrom,
+                            toBlock: chunkTo,
+                        });
+                        if (chunkLogs.length > 0) {
+                            logs.push(...chunkLogs);
+                        }
+                    }
 
                     const onChainDonations = await Promise.all(
                         logs.map(async (log) => {
@@ -237,7 +299,7 @@ export default function CampaignDetailPage() {
         };
 
         loadInitialDonations();
-    }, [donationReloadNonce, id, publicClient]);
+    }, [address, donationReloadNonce, id, publicClient]);
 
     // Check if user is creator
     const isCreator =
@@ -245,7 +307,19 @@ export default function CampaignDetailPage() {
         campaign &&
         address.toLowerCase() === campaign.creator.toLowerCase();
 
-    const campaignStatusLabel = campaign?.statusLabel || "active";
+    const backendStatus = backendCampaign.data?.status as
+        | "pending_approval"
+        | "active"
+        | "in_progress"
+        | "completed"
+        | "partial_failed"
+        | "failed"
+        | "cancelled"
+        | undefined;
+    const onChainStatusLabel = campaign?.statusLabel || "active";
+    const campaignStatusLabel = onChainStatusLabel;
+    const isStatusOutOfSync =
+        Boolean(backendStatus) && backendStatus !== onChainStatusLabel;
     const isCampaignActive = campaignStatusLabel === "active";
     const isCampaignInProgress = campaignStatusLabel === "in_progress";
     const isCampaignCompleted = campaignStatusLabel === "completed";
@@ -323,55 +397,46 @@ export default function CampaignDetailPage() {
     });
 
     const getFriendlyError = (err?: { message?: string } | null) => {
-        if (!err?.message) return null;
-        const msg = err.message.toLowerCase();
-        if (msg.includes("user rejected") || msg.includes("user denied")) {
-            return "Bạn đã từ chối giao dịch.";
-        }
-        if (msg.includes("insufficient funds")) {
-            return "Không đủ ETH để trả phí gas. Vui lòng nạp thêm ETH testnet.";
-        }
-        if (msg.includes("network") || msg.includes("rpc")) {
-            return "Lỗi mạng/RPC. Vui lòng thử lại hoặc đổi RPC.";
-        }
-        if (msg.includes("wrong network") || msg.includes("chain")) {
-            return "Sai mạng. Vui lòng chuyển sang Sepolia.";
-        }
-        if (msg.includes("deadline not reached")) {
-            return "Campaign chưa tới deadline nên chưa thể đánh dấu Failed.";
-        }
-        if (msg.includes("has reached its goal")) {
-            return "Campaign đã đạt mục tiêu nên không thể đánh dấu Failed.";
-        }
-        if (msg.includes("not active")) {
-            return "Campaign không còn ở trạng thái Active.";
-        }
-        if (msg.includes("milestone not approved")) {
-            return "Milestone hiện tại chưa được reviewer phê duyệt nên chưa thể giải ngân.";
-        }
-        if (msg.includes("only current milestone can be disbursed")) {
-            return "Chỉ có thể giải ngân milestone hiện tại.";
-        }
-        if (msg.includes("wrong reviewer")) {
-            return "Ví hiện tại không có quyền reviewer cho campaign này.";
-        }
-        return err.message;
+        if (!err) return null;
+        return getChainErrorMessage(err, {
+            fallback: "Giao dịch thất bại. Vui lòng thử lại.",
+        });
     };
 
     useEffect(() => {
         if (isConfirmed) {
+            if (hash && address && lastDonatedAmount) {
+                try {
+                    setDonations((prev) =>
+                        mergeDonations(prev, [
+                            {
+                                campaignId: id,
+                                donor: address,
+                                amount: parseEther(lastDonatedAmount),
+                                transactionHash: hash,
+                                timestamp: Date.now(),
+                            },
+                        ]),
+                    );
+                } catch {
+                    // Ignore malformed local amount and keep server/on-chain data sources.
+                }
+            }
             refetch();
             setAmount("0.01");
+            setLastDonatedAmount(null);
             showSuccessToast(
                 "Quyên góp thành công! Giao dịch đang được xác nhận.",
             );
         }
-    }, [isConfirmed, refetch]);
+    }, [address, hash, id, isConfirmed, lastDonatedAmount, refetch]);
 
     const handleDonate = () => {
         if (!Number.isFinite(id)) return;
         if (parseFloat(amount) <= 0) return;
+        setLastDonatedAmount(amount);
         donate(id, amount).catch((err) => {
+            setLastDonatedAmount(null);
             const friendly = getFriendlyError(err);
             showErrorToast(
                 friendly || "Không thể thực hiện quyên góp. Vui lòng thử lại.",
@@ -379,11 +444,11 @@ export default function CampaignDetailPage() {
         });
     };
 
-    const handleWithdraw = () => {
+    const handleWithdraw = async () => {
         if (!Number.isFinite(id)) return;
         if (!campaign) return;
         try {
-            disburseMilestone(id, campaign.currentMilestoneId);
+            await disburseMilestone(id, campaign.currentMilestoneId);
         } catch (err) {
             const friendly = getFriendlyError(err as { message?: string });
             showErrorToast(
@@ -413,7 +478,13 @@ export default function CampaignDetailPage() {
     const handleMintCertificate = async (displayName: string) => {
         if (!Number.isFinite(id)) return;
         if (!address) {
-            setMintFlowError("Vui lòng kết nối ví trước khi mint certificate.");
+            setMintFlowError("Vui lòng kết nối ví trước khi mint chứng chỉ.");
+            return;
+        }
+        if (!canMintCertificate) {
+            setMintFlowError(
+                "Chưa thể mint chứng chỉ. Chỉ mint được khi campaign đã vào giai đoạn triển khai hoặc đã kết thúc.",
+            );
             return;
         }
         if (!token) {
@@ -463,7 +534,7 @@ export default function CampaignDetailPage() {
             const friendly = getFriendlyError(err as { message?: string });
             showErrorToast(
                 friendly ||
-                    "Không thể cập nhật trạng thái Failed. Vui lòng thử lại.",
+                    "Không thể cập nhật trạng thái thất bại. Vui lòng thử lại.",
             );
         }
     };
@@ -471,7 +542,7 @@ export default function CampaignDetailPage() {
     useEffect(() => {
         if (markAsFailedConfirmed) {
             refetch();
-            showSuccessToast("Đã cập nhật campaign sang trạng thái Failed.");
+            showSuccessToast("Đã cập nhật campaign sang trạng thái thất bại.");
         }
     }, [markAsFailedConfirmed, refetch]);
 
@@ -519,6 +590,10 @@ export default function CampaignDetailPage() {
         [id],
     );
 
+    console.log("campaign", campaign)
+    console.log("backend campaign", backendCampaign)
+    console.log("cachedMetadata", cachedMetadata)
+
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
             <main className="mx-auto w-full max-w-6xl px-6 py-12 md:px-10">
@@ -533,7 +608,7 @@ export default function CampaignDetailPage() {
                             <div>
                                 <div className="inline-flex items-center gap-2 mb-1">
                                     <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">
-                                        Campaign #
+                                        Chiến dịch #
                                         {Number.isFinite(id) ? id : "-"}
                                     </span>
                                 </div>
@@ -545,8 +620,8 @@ export default function CampaignDetailPage() {
                     </div>
                 </header>
 
-                {/* Loading State */}
-                {(isLoading || backendCampaign.isLoading) && (
+                {/* Loading State - chỉ block khi on-chain data chưa sẵn */}
+                {isLoading && (
                     <div className="space-y-6 animate-pulse">
                         <div className="rounded-2xl bg-white border border-slate-200 p-8 shadow-sm">
                             <div className="h-8 w-2/3 rounded bg-slate-200 mb-4" />
@@ -572,19 +647,28 @@ export default function CampaignDetailPage() {
                             onClick={() => refetch()}
                             className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700 transition"
                         >
-                            Try Again
+                            Thử lại
                         </button>
                     </div>
                 )}
 
-                {/* Campaign Content */}
+                {/* Campaign Content - hiển thị khi on-chain data sẵn, backend data được merge khi tải xong */}
                 {!isLoading &&
-                    !backendCampaign.isLoading &&
                     !isError &&
                     campaign && (
                         <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
                             {/* Left Column - Main Content */}
                             <div className="space-y-6">
+                                {isStatusOutOfSync && (
+                                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-4 text-amber-900">
+                                        <p className="text-sm font-semibold">
+                                            Trạng thái đang đồng bộ
+                                        </p>
+                                        <p className="text-xs text-amber-800">
+                                            Trạng thái on-chain khác backend. Dữ liệu sẽ tự cập nhật sau khi đồng bộ.
+                                        </p>
+                                    </div>
+                                )}
                                 <MilestonePreviewCard
                                     campaignId={campaign.id}
                                     campaignDeadline={campaign.deadline}
@@ -594,14 +678,17 @@ export default function CampaignDetailPage() {
                                     progressPercent={progress}
                                     goalWei={campaign.goal}
                                     milestoneCount={campaign.milestoneCount}
-                                    campaignStatusLabel={campaign.statusLabel}
+                                    campaignStatusLabel={campaignStatusLabel}
                                     currentMilestoneId={
                                         campaign.currentMilestoneId
                                     }
                                 />
 
                                 <CampaignInfoPanel
-                                    campaign={campaign}
+                                    campaign={{
+                                        ...campaign,
+                                        statusLabel: campaignStatusLabel,
+                                    }}
                                     backendTitle={
                                         !isPlaceholderCampaignTitle(
                                             backendCampaign.data?.title,
@@ -617,7 +704,9 @@ export default function CampaignDetailPage() {
                                             ? backendCampaign.data?.description
                                             : cachedMetadata?.description
                                     }
+                                    reviewerSafe={backendCampaign.data?.reviewerSafe}
                                     progress={progress}
+                                    thumbnailUrl={backendCampaign.data?.thumbnailUrl ?? null}
                                 />
 
                                 {/* Donation History Card */}
@@ -628,11 +717,8 @@ export default function CampaignDetailPage() {
                                         </h3>
                                         <div className="flex items-center gap-3">
                                             <span className="text-sm font-medium text-slate-600">
-                                                {donations.length} recent
-                                                donation
-                                                {donations.length !== 1
-                                                    ? "s"
-                                                    : ""}
+                                                {donations.length} lượt quyên
+                                                góp
                                             </span>
                                             <button
                                                 onClick={handleReloadDonations}
@@ -711,8 +797,7 @@ export default function CampaignDetailPage() {
                                                                 rel="noopener noreferrer"
                                                                 className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
                                                             >
-                                                                View Transaction
-                                                                →
+                                                                Xem giao dịch →
                                                             </a>
                                                         </div>
                                                     ),
@@ -784,10 +869,10 @@ export default function CampaignDetailPage() {
                                     <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
                                         <p className="text-sm font-semibold text-amber-900 mb-2">
                                             Campaign đã quá deadline nhưng chưa
-                                            cập nhật Failed
+                                            cập nhật thất bại
                                         </p>
                                         <p className="text-xs text-amber-800 mb-4">
-                                            Bấm để ghi nhận trạng thái Failed
+                                            Bấm để ghi nhận trạng thái thất bại
                                             on-chain, sau đó donor có thể
                                             refund.
                                         </p>
@@ -803,7 +888,7 @@ export default function CampaignDetailPage() {
                                                 ? "⏳ Đợi xác nhận từ ví..."
                                                 : markAsFailedConfirming
                                                   ? "🔄 Đang xác nhận..."
-                                                  : "Cập nhật trạng thái Failed"}
+                                                  : "Cập nhật trạng thái thất bại"}
                                         </button>
                                         {markAsFailedError && (
                                             <p className="mt-3 text-xs text-red-700">
@@ -814,21 +899,6 @@ export default function CampaignDetailPage() {
                                         )}
                                     </div>
                                 )}
-                                <CreatorActionsPanel
-                                    visible={Boolean(
-                                        isCreator &&
-                                        canDisburseCurrentMilestone,
-                                    )}
-                                    isPending={disbursePending}
-                                    isConfirming={disburseConfirming}
-                                    isWithdrawn={!canDisburseCurrentMilestone}
-                                    isConfirmed={disburseConfirmed}
-                                    txHash={disburseHash}
-                                    errorMessage={getFriendlyError(
-                                        disburseError,
-                                    )}
-                                    onWithdraw={handleWithdraw}
-                                />
                                 <RefundAndMintPanel
                                     showRefund={Boolean(
                                         (isCampaignFailed ||
@@ -877,6 +947,7 @@ export default function CampaignDetailPage() {
                                     isSepolia={isSepolia}
                                     campaignStatusLabel={
                                         campaignStatusLabel as
+                                            | "pending_approval"
                                             | "active"
                                             | "in_progress"
                                             | "completed"
@@ -898,11 +969,12 @@ export default function CampaignDetailPage() {
                                     <div className="flex items-center justify-center gap-2 mb-1">
                                         <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                                         <p className="text-xs font-semibold text-slate-600">
-                                            SEPOLIA TESTNET
+                                            MẠNG THỬ NGHIỆM SEPOLIA
                                         </p>
                                     </div>
                                     <p className="text-xs text-slate-500">
-                                        All transactions are on Ethereum Sepolia
+                                        Mọi giao dịch diễn ra trên Ethereum
+                                        Sepolia
                                     </p>
                                 </div>
                             </div>

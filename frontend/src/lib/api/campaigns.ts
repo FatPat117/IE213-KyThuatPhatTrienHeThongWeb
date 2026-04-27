@@ -106,6 +106,10 @@ const campaignIndexStatusCache = new Map<
     number,
     { indexed: boolean; expiresAt: number }
 >();
+const DISBURSED_MILESTONE_COUNT_CACHE_TTL_MS = 45_000;
+let disbursedMilestoneCountCache: { value: number; expiresAt: number } | null =
+    null;
+let disbursedMilestoneCountInFlight: Promise<number> | null = null;
 
 function readCachedCampaignIndexStatus(id: number): boolean | null {
     const cached = campaignIndexStatusCache.get(id);
@@ -129,7 +133,7 @@ function writeCampaignIndexStatusCache(id: number, indexed: boolean) {
 async function ensureCampaignIndexed(onChainId: number): Promise<void> {
     const status = await getCampaignIndexStatus(onChainId);
     if (!status.indexed) {
-        throw new Error("Campaign not yet indexed");
+        throw new Error("Chiến dịch chưa được index.");
     }
 }
 
@@ -141,7 +145,11 @@ function mapMilestoneRecord(
         title: item.title || "",
         description: item.description || "",
         allocationBps: Number(item.allocationBps || 0),
-        amountWei: (item.financialTargetWei || item.amountWei || "0").toString(),
+        amountWei: (
+            item.financialTargetWei ||
+            item.amountWei ||
+            "0"
+        ).toString(),
         deadline: item.deadline || "",
         status: item.status || "pending_funding",
         reportCids: Array.isArray(item.reportCids)
@@ -182,7 +190,6 @@ export async function getCampaigns() {
 }
 
 export async function getCampaignById(id: number) {
-    await ensureCampaignIndexed(id);
     return apiRequest<CampaignRecord>(`/campaigns/${id}`);
 }
 
@@ -209,6 +216,25 @@ export async function updateCampaignMetadata(
     });
 }
 
+export async function updateCampaignStatus(
+    id: number,
+    token: string,
+    status:
+        | "pending_approval"
+        | "active"
+        | "in_progress"
+        | "completed"
+        | "partial_failed"
+        | "failed"
+        | "cancelled",
+) {
+    return apiRequest<CampaignRecord>(`/campaigns/${id}/status`, {
+        method: "PATCH",
+        token,
+        body: JSON.stringify({ status }),
+    });
+}
+
 export async function getCampaignIndexStatus(id: number) {
     const normalizedId = Number(id);
     if (!Number.isFinite(normalizedId)) {
@@ -231,6 +257,7 @@ export async function getPublicCampaigns(params?: {
     page?: number;
     limit?: number;
     status?: string;
+    reviewerSafe?: string;
     sort?: "createdAt" | "updatedAt" | "deadline";
     order?: "asc" | "desc";
 }) {
@@ -238,6 +265,7 @@ export async function getPublicCampaigns(params?: {
     if (params?.page) query.set("page", String(params.page));
     if (params?.limit) query.set("limit", String(params.limit));
     if (params?.status) query.set("status", params.status);
+    if (params?.reviewerSafe) query.set("reviewerSafe", params.reviewerSafe);
     if (params?.sort) query.set("sort", params.sort);
     if (params?.order) query.set("order", params.order);
 
@@ -252,9 +280,27 @@ export async function getPublicStats() {
 }
 
 export async function getPublicCampaignMilestones(onChainId: number) {
-    await ensureCampaignIndexed(onChainId);
-
     try {
+        await ensureCampaignIndexed(onChainId);
+        // Prefer public campaign endpoint to avoid protected milestone route issues
+        // in guest sessions and keep response shape consistent.
+        return await apiRequest<PublicCampaignMilestonesResponse>(
+            `/campaigns/public/campaigns/${onChainId}/milestones`,
+        );
+    } catch (error) {
+        const message =
+            error instanceof Error ? error.message.toLowerCase() : "";
+        if (
+            message.includes("not yet indexed") ||
+            message.includes("chưa được index")
+        ) {
+            // Indexing can lag right after on-chain creation.
+            // Fall back to campaign-service public milestone endpoint,
+            // then let caller decide fallback timeline if this still fails.
+        }
+
+        // Backward compatible fallback for environments that still expose
+        // milestone timeline via milestone-service endpoint.
         const response = await fetch(
             `${API_BASE_URL}/milestones/campaigns/${onChainId}`,
             {
@@ -266,31 +312,14 @@ export async function getPublicCampaignMilestones(onChainId: number) {
             },
         );
         const payload = (await response.json()) as MilestoneServiceResponse;
-
         if (!response.ok || payload.status !== "success") {
-            if (response.status === 404) {
-                throw new Error("Campaign not yet indexed");
-            }
             throw new Error(payload.error || payload.message || "Request failed");
         }
-
         const rawMilestones = Array.isArray(payload.data) ? payload.data : [];
         return {
             campaignOnChainId: onChainId,
             milestones: rawMilestones.map(mapMilestoneRecord),
         };
-    } catch (error) {
-        const message =
-            error instanceof Error ? error.message.toLowerCase() : "";
-        if (message.includes("not yet indexed")) {
-            throw error;
-        }
-
-        // Backward compatible fallback for environments that still expose
-        // milestone timeline via campaign public endpoint.
-        return apiRequest<PublicCampaignMilestonesResponse>(
-            `/campaigns/public/campaigns/${onChainId}/milestones`,
-        );
     }
 }
 
@@ -305,27 +334,93 @@ export async function getMilestoneApprovalStatus(
     );
 }
 
+export async function rejectMilestone(
+    campaignOnChainId: number,
+    milestoneId: number,
+    token: string,
+    reason: string,
+) {
+    return apiRequest<{
+        campaignOnChainId: number;
+        milestoneIndex: number;
+        milestoneStatus: string;
+        retriesLeft?: number;
+        reason: string;
+    }>(`/milestones/${campaignOnChainId}/${milestoneId}/reject`, {
+        method: "POST",
+        token,
+        body: JSON.stringify({ reason }),
+    });
+}
+
+export async function resubmitMilestone(
+    campaignOnChainId: number,
+    milestoneId: number,
+    token: string,
+    evidenceCid?: string,
+) {
+    return apiRequest<{
+        campaignOnChainId: number;
+        milestoneIndex: number;
+        milestoneStatus: string;
+        evidenceCid?: string;
+    }>(`/milestones/${campaignOnChainId}/${milestoneId}/resubmit`, {
+        method: "PUT",
+        token,
+        body: JSON.stringify(evidenceCid ? { evidenceCid } : {}),
+    });
+}
+
 export async function getDisbursedMilestoneCount(): Promise<number> {
-    const campaigns = await getAllPublicCampaigns();
-    if (campaigns.length === 0) return 0;
-
-    const milestoneResults = await Promise.allSettled(
-        campaigns.map((campaign) =>
-            getPublicCampaignMilestones(campaign.onChainId),
-        ),
-    );
-
-    let disbursedCount = 0;
-    for (const result of milestoneResults) {
-        if (result.status !== "fulfilled") continue;
-        for (const milestone of result.value.milestones) {
-            if (milestone.status === "disbursed") {
-                disbursedCount += 1;
-            }
-        }
+    if (
+        disbursedMilestoneCountCache &&
+        Date.now() <= disbursedMilestoneCountCache.expiresAt
+    ) {
+        return disbursedMilestoneCountCache.value;
     }
 
-    return disbursedCount;
+    if (disbursedMilestoneCountInFlight) {
+        return disbursedMilestoneCountInFlight;
+    }
+
+    disbursedMilestoneCountInFlight = (async () => {
+        const campaigns = await getAllPublicCampaigns();
+        if (campaigns.length === 0) {
+            disbursedMilestoneCountCache = {
+                value: 0,
+                expiresAt: Date.now() + DISBURSED_MILESTONE_COUNT_CACHE_TTL_MS,
+            };
+            return 0;
+        }
+
+        const milestoneResults = await Promise.allSettled(
+            campaigns.map((campaign) =>
+                getPublicCampaignMilestones(campaign.onChainId),
+            ),
+        );
+
+        let disbursedCount = 0;
+        for (const result of milestoneResults) {
+            if (result.status !== "fulfilled") continue;
+            for (const milestone of result.value.milestones) {
+                if (milestone.status === "disbursed") {
+                    disbursedCount += 1;
+                }
+            }
+        }
+
+        disbursedMilestoneCountCache = {
+            value: disbursedCount,
+            expiresAt: Date.now() + DISBURSED_MILESTONE_COUNT_CACHE_TTL_MS,
+        };
+        return disbursedCount;
+    })();
+
+    try {
+        return await disbursedMilestoneCountInFlight;
+    } finally {
+        disbursedMilestoneCountInFlight = null;
+    }
 }
 
 export async function getReviewerAggregates(): Promise<ReviewerAggregate[]> {

@@ -10,12 +10,15 @@ export interface CampaignRecord {
   title: string;
   description: string;
   images: string[];
+  thumbnailUrl?: string;
   creator: string;
+  reviewerSafe?: string;
   beneficiary?: string;
   goal: string;
   raised: string;
   deadline: string;
-  status: 'active' | 'ended' | 'failed' | 'cancelled';
+  status: 'pending_approval' | 'active' | 'in_progress' | 'completed' | 'partial_failed' | 'failed' | 'cancelled';
+  milestoneCount?: number;
   createdAt: string;
   updatedAt: string;
 }

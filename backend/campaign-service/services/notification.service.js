@@ -1,5 +1,20 @@
 const Notification = require("../models/Notification.model");
 
+const ALLOWED_NOTIFICATION_TYPES = new Set([
+    "system",
+    "campaign_created",
+    "campaign_approved",
+    "campaign_assigned",
+    "campaign_succeeded",
+    "campaign_failed",
+    "campaign_cancelled",
+    "funding_complete",
+    "milestone_report_submitted",
+    "milestone_approved",
+    "milestone_disbursed",
+    "funds_withdrawn",
+]);
+
 // ── SSE connection store ──────────────────────────────────────
 // walletAddress (lowercase) → Set<Express.Response>
 const sseClients = new Map();
@@ -56,10 +71,24 @@ async function createNotification({
     txHash = "",
 }) {
     if (!recipientWallet) return null;
+    const normalizedType = ALLOWED_NOTIFICATION_TYPES.has(type)
+        ? type
+        : "system";
+    if (normalizedType === "system" && type !== "system") {
+        console.warn(
+            "[notification-service] Unsupported notification type, fallback to 'system'",
+            {
+                originalType: type,
+                recipientWallet: recipientWallet.toLowerCase(),
+                campaignOnChainId,
+                txHash,
+            },
+        );
+    }
 
     const notification = await Notification.create({
         recipientWallet: recipientWallet.toLowerCase(),
-        type,
+        type: normalizedType,
         title,
         message,
         campaignOnChainId,

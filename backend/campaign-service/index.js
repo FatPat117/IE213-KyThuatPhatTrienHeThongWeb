@@ -29,6 +29,9 @@ const {
     startMilestoneReportSubmittedConsumer,
 } = require("./consumers/milestoneReportSubmitted.consumer");
 const {
+    startCampaignApprovedConsumer,
+} = require("./consumers/campaignApproved.consumer");
+const {
     startCampaignStoppedConsumer,
 } = require("./consumers/campaignStopped.consumer");
 const {
@@ -97,6 +100,7 @@ async function start() {
         await startMilestoneDisbursedConsumer();
         await startMilestoneApprovedConsumer();
         await startMilestoneReportSubmittedConsumer();
+        await startCampaignApprovedConsumer();
         await startCampaignStoppedConsumer();
         await startMilestoneRefundedConsumer();
         boundConsumerChannel = currentChannel;

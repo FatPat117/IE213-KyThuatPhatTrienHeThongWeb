@@ -10,11 +10,13 @@ import type {
 import {
     getCampaignById,
     getCampaigns,
+    getDonationsByCampaignAndWallet,
     getDonationsByWallet,
     getTransactionsByWallet,
 } from "@/lib";
 import { getPublicStats, type PublicStatsResponse } from "@/lib/api/campaigns";
 import { useAuth } from "@/lib";
+import { getBackendErrorMessage } from "@/lib/errors/normalize";
 
 /**
  * Shared async state shape used by backend data hooks.
@@ -38,9 +40,10 @@ export function useBackendCampaigns(): QueryState<CampaignRecord[]> {
             setData(await getCampaigns());
         } catch (err) {
             setError(
-                err instanceof Error
-                    ? err.message
-                    : "Không thể tải campaign từ backend",
+                getBackendErrorMessage(err, {
+                    fallback:
+                        "Không thể tải danh sách chiến dịch. Vui lòng thử lại.",
+                }),
             );
         } finally {
             setIsLoading(false);
@@ -68,11 +71,19 @@ export function useBackendCampaign(
             setError(null);
             setData(await getCampaignById(id));
         } catch (err) {
-            setError(
-                err instanceof Error
-                    ? err.message
-                    : "Không thể tải chi tiết campaign",
-            );
+            // Swallow 404 – campaign may not be indexed yet (just created).
+            const status = (err as { status?: number })?.status;
+            if (status === 404) {
+                setData(null);
+                setError(null);
+            } else {
+                setError(
+                    getBackendErrorMessage(err, {
+                        fallback:
+                            "Không thể tải chi tiết chiến dịch. Vui lòng thử lại.",
+                    }),
+                );
+            }
         } finally {
             setIsLoading(false);
         }
@@ -87,6 +98,7 @@ export function useBackendCampaign(
 
 export function useBackendDonations(
     wallet: string | null,
+    campaignId?: number | null,
 ): QueryState<DonationRecord[]> {
     const [data, setData] = useState<DonationRecord[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -100,15 +112,27 @@ export function useBackendDonations(
         try {
             setIsLoading(true);
             setError(null);
+            if (Number.isFinite(campaignId)) {
+                setData(
+                    await getDonationsByCampaignAndWallet(
+                        Number(campaignId),
+                        wallet,
+                    ),
+                );
+                return;
+            }
             setData(await getDonationsByWallet(wallet));
         } catch (err) {
             setError(
-                err instanceof Error ? err.message : "Không thể tải donation",
+                getBackendErrorMessage(err, {
+                    fallback:
+                        "Không thể tải danh sách quyên góp. Vui lòng thử lại.",
+                }),
             );
         } finally {
             setIsLoading(false);
         }
-    }, [wallet]);
+    }, [campaignId, wallet]);
 
     useEffect(() => {
         fetchData();
@@ -136,9 +160,9 @@ export function useBackendTransactions(
             setData(await getTransactionsByWallet(token, wallet));
         } catch (err) {
             setError(
-                err instanceof Error
-                    ? err.message
-                    : "Không thể tải transaction",
+                getBackendErrorMessage(err, {
+                    fallback: "Không thể tải giao dịch. Vui lòng thử lại.",
+                }),
             );
         } finally {
             setIsLoading(false);
@@ -164,9 +188,9 @@ export function usePublicStats(): QueryState<PublicStatsResponse | null> {
             setData(await getPublicStats());
         } catch (err) {
             setError(
-                err instanceof Error
-                    ? err.message
-                    : "Unable to load public statistics",
+                getBackendErrorMessage(err, {
+                    fallback: "Không thể tải thống kê công khai.",
+                }),
             );
         } finally {
             setIsLoading(false);

@@ -3,12 +3,15 @@
 import Link from "next/link";
 import { formatEther } from "viem";
 import type { PublicCampaignMilestone } from "@/lib/api/campaigns";
+import { useReadMilestonesOnChain } from "@/lib/contracts/hooks";
 
 interface MilestoneTimelineProps {
     milestones: PublicCampaignMilestone[];
     campaignId: number;
     contractAddress: string;
     canUploadEvidence: boolean;
+    /** Tổng đã huy động — hiển thị mục tiêu mốc = raised * allocationBps / 10000 */
+    raisedWei?: bigint;
 }
 
 function formatDate(value: Date) {
@@ -43,19 +46,25 @@ function getStatusMeta(status: string) {
     switch (status) {
         case "disbursed":
             return {
-                label: "Đã hoàn thành",
+                label: "Đã giải ngân chờ xác nhận bằng chứng",
                 badgeClass:
                     "bg-emerald-100 text-emerald-700 border-emerald-200",
                 dotClass: "bg-emerald-500 ring-emerald-100",
                 cardClass: "border-emerald-100",
             };
         case "pending_verification":
+            return {
+                label: "Chờ xác nhận",
+                badgeClass: "bg-blue-100 text-blue-700 border-blue-200",
+                dotClass: "bg-blue-500 ring-blue-100",
+                cardClass: "border-blue-100",
+            };
         case "submitted":
         case "resubmittable":
         case "review_timeout":
         case "approved":
             return {
-                label: "Đang thực hiện",
+                label: "Đã hoàn thành",
                 badgeClass: "bg-blue-100 text-blue-700 border-blue-200",
                 dotClass: "bg-blue-500 ring-blue-100",
                 cardClass: "border-blue-100",
@@ -69,14 +78,14 @@ function getStatusMeta(status: string) {
             };
         case "failed":
             return {
-                label: "Failed",
+                label: "Thất bại",
                 badgeClass: "bg-red-100 text-red-700 border-red-200",
                 dotClass: "bg-red-500 ring-red-100",
                 cardClass: "border-red-100",
             };
         case "refunded":
             return {
-                label: "Refunded",
+                label: "Đã hoàn tiền",
                 badgeClass:
                     "bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200",
                 dotClass: "bg-fuchsia-500 ring-fuchsia-100",
@@ -92,12 +101,22 @@ function getStatusMeta(status: string) {
     }
 }
 
+function chainIndexForMilestone(milestoneId: number) {
+    return milestoneId >= 1 ? milestoneId - 1 : milestoneId;
+}
+
 export default function MilestoneTimeline({
     milestones,
     campaignId,
     contractAddress,
     canUploadEvidence,
+    raisedWei = 0n,
 }: MilestoneTimelineProps) {
+    const { proofCidsByIndex } = useReadMilestonesOnChain(
+        campaignId,
+        milestones.length,
+    );
+
     return (
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-6 flex items-center justify-between gap-3">
@@ -112,13 +131,39 @@ export default function MilestoneTimeline({
             <div className="relative ml-2 border-l-2 border-slate-200 pl-6">
                 {milestones.map((milestone) => {
                     const statusMeta = getStatusMeta(milestone.status);
+                    const idx = chainIndexForMilestone(milestone.milestoneId);
+                    const onChainCids = proofCidsByIndex.get(idx) ?? [];
+                    const bps = milestone.allocationBps || 0;
+                    const milestoneTargetWei =
+                        raisedWei > 0n && bps > 0
+                            ? (raisedWei * BigInt(bps)) / 10000n
+                            : BigInt(milestone.amountWei || "0");
                     const milestoneTargetEth = Number(
-                        formatEther(BigInt(milestone.amountWei || "0")),
+                        formatEther(milestoneTargetWei),
                     );
                     const allocationPercent = (milestone.allocationBps / 100)
                         .toFixed(2)
                         .replace(/\.00$/, "");
-                    const ipfsLinks = milestone.reportCids
+                    const fromDb = milestone.reportCids.map((x) => ({
+                        cid: x.cid,
+                        submittedAt: x.submittedAt,
+                    }));
+                    const fromChain = onChainCids.map((cid) => ({
+                        cid,
+                        submittedAt: "",
+                    }));
+                    const seen = new Set<string>();
+                    const mergedCidList: Array<{
+                        cid: string;
+                        submittedAt: string;
+                    }> = [];
+                    for (const row of [...fromDb, ...fromChain]) {
+                        const k = row.cid.trim().toLowerCase();
+                        if (!k || seen.has(k)) continue;
+                        seen.add(k);
+                        mergedCidList.push(row);
+                    }
+                    const ipfsLinks = mergedCidList
                         .map((item) => ({
                             cid: item.cid,
                             url: normalizeIpfsUrl(item.cid),
