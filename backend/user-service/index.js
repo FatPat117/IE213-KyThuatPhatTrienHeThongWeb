@@ -11,11 +11,13 @@ const { swaggerUi, specs } = require("./config/swagger");
 
 const app = express();
 const PORT = process.env.PORT || 4001;
+const BODY_SIZE_LIMIT = process.env.BODY_SIZE_LIMIT || "20mb";
 
 app.use(helmet());
 app.use(cors());
 app.use(morgan("dev"));
-app.use(express.json());
+app.use(express.json({ limit: BODY_SIZE_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: BODY_SIZE_LIMIT }));
 
 app.get("/api/health", (req, res) =>
     res.json({ success: true, service: "user-service", status: "ok" })

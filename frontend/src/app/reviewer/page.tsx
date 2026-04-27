@@ -117,7 +117,8 @@ function collectMilestonesByFilter(
     if (filter === "processed") return row.processedMilestones;
 
     return [...row.pendingMilestones, ...row.processedMilestones].sort(
-        (a, b) => a.milestoneId - b.milestoneId,
+        (a, b) =>
+            getMilestoneActivityTimestamp(b) - getMilestoneActivityTimestamp(a),
     );
 }
 
@@ -152,6 +153,104 @@ function formatEth(wei: string) {
     } catch {
         return "0,00";
     }
+}
+
+function parseWei(value: string): bigint {
+    try {
+        return BigInt(value || "0");
+    } catch {
+        return 0n;
+    }
+}
+
+function formatEthCompact(wei: string, maximumFractionDigits = 3) {
+    try {
+        const value = Number(formatEther(parseWei(wei)));
+        return value.toLocaleString("vi-VN", {
+            minimumFractionDigits: 0,
+            maximumFractionDigits,
+        });
+    } catch {
+        return "0";
+    }
+}
+
+function getMilestoneActivityTimestamp(milestone: PublicCampaignMilestone): number {
+    const reportTimestamp = milestone.reportCids.reduce((latest, item) => {
+        const timestamp = new Date(item.submittedAt).getTime();
+        if (Number.isNaN(timestamp)) return latest;
+        return Math.max(latest, timestamp);
+    }, 0);
+    const approvedTimestamp = milestone.approvedAt
+        ? new Date(milestone.approvedAt).getTime()
+        : 0;
+    const disbursedTimestamp = milestone.disbursedAt
+        ? new Date(milestone.disbursedAt).getTime()
+        : 0;
+    const deadlineTimestamp = new Date(milestone.deadline).getTime();
+    return Math.max(
+        reportTimestamp,
+        Number.isNaN(approvedTimestamp) ? 0 : approvedTimestamp,
+        Number.isNaN(disbursedTimestamp) ? 0 : disbursedTimestamp,
+        Number.isNaN(deadlineTimestamp) ? 0 : deadlineTimestamp,
+        milestone.milestoneId,
+    );
+}
+
+function getCampaignSortTimestamp(row: ReviewerCampaignRow): number {
+    const latestMilestoneTimestamp = [
+        ...row.pendingMilestones,
+        ...row.processedMilestones,
+    ].reduce(
+        (latest, milestone) =>
+            Math.max(latest, getMilestoneActivityTimestamp(milestone)),
+        0,
+    );
+    if (latestMilestoneTimestamp > 0) return latestMilestoneTimestamp;
+    const createdAt = new Date(row.campaign.createdAt).getTime();
+    return Number.isNaN(createdAt) ? 0 : createdAt;
+}
+
+function sortReviewerRows(rows: ReviewerCampaignRow[]) {
+    return [...rows].sort((a, b) => {
+        const diff = getCampaignSortTimestamp(b) - getCampaignSortTimestamp(a);
+        if (diff !== 0) return diff;
+        return b.campaign.onChainId - a.campaign.onChainId;
+    });
+}
+
+function getCampaignCredibility(row: ReviewerCampaignRow) {
+    const milestones = [...row.pendingMilestones, ...row.processedMilestones];
+    const total = milestones.length;
+    if (total === 0) {
+        return {
+            label: "Chưa đủ dữ liệu",
+            badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
+            note: "Campaign chưa có milestone để đánh giá uy tín.",
+        };
+    }
+    const completed = milestones.filter(isMilestoneFullyCompleted).length;
+    const failed = milestones.filter((item) => item.status === "failed").length;
+    const score = ((completed - failed * 0.5) / total) * 100;
+    if (score >= 70) {
+        return {
+            label: "Uy tín cao",
+            badgeClass: "bg-emerald-100 text-emerald-700 border-emerald-200",
+            note: `${completed}/${total} milestone đã hoàn thành.`,
+        };
+    }
+    if (score >= 40) {
+        return {
+            label: "Uy tín trung bình",
+            badgeClass: "bg-amber-100 text-amber-700 border-amber-200",
+            note: `${completed}/${total} milestone hoàn thành, cần xem thêm minh chứng.`,
+        };
+    }
+    return {
+        label: "Uy tín thấp",
+        badgeClass: "bg-rose-100 text-rose-700 border-rose-200",
+        note: `Có ${failed} milestone thất bại trong tổng ${total} milestone.`,
+    };
 }
 
 function getStatusLabel(status: string, milestone?: PublicCampaignMilestone) {
@@ -210,10 +309,6 @@ function RejectModal({
     const MIN_CHARS = 10;
     const isValid = reason.trim().length >= MIN_CHARS;
 
-    useEffect(() => {
-        if (!isOpen) setReason("");
-    }, [isOpen]);
-
     if (!isOpen) return null;
 
     return (
@@ -221,7 +316,14 @@ function RejectModal({
             {/* Backdrop */}
             <div
                 className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-                onClick={!isSubmitting ? onClose : undefined}
+                onClick={
+                    !isSubmitting
+                        ? () => {
+                              setReason("");
+                              onClose();
+                          }
+                        : undefined
+                }
             />
             <div className="relative w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
                 <div className="mb-4 flex items-center gap-3">
@@ -248,14 +350,21 @@ function RejectModal({
 
                 <div className="mt-4 flex justify-end gap-3">
                     <button
-                        onClick={onClose}
+                        onClick={() => {
+                            setReason("");
+                            onClose();
+                        }}
                         disabled={isSubmitting}
                         className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
                     >
                         Huỷ
                     </button>
                     <button
-                        onClick={() => isValid && onConfirm(reason.trim())}
+                        onClick={() => {
+                            if (!isValid) return;
+                            onConfirm(reason.trim());
+                            setReason("");
+                        }}
                         disabled={!isValid || isSubmitting}
                         className="rounded-xl bg-rose-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
                     >
@@ -484,6 +593,16 @@ export default function ReviewerWorkspacePage() {
                 const processedMilestones = result.value.milestones.filter(
                     isMilestoneFullyCompleted,
                 );
+                pendingMilestones.sort(
+                    (a, b) =>
+                        getMilestoneActivityTimestamp(b) -
+                        getMilestoneActivityTimestamp(a),
+                );
+                processedMilestones.sort(
+                    (a, b) =>
+                        getMilestoneActivityTimestamp(b) -
+                        getMilestoneActivityTimestamp(a),
+                );
 
                 // 🐞 LOG 4: Xem chi tiết phân loại trạng thái milestone của từng campaign
                 console.log(`🔍 [Phân loại] Campaign ID ${campaign.onChainId}:`, {
@@ -509,42 +628,20 @@ export default function ReviewerWorkspacePage() {
             // 🐞 LOG 5: Xem Dữ liệu cuối cùng sẽ được đưa vào State (để render ra UI)
             console.log("🚀 [State] Final Rows data:", nextRows);
 
-            nextRows.sort((a, b) => {
-                if (b.pendingMilestones.length !== a.pendingMilestones.length) {
-                    return (
-                        b.pendingMilestones.length - a.pendingMilestones.length
-                    );
-                }
-                return (
-                    new Date(b.campaign.createdAt).getTime() -
-                    new Date(a.campaign.createdAt).getTime()
-                );
-            });
+            const sortedRows = sortReviewerRows(nextRows);
 
             setRows((prev) => {
-                if (reset) return nextRows;
+                if (reset) return sortedRows;
 
                 const mergedMap = new Map<number, ReviewerCampaignRow>();
                 prev.forEach((row) => {
                     mergedMap.set(row.campaign.onChainId, row);
                 });
-                nextRows.forEach((row) => {
+                sortedRows.forEach((row) => {
                     mergedMap.set(row.campaign.onChainId, row);
                 });
 
-                return Array.from(mergedMap.values()).sort((a, b) => {
-                    if (
-                        b.pendingMilestones.length !== a.pendingMilestones.length
-                    ) {
-                        return (
-                            b.pendingMilestones.length - a.pendingMilestones.length
-                        );
-                    }
-                    return (
-                        new Date(b.campaign.createdAt).getTime() -
-                        new Date(a.campaign.createdAt).getTime()
-                    );
-                });
+                return sortReviewerRows(Array.from(mergedMap.values()));
             });
             setCurrentPage(targetPage);
             setHasMoreCampaigns(
@@ -755,6 +852,7 @@ export default function ReviewerWorkspacePage() {
         [
             approveMilestone,
             isConnected,
+            loadReviewerCampaigns,
             refreshApprovalStatuses,
             rows,
             walletAddress,
@@ -961,6 +1059,19 @@ export default function ReviewerWorkspacePage() {
                 <div className="space-y-6">
                     {filteredRows.map((row) => {
                         const milestones = row.milestones;
+                        const campaignDescription =
+                            row.campaign.description?.trim() ||
+                            "Chưa có mô tả campaign.";
+                        const remainingNeedWei =
+                            parseWei(row.campaign.goalWei) -
+                            parseWei(row.campaign.totalRaisedWei);
+                        const remainingNeedDisplayWei =
+                            remainingNeedWei > 0n ? remainingNeedWei.toString() : "0";
+                        const credibility = getCampaignCredibility({
+                            campaign: row.campaign,
+                            pendingMilestones: milestones.filter(isMilestoneNeedingReview),
+                            processedMilestones: milestones.filter(isMilestoneFullyCompleted),
+                        });
 
                         return (
                             <section
@@ -975,6 +1086,9 @@ export default function ReviewerWorkspacePage() {
                                                     {row.campaign.title ||
                                                         `Chiến dịch #${row.campaign.onChainId}`}
                                                 </h2>
+                                                <p className="mt-2 max-w-3xl text-sm text-slate-700">
+                                                    {campaignDescription}
+                                                </p>
                                                 <p className="mt-1 text-sm text-slate-600">
                                                     Mã campaign: #
                                                     {row.campaign.onChainId}
@@ -985,6 +1099,14 @@ export default function ReviewerWorkspacePage() {
                                                         .reviewerSafe ||
                                                         "Chưa cài đặt"}
                                                 </p>
+                                                <div className="mt-3 flex flex-wrap items-center gap-2">
+                                                    <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${credibility.badgeClass}`}>
+                                                        {credibility.label}
+                                                    </span>
+                                                    <span className="text-xs text-slate-600">
+                                                        {credibility.note}
+                                                    </span>
+                                                </div>
                                             </div>
                                             <Link
                                                 href={`/campaigns/${row.campaign.onChainId}/milestones`}
@@ -997,6 +1119,32 @@ export default function ReviewerWorkspacePage() {
                                 </div>
 
                                 <div className="space-y-4 p-6 pt-0">
+                                    <div className="grid gap-3 md:grid-cols-3">
+                                        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                                            <p className="text-xs font-medium text-slate-500">
+                                                Mục tiêu gây quỹ
+                                            </p>
+                                            <p className="mt-1 text-base font-bold text-slate-900">
+                                                {formatEthCompact(row.campaign.goalWei)} ETH
+                                            </p>
+                                        </div>
+                                        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                                            <p className="text-xs font-medium text-slate-500">
+                                                Đã huy động
+                                            </p>
+                                            <p className="mt-1 text-base font-bold text-emerald-700">
+                                                {formatEthCompact(row.campaign.totalRaisedWei)} ETH
+                                            </p>
+                                        </div>
+                                        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                                            <p className="text-xs font-medium text-slate-500">
+                                                Còn cần thêm
+                                            </p>
+                                            <p className="mt-1 text-base font-bold text-amber-700">
+                                                {formatEthCompact(remainingNeedDisplayWei)} ETH
+                                            </p>
+                                        </div>
+                                    </div>
                                     {milestones.map((milestone) => {
                                         const key = toApprovalKey(
                                             row.campaign.onChainId,

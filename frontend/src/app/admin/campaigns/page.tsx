@@ -14,6 +14,38 @@ import {
 } from "@/lib/contracts/hooks";
 import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 
+function formatEthFromWei(wei: bigint | number | string) {
+    try {
+        return Number(formatEther(BigInt(wei))).toFixed(3);
+    } catch {
+        return "0.000";
+    }
+}
+
+function getCampaignAgeDays(createdAt?: string) {
+    if (!createdAt) return null;
+    const ts = new Date(createdAt).getTime();
+    if (Number.isNaN(ts)) return null;
+    return Math.max(Math.floor((Date.now() - ts) / (24 * 60 * 60 * 1000)), 0);
+}
+
+function getRemainingDays(
+    deadlineIso?: string,
+    deadlineOnChain?: bigint | number,
+) {
+    let deadlineTs = Number.NaN;
+    if (deadlineIso) {
+        deadlineTs = new Date(deadlineIso).getTime();
+    } else if (deadlineOnChain) {
+        const normalized = Number(deadlineOnChain);
+        if (Number.isFinite(normalized) && normalized > 0) {
+            deadlineTs = normalized * 1000;
+        }
+    }
+    if (Number.isNaN(deadlineTs)) return null;
+    return Math.ceil((deadlineTs - Date.now()) / (24 * 60 * 60 * 1000));
+}
+
 export default function AdminCampaignApprovalsPage() {
     const { user, token } = useAuth();
     const { address } = useAccount();
@@ -56,21 +88,52 @@ export default function AdminCampaignApprovalsPage() {
     const isAdminByConfig = Boolean(normalizedWallet) && adminWallets.includes(normalizedWallet);
     const isAdmin = Boolean(token && (isAdminByOwner || isAdminByRole || isAdminByConfig));
 
-    const pendingItems = useMemo(
-        () => campaigns.filter((item) => item.statusLabel === "pending_approval"),
-        [campaigns],
-    );
     const metadataById = useMemo(() => {
-        const map = new Map<number, { title: string; description?: string; createdAt?: string }>();
+        const map = new Map<
+            number,
+            {
+                title: string;
+                description?: string;
+                createdAt?: string;
+                deadline?: string;
+                status?: string;
+                goal?: string;
+                raised?: string;
+                milestoneCount?: number;
+            }
+        >();
         backendCampaigns.data.forEach((item) => {
             map.set(item.onChainId, {
                 title: item.title || `Campaign #${item.onChainId}`,
                 description: item.description,
                 createdAt: item.createdAt,
+                deadline: item.deadline,
+                status: item.status,
+                goal: item.goal,
+                raised: item.raised,
+                milestoneCount: item.milestoneCount,
             });
         });
         return map;
     }, [backendCampaigns.data]);
+    const pendingItems = useMemo(
+        () =>
+            campaigns
+                .filter((item) => item.statusLabel === "pending_approval")
+                .sort((a, b) => {
+                    const createdA = Date.parse(
+                        metadataById.get(a.id)?.createdAt || "",
+                    );
+                    const createdB = Date.parse(
+                        metadataById.get(b.id)?.createdAt || "",
+                    );
+                    if (!Number.isNaN(createdA) && !Number.isNaN(createdB)) {
+                        return createdB - createdA;
+                    }
+                    return b.id - a.id;
+                }),
+        [campaigns, metadataById],
+    );
 
     useEffect(() => {
         if (isConfirming || !txHash || txHash === lastSyncedTxHashRef.current)
@@ -190,6 +253,99 @@ export default function AdminCampaignApprovalsPage() {
                                     Xem chi tiết →
                                 </Link>
                             </div>
+                            {(() => {
+                                const metadata = metadataById.get(item.id);
+                                const goalWei = metadata?.goal || "0";
+                                const raisedWei = metadata?.raised || "0";
+                                const goalBigInt = (() => {
+                                    try {
+                                        return BigInt(goalWei);
+                                    } catch {
+                                        return 0n;
+                                    }
+                                })();
+                                const raisedBigInt = (() => {
+                                    try {
+                                        return BigInt(raisedWei);
+                                    } catch {
+                                        return 0n;
+                                    }
+                                })();
+                                const remainingBigInt =
+                                    goalBigInt > raisedBigInt
+                                        ? goalBigInt - raisedBigInt
+                                        : 0n;
+                                const progress = (() => {
+                                    try {
+                                        const goal = Number(formatEther(goalBigInt));
+                                        const raised = Number(formatEther(raisedBigInt));
+                                        if (goal <= 0) return 0;
+                                        return Math.min((raised / goal) * 100, 100);
+                                    } catch {
+                                        return 0;
+                                    }
+                                })();
+                                const createdAt = metadata?.createdAt;
+                                const ageDays = getCampaignAgeDays(createdAt);
+                                const remainingDays = getRemainingDays(
+                                    metadata?.deadline,
+                                    item.deadline,
+                                );
+                                const credibilityLabel =
+                                    progress >= 75
+                                        ? "Uy tín cao (đã gần đủ vốn)"
+                                        : progress >= 40
+                                          ? "Uy tín trung bình"
+                                          : "Uy tín thấp (vốn huy động còn thấp)";
+                                const needsAttention = remainingDays !== null && remainingDays <= 3;
+                                const isNewCampaign = ageDays !== null && ageDays <= 1;
+                                const hasReviewer = Boolean(
+                                    reviewersByCampaignId.get(item.id),
+                                );
+
+                                return (
+                                    <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                                            <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700">
+                                                Ưu tiên duyệt #{pendingItems.length - pendingItems.indexOf(item)}
+                                            </span>
+                                            {isNewCampaign && (
+                                                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                                                    Campaign mới tạo
+                                                </span>
+                                            )}
+                                            {needsAttention && (
+                                                <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                                                    Gần tới hạn gọi vốn
+                                                </span>
+                                            )}
+                                            {!hasReviewer && (
+                                                <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700">
+                                                    Thiếu reviewer an toàn
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="mb-2 flex items-center justify-between text-xs">
+                                            <span className="font-medium text-slate-700">Tiến độ gây quỹ</span>
+                                            <span className="font-semibold text-slate-900">
+                                                {progress.toFixed(1)}%
+                                            </span>
+                                        </div>
+                                        <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                                            <div
+                                                className="h-full rounded-full bg-emerald-500 transition-all"
+                                                style={{ width: `${Math.max(2, progress)}%` }}
+                                            />
+                                        </div>
+                                        <div className="mt-2 grid gap-1 text-[11px] text-slate-600 sm:grid-cols-2">
+                                            <p>Đánh giá nhanh: {credibilityLabel}</p>
+                                            <p className="sm:text-right">
+                                                Còn thiếu {formatEthFromWei(remainingBigInt)} ETH để chạm mục tiêu
+                                            </p>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-600 mb-3">
                                 <p>
                                     <span className="font-medium">Người tạo:</span>{" "}
@@ -204,7 +360,56 @@ export default function AdminCampaignApprovalsPage() {
                                 </p>
                                 <p>
                                     <span className="font-medium">Mục tiêu:</span>{" "}
-                                    {Number(formatEther(item.goal)).toFixed(3)} ETH
+                                    {formatEthFromWei(item.goal)} ETH
+                                </p>
+                                <p>
+                                    <span className="font-medium">Đã huy động:</span>{" "}
+                                    {formatEthFromWei(item.raised)} ETH
+                                </p>
+                                <p>
+                                    <span className="font-medium">Còn thiếu:</span>{" "}
+                                    {(() => {
+                                        try {
+                                            const remaining = item.goal - item.raised;
+                                            return formatEthFromWei(
+                                                remaining > 0n ? remaining : 0n,
+                                            );
+                                        } catch {
+                                            return "0.000";
+                                        }
+                                    })()}{" "}
+                                    ETH
+                                </p>
+                                <p>
+                                    <span className="font-medium">Tuổi campaign:</span>{" "}
+                                    {(() => {
+                                        const days = getCampaignAgeDays(
+                                            metadataById.get(item.id)?.createdAt,
+                                        );
+                                        if (days === null) return "-";
+                                        if (days === 0) return "Hôm nay";
+                                        return `${days} ngày`;
+                                    })()}
+                                </p>
+                                <p>
+                                    <span className="font-medium">Còn lại tới deadline:</span>{" "}
+                                    {(() => {
+                                        const days = getRemainingDays(
+                                            metadataById.get(item.id)?.deadline,
+                                            item.deadline,
+                                        );
+                                        if (days === null) return "-";
+                                        if (days < 0) return "Đã quá hạn";
+                                        return `${days} ngày`;
+                                    })()}
+                                </p>
+                                <p>
+                                    <span className="font-medium">Milestone:</span>{" "}
+                                    {metadataById.get(item.id)?.milestoneCount ?? item.milestoneCount}
+                                </p>
+                                <p>
+                                    <span className="font-medium">Đang ở mốc:</span>{" "}
+                                    {item.currentMilestoneId + 1}/{item.milestoneCount}
                                 </p>
                                 <p className="col-span-2">
                                     <span className="font-medium">Reviewer:</span>{" "}
@@ -221,6 +426,20 @@ export default function AdminCampaignApprovalsPage() {
                                         )
                                         : <span className="text-slate-400">Chưa có</span>
                                     }
+                                </p>
+                                <p className="col-span-2">
+                                    <span className="font-medium">Hạn gọi vốn:</span>{" "}
+                                    <span suppressHydrationWarning>
+                                        {metadataById.get(item.id)?.deadline
+                                            ? new Date(
+                                                  metadataById.get(item.id)?.deadline || "",
+                                              ).toLocaleString("vi-VN")
+                                            : item.deadline > 0
+                                              ? new Date(
+                                                    Number(item.deadline) * 1000,
+                                                ).toLocaleString("vi-VN")
+                                              : "-"}
+                                    </span>
                                 </p>
                                 <p className="col-span-2">
                                     <span className="font-medium">Thời gian tạo:</span>{" "}

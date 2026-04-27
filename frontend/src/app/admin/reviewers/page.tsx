@@ -14,7 +14,7 @@ import {
 } from "@/lib/contracts/hooks";
 import { useWaitForTransactionReceipt } from "wagmi";
 import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
-import toast from "react-hot-toast";
+import { showSuccessToast } from "@/lib/ui/toast";
 
 const SAFE_META_RETRY_AFTER_429_MS = 60_000;
 
@@ -213,11 +213,11 @@ export default function AdminReviewersPage() {
         if (isTxSuccess) {
             refetch();
             if (pendingAction.type === "add") {
-                toast.success(
+                showSuccessToast(
                     `Thêm reviewer thành công: ${pendingAction.safe.slice(0, 8)}...${pendingAction.safe.slice(-4)}`,
                 );
             } else {
-                toast.success(
+                showSuccessToast(
                     `Xóa reviewer thành công: ${pendingAction.safe.slice(0, 8)}...${pendingAction.safe.slice(-4)}`,
                 );
             }

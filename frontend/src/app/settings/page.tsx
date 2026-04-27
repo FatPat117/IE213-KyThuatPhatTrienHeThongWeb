@@ -5,6 +5,10 @@ import { useAccount } from 'wagmi';
 import Link from 'next/link';
 import { getUserProfile, toAuthUserProfile, updateUserProfile, useAuth } from '@/lib';
 
+const MAX_AVATAR_FILE_BYTES = 2 * 1024 * 1024;
+const MAX_AVATAR_PAYLOAD_BYTES = 1_200_000;
+const MAX_AVATAR_DIMENSION = 512;
+
 async function fileToDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -12,6 +16,40 @@ async function fileToDataUrl(file: File) {
     reader.onerror = () => reject(new Error('Không thể đọc file ảnh.'));
     reader.readAsDataURL(file);
   });
+}
+
+function dataUrlPayloadBytes(dataUrl: string) {
+  if (!dataUrl) return 0;
+  const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] || '' : dataUrl;
+  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+  return Math.max((base64.length * 3) / 4 - padding, 0);
+}
+
+async function optimizeAvatarDataUrl(file: File) {
+  const originalDataUrl = await fileToDataUrl(file);
+  if (dataUrlPayloadBytes(originalDataUrl) <= MAX_AVATAR_PAYLOAD_BYTES) {
+    return originalDataUrl;
+  }
+
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(MAX_AVATAR_DIMENSION / bitmap.width, MAX_AVATAR_DIMENSION / bitmap.height, 1);
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  if (!context) return originalDataUrl;
+  context.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close();
+
+  const webpDataUrl = canvas.toDataURL('image/webp', 0.8);
+  if (dataUrlPayloadBytes(webpDataUrl) <= MAX_AVATAR_PAYLOAD_BYTES) {
+    return webpDataUrl;
+  }
+
+  const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.75);
+  return jpegDataUrl;
 }
 
 export default function SettingsPage() {
@@ -65,14 +103,18 @@ export default function SettingsPage() {
       setError('Vui lòng chọn file ảnh (png/jpg/webp...).');
       return;
     }
-    if (file.size > 2 * 1024 * 1024) {
+    if (file.size > MAX_AVATAR_FILE_BYTES) {
       setError('Ảnh đại diện tối đa 2MB.');
       return;
     }
 
     setError(null);
     try {
-      const dataUrl = await fileToDataUrl(file);
+      const dataUrl = await optimizeAvatarDataUrl(file);
+      if (dataUrlPayloadBytes(dataUrl) > MAX_AVATAR_PAYLOAD_BYTES) {
+        setError('Ảnh quá lớn sau khi xử lý. Vui lòng chọn ảnh nhỏ hơn hoặc đổi định dạng khác.');
+        return;
+      }
       setAvatarDataUrl(dataUrl);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không thể đọc file ảnh.');
