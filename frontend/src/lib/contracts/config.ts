@@ -1,115 +1,24 @@
-import { Address } from 'viem';
+import type { Abi, Address } from 'viem';
+import latestDeployment from './artifacts/sepolia-latest.json';
+import fundingPlatformAbi from './artifacts/FundingPlatform.abi.json';
 
-// Hợp đồng thông minh ABI - Phiên bản đơn giản hóa, hãy thay bằng ABI thực tế
-export const CROWDFUNDING_ABI = [
-  {
-    inputs: [],
-    name: 'campaignCount',
-    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [],
-    name: 'totalRaised',
-    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [{ internalType: 'uint256', name: '_campaignId', type: 'uint256' }],
-    name: 'getCampaign',
-    outputs: [
-      {
-        components: [
-          { internalType: 'uint256', name: 'id', type: 'uint256' },
-          { internalType: 'string', name: 'title', type: 'string' },
-          { internalType: 'string', name: 'description', type: 'string' },
-          { internalType: 'address', name: 'creator', type: 'address' },
-          { internalType: 'uint256', name: 'goal', type: 'uint256' },
-          { internalType: 'uint256', name: 'raised', type: 'uint256' },
-          { internalType: 'bool', name: 'completed', type: 'bool' },
-        ],
-        internalType: 'struct FundRaising.Campaign',
-        name: '',
-        type: 'tuple',
-      },
-    ],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [],
-    name: 'getAllCampaigns',
-    outputs: [
-      {
-        components: [
-          { internalType: 'uint256', name: 'id', type: 'uint256' },
-          { internalType: 'string', name: 'title', type: 'string' },
-          { internalType: 'string', name: 'description', type: 'string' },
-          { internalType: 'address', name: 'creator', type: 'address' },
-          { internalType: 'uint256', name: 'goal', type: 'uint256' },
-          { internalType: 'uint256', name: 'raised', type: 'uint256' },
-          { internalType: 'bool', name: 'completed', type: 'bool' },
-        ],
-        internalType: 'struct FundRaising.Campaign[]',
-        name: '',
-        type: 'tuple[]',
-      },
-    ],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [{ internalType: 'uint256', name: '_campaignId', type: 'uint256' }],
-    name: 'donate',
-    outputs: [],
-    stateMutability: 'payable',
-    type: 'function',
-  },
-  {
-    inputs: [
-      { internalType: 'string', name: '_title', type: 'string' },
-      { internalType: 'string', name: '_description', type: 'string' },
-      { internalType: 'uint256', name: '_goal', type: 'uint256' },
-      { internalType: 'uint256', name: '_deadline', type: 'uint256' },
-    ],
-    name: 'createCampaign',
-    outputs: [],
-    stateMutability: 'nonpayable',
-    type: 'function',
-  },
-  {
-    anonymous: false,
-    inputs: [
-      { indexed: true, internalType: 'uint256', name: 'campaignId', type: 'uint256' },
-      { indexed: true, internalType: 'address', name: 'donor', type: 'address' },
-      { indexed: false, internalType: 'uint256', name: 'amount', type: 'uint256' },
-    ],
-    name: 'DonationReceived',
-    type: 'event',
-  },
-  {
-    anonymous: false,
-    inputs: [
-      { indexed: true, internalType: 'uint256', name: 'campaignId', type: 'uint256' },
-      { indexed: true, internalType: 'address', name: 'creator', type: 'address' },
-      { indexed: false, internalType: 'string', name: 'title', type: 'string' },
-      { indexed: false, internalType: 'uint256', name: 'goal', type: 'uint256' },
-      { indexed: false, internalType: 'uint256', name: 'deadline', type: 'uint256' },
-    ],
-    name: 'CampaignCreated',
-    type: 'event',
-  },
-] as const;
+export const SEPOLIA_CHAIN_ID = 11155111;
 
-// Địa chỉ hợp đồng - Thay bằng địa chỉ hợp đồng được triển khai
-// Định dạng: 0x{40 ký tự hex}
-export const CROWDFUNDING_CONTRACT_ADDRESS: Address =
-  '0x0000000000000000000000000000000000000000'; // TODO: Thay bằng địa chỉ hợp đồng thực
+// Single source of truth: reuse ABI artifact from smart-contracts.
+export const CROWDFUNDING_ABI: Abi = fundingPlatformAbi as Abi;
+
+const DEFAULT_CROWDFUNDING_CONTRACT_ADDRESS = latestDeployment.address;
+
+const envContractAddress = process.env.NEXT_PUBLIC_CROWDFUNDING_CONTRACT_ADDRESS?.trim();
+const isValidAddress = !!envContractAddress && /^0x[a-fA-F0-9]{40}$/.test(envContractAddress);
+
+export const CROWDFUNDING_CONTRACT_ADDRESS: Address = (
+    isValidAddress ? envContractAddress : DEFAULT_CROWDFUNDING_CONTRACT_ADDRESS
+) as Address;
 
 // Cấu hình hợp đồng
 export const contractConfig = {
-  address: CROWDFUNDING_CONTRACT_ADDRESS,
-  abi: CROWDFUNDING_ABI,
+    address: CROWDFUNDING_CONTRACT_ADDRESS,
+    abi: CROWDFUNDING_ABI,
+    chainId: SEPOLIA_CHAIN_ID,
 } as const;

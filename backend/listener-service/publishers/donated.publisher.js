@@ -26,19 +26,24 @@ async function publishDonated(eventData) {
             EXCHANGE,
             process.env.RABBITMQ_RKEY_DONATED || "donation.received",
             Buffer.from(JSON.stringify(payload)),
-            { persistent: true }
+            { persistent: true },
         );
-        console.log(`[listener-service] Published donation.received: txHash=${txHash}`);
+        console.log(
+            `[listener-service] Published donation.received: txHash=${txHash}`,
+        );
     }
 
     if (txHash) {
         try {
             await axios.patch(
                 `${process.env.TRANSACTION_SERVICE_URL}/api/transactions/${txHash}/status`,
-                { status: "success" }
+                { status: "success" },
             );
         } catch (err) {
-            console.error("[listener-service] Không thể cập nhật tx status:", err.message);
+            console.error(
+                "[listener-service] Không thể cập nhật tx status:",
+                err.message,
+            );
         }
     }
 }

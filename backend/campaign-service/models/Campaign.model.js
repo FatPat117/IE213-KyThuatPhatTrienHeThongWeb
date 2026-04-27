@@ -2,60 +2,117 @@ const mongoose = require("mongoose");
 
 const CampaignSchema = new mongoose.Schema(
     {
-        // Mapping 1-1 với ID trên Smart Contract
         onChainId: {
             type: Number,
-            required: [true, "onChainId là bắt buộc"],
+            required: [true, "onChainId is required"],
             unique: true,
         },
         title: {
             type: String,
-            default: "Untitled Campaign",
+            default: "",
             trim: true,
-            maxlength: [200, "Tiêu đề tối đa 200 ký tự"],
+            maxlength: [200, "Title max length is 200 chars"],
         },
         description: {
             type: String,
             default: "",
         },
-        // Lưu off-chain vì Blockchain không chứa nổi ảnh
-        images: {
-            type: [String],
-            default: [],
+        thumbnailUrl: {
+            type: String,
+            default: "",
         },
         creator: {
             type: String,
-            required: [true, "Creator wallet là bắt buộc"],
+            required: [true, "Creator wallet is required"],
             lowercase: true,
             trim: true,
-            match: [/^0x[a-fA-F0-9]{40}$/, "Địa chỉ ví creator không hợp lệ"],
+            match: [/^0x[a-fA-F0-9]{40}$/, "Invalid creator wallet address"],
         },
-        // Lưu dạng String để tránh mất precision khi xử lý BigInt wei
+        beneficiary: {
+            type: String,
+            required: [true, "Beneficiary wallet is required"],
+            lowercase: true,
+            trim: true,
+            match: [
+                /^0x[a-fA-F0-9]{40}$/,
+                "Invalid beneficiary wallet address",
+            ],
+        },
+        goalWei: {
+            type: String,
+            required: [true, "goalWei is required"],
+            default: "0",
+        },
         goal: {
             type: String,
-            required: [true, "Goal là bắt buộc"],
+            default: "0",
+        },
+        totalRaisedWei: {
+            type: String,
             default: "0",
         },
         raised: {
             type: String,
             default: "0",
         },
+        totalDisbursedWei: {
+            type: String,
+            default: "0",
+        },
+        remainingWei: {
+            type: String,
+            default: "0",
+        },
+        fundingCompletedAt: {
+            type: Date,
+            default: null,
+        },
         deadline: {
             type: Date,
-            required: [true, "Deadline là bắt buộc"],
+            required: [true, "Deadline is required"],
+        },
+        milestoneCount: {
+            type: Number,
+            default: 0,
+        },
+        currentMilestoneId: {
+            type: Number,
+            default: 0,
+        },
+        reviewerSafe: {
+            type: String,
+            default: "",
+            lowercase: true,
+            trim: true,
         },
         status: {
             type: String,
-            enum: ["active", "ended", "failed", "cancelled"],
-            default: "active",
+            enum: [
+                "pending_approval",
+                "active",
+                "in_progress",
+                "completed",
+                "partial_failed",
+                "failed",
+                "cancelled",
+            ],
+            default: "pending_approval",
         },
-        // TODO: Thêm category, tags nếu cần filter nâng cao
+        milestoneIds: {
+            type: [mongoose.Schema.Types.ObjectId],
+            ref: "Milestone",
+            default: [],
+        },
     },
-    { timestamps: true }
+    { timestamps: true },
 );
 
 CampaignSchema.index({ onChainId: 1 });
 CampaignSchema.index({ creator: 1 });
+CampaignSchema.index({ beneficiary: 1 });
 CampaignSchema.index({ status: 1 });
+CampaignSchema.index({ deadline: 1 });
+CampaignSchema.index({ createdAt: -1 });
 
-module.exports = mongoose.models.Campaign || mongoose.model("Campaign", CampaignSchema);
+module.exports =
+    mongoose.models.Campaign || mongoose.model("Campaign", CampaignSchema);

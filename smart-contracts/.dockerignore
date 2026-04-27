@@ -2,6 +2,7 @@
 out/
 cache/
 broadcast/
+lib/
 
 # Environment files
 .env
@@ -13,3 +14,5 @@ broadcast/
 
 # Node modules (if applicable)
 node_modules/
+
+

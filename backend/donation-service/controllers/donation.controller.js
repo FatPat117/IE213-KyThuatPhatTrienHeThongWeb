@@ -4,7 +4,7 @@ const { successRes, errorRes } = require("../utils/response");
 // GET /api/donations/campaign/:id
 async function getDonationsByCampaign(req, res, next) {
     try {
-        const donations = await donationService.getDonationsByCampaign(req.params.id);
+        const donations = await donationService.getMergedDonationsByCampaign(req.params.id);
         return successRes(res, donations);
     } catch (err) { next(err); }
 }
@@ -17,4 +17,29 @@ async function getDonationsByDonor(req, res, next) {
     } catch (err) { next(err); }
 }
 
-module.exports = { getDonationsByCampaign, getDonationsByDonor };
+// GET /api/donations/campaign/:id/donor/:wallet
+async function getDonationsByCampaignAndDonor(req, res, next) {
+    try {
+        const donations = await donationService.getMergedDonationsByCampaignAndDonor(
+            req.params.id,
+            req.params.wallet,
+        );
+        return successRes(res, donations);
+    } catch (err) { next(err); }
+}
+
+// GET /api/donations/leaderboard/top-donors?limit=10
+async function getTopDonors(req, res, next) {
+    try {
+        const limit = Math.min(parseInt(req.query.limit, 10) || 10, 100);
+        const topDonors = await donationService.getTopDonors(limit);
+        return successRes(res, topDonors);
+    } catch (err) { next(err); }
+}
+
+module.exports = {
+    getDonationsByCampaign,
+    getDonationsByDonor,
+    getDonationsByCampaignAndDonor,
+    getTopDonors,
+};

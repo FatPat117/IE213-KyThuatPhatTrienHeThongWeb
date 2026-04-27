@@ -1,55 +1,146 @@
-const { getChannel, EXCHANGE } = require("../config/rabbitmq");
-const campaignService = require("../services/campaign.service");
+const { getChannel } = require("../config/rabbitmq");
+const { Campaign, CampaignDonorShare } = require("../models");
 
-const QUEUE = process.env.RABBITMQ_QUEUE_CAMP_DONATED || "campaign.donation.queue";
+const QUEUE =
+    process.env.RABBITMQ_QUEUE_CAMP_DONATED || "campaign.donation.queue";
 const ROUTING_KEY = process.env.RABBITMQ_RKEY_DONATED || "donation.received";
+const DONATION_EXCHANGE = process.env.RABBITMQ_EXCHANGE || "funding.events";
+
+function parseWei(value) {
+    try {
+        return BigInt((value || "0").toString());
+    } catch {
+        return 0n;
+    }
+}
+
+async function upsertDonorShare({
+    campaign,
+    campaignOnChainId,
+    donorWallet,
+    donationAmountWei,
+    campaignTotalRaisedWei,
+}) {
+    const existingShare = await CampaignDonorShare.findOne({
+        campaignId: campaign._id,
+        donorAddress: donorWallet,
+    });
+
+    const currentTotalWei = parseWei(existingShare?.donorTotalContributionWei);
+    const nextTotalWei = (currentTotalWei + donationAmountWei).toString();
+
+    await CampaignDonorShare.findOneAndUpdate(
+        {
+            campaignId: campaign._id,
+            donorAddress: donorWallet,
+        },
+        {
+            $set: {
+                campaignId: campaign._id,
+                campaignOnChainId,
+                donorAddress: donorWallet,
+                donorTotalContributionWei: nextTotalWei,
+                campaignTotalRaisedWei: campaignTotalRaisedWei.toString(),
+                computedAt: new Date(),
+            },
+            $setOnInsert: {
+                donorShareInCampaignBps: 0,
+            },
+        },
+        {
+            upsert: true,
+            new: true,
+            setDefaultsOnInsert: true,
+        },
+    );
+}
 
 async function startDonatedConsumer() {
     const channel = getChannel();
+
     if (!channel) {
-        console.warn("[campaign-service] RabbitMQ channel không có – bỏ qua donation consumer");
+        console.warn(
+            "[campaign-service] RabbitMQ channel is unavailable. Donation consumer was not started.",
+        );
         return;
     }
-
-    const DONATION_EXCHANGE = process.env.RABBITMQ_EXCHANGE || "funding.events";
 
     await channel.assertQueue(QUEUE, { durable: true });
     await channel.bindQueue(QUEUE, DONATION_EXCHANGE, ROUTING_KEY);
     channel.prefetch(1);
 
-    console.log(`[campaign-service] Consumer đang lắng nghe queue: ${QUEUE}`);
+    console.log(
+        `[campaign-service] Listening for donation events on queue: ${QUEUE}`,
+    );
 
     channel.consume(QUEUE, async (msg) => {
         if (!msg) return;
 
         try {
             const payload = JSON.parse(msg.content.toString());
-            console.log("[campaign-service] Nhận event donation.received:", payload);
+            const campaignOnChainId = Number(
+                payload.campaignOnChainId ?? payload.campaignId,
+            );
+            const donorWallet = (payload.donorWallet || payload.donor || "")
+                .toString()
+                .toLowerCase();
+            const donationAmount = parseWei(payload.amount);
+            const totalRaisedFromEvent = payload.totalRaisedWei
+                ? payload.totalRaisedWei.toString()
+                : null;
 
-            // payload: { campaignId, donor, amount, txHash }
-            // Tìm campaign xem nó raised bao nhiêu 
-            const campaign = await campaignService.getCampaignById(payload.campaignId);
-            if (campaign) {
-                // Đổi string sang bigInt rồi cộng dồn
-                const currentRaised = BigInt(campaign.raised || "0");
-                const donationAmount = BigInt(payload.amount);
-                const newRaised = (currentRaised + donationAmount).toString();
+            if (campaignOnChainId === undefined || campaignOnChainId === null) {
+                throw new Error(
+                    "Missing campaignOnChainId in donation payload",
+                );
+            }
 
-                await campaignService.updateRaised(payload.campaignId, newRaised);
+            if (donationAmount <= 0n && !totalRaisedFromEvent) {
+                throw new Error("Missing amount in donation payload");
+            }
 
-                // Nếu đạt goal thì update status
-                const goalAmount = BigInt(campaign.goal || "0");
-                if (currentRaised + donationAmount >= goalAmount) {
-                     await campaignService.updateCampaignStatus(payload.campaignId, "ended");
-                     console.log(`[campaign-service] Campaign ${payload.campaignId} đã đạt mục tiêu!`);
-                }
-                
-                console.log(`[campaign-service] Đã update raised cho campaign: ${payload.campaignId}`);
+            if (!donorWallet) {
+                throw new Error("Missing donorWallet in donation payload");
+            }
+
+            const campaign = await Campaign.findOne({
+                onChainId: campaignOnChainId,
+            });
+
+            if (!campaign) {
+                console.warn(
+                    `[campaign-service] Campaign not found for donation event. onChainId=${campaignOnChainId}`,
+                );
+                channel.ack(msg);
+                return;
+            }
+
+            const nextRaised = totalRaisedFromEvent
+                ? totalRaisedFromEvent
+                : (
+                      BigInt(campaign.totalRaisedWei || "0") + donationAmount
+                  ).toString();
+
+            campaign.totalRaisedWei = nextRaised;
+            campaign.raised = nextRaised;
+            await campaign.save();
+
+            if (donationAmount > 0n) {
+                await upsertDonorShare({
+                    campaign,
+                    campaignOnChainId,
+                    donorWallet,
+                    donationAmountWei: donationAmount,
+                    campaignTotalRaisedWei: nextRaised,
+                });
             }
 
             channel.ack(msg);
         } catch (err) {
-            console.error("[campaign-service] Donated Consumer error:", err.message);
+            console.error(
+                "[campaign-service] Donation consumer error:",
+                err.message,
+            );
             channel.nack(msg, false, false);
         }
     });

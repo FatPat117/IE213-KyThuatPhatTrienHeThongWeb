@@ -1,0 +1,95 @@
+const { getChannel, EXCHANGE } = require("../config/rabbitmq");
+const { Campaign, Milestone } = require("../models");
+const { recordTransaction } = require("../utils/recordTransaction");
+const notificationService = require("../services/notification.service");
+
+const QUEUE =
+    process.env.RABBITMQ_QUEUE_MILESTONE_APPROVED || "milestone.approved.queue";
+const ROUTING_KEY =
+    process.env.RABBITMQ_RKEY_MILESTONE_APPROVED || "milestone.approved";
+
+async function startMilestoneApprovedConsumer() {
+    const channel = getChannel();
+    if (!channel) {
+        console.warn(
+            "[campaign-service] RabbitMQ channel unavailable. Skip milestone.approved consumer",
+        );
+        return;
+    }
+
+    await channel.assertQueue(QUEUE, { durable: true });
+    await channel.bindQueue(QUEUE, EXCHANGE, ROUTING_KEY);
+    channel.prefetch(1);
+
+    console.log(
+        `[campaign-service] Listening for ${ROUTING_KEY} on queue: ${QUEUE}`,
+    );
+
+    channel.consume(QUEUE, async (msg) => {
+        if (!msg) return;
+
+        try {
+            const payload = JSON.parse(msg.content.toString());
+            const campaignOnChainId = Number(
+                payload.campaignId || payload.campaignOnChainId,
+            );
+            const milestoneId = Number(payload.milestoneId);
+
+            if (!campaignOnChainId || Number.isNaN(milestoneId)) {
+                throw new Error(
+                    "Missing campaignId/milestoneId in milestone.approved payload",
+                );
+            }
+
+            await Milestone.updateOne(
+                { campaignOnChainId, milestoneId },
+                {
+                    $set: {
+                        status: "approved",
+                        approvedAt: new Date(),
+                        approvedBy: (payload.reviewer || "").toLowerCase(),
+                    },
+                },
+            );
+
+            const campaign = await Campaign.findOne({
+                onChainId: campaignOnChainId,
+            });
+            if (
+                campaign &&
+                milestoneId === Number(campaign.milestoneCount) - 1
+            ) {
+                campaign.status = "completed";
+                await campaign.save();
+            }
+            if (campaign?.creator) {
+                await notificationService.createNotification({
+                    recipientWallet: campaign.creator,
+                    type: "milestone_approved",
+                    title: "Milestone đã được duyệt",
+                    message:
+                        "Milestone được duyệt, bạn có thể tiếp tục triển khai mốc tiếp theo.",
+                    campaignOnChainId,
+                    txHash: payload.txHash || "",
+                });
+            }
+
+            await recordTransaction({
+                txHash: payload.txHash,
+                walletAddress: payload.reviewer,
+                action: "milestoneApprove",
+                campaignOnChainId,
+            });
+
+            channel.ack(msg);
+        } catch (error) {
+            console.error(
+                "[campaign-service] milestoneApproved consumer error:",
+                error.message,
+            );
+            channel.nack(msg, false, false);
+        }
+    });
+}
+
+module.exports = { startMilestoneApprovedConsumer };

@@ -6,9 +6,13 @@ node_modules/
 # Environment & secrets (QUAN TRỌNG: không commit private key, API key)
 .env
 .env.local
+.env.development
 .env.development.local
+.env.staging
 .env.test.local
 .env.production.local
+.env.production
+.env.staging
 *.pem
 
 # Build & output
@@ -54,7 +58,7 @@ coverage/
 /smart-contracts/out/
 
 # Ignores development broadcast logs
-!/smart-contracts/broadcast
+/smart-contracts/broadcast
 /smart-contracts/broadcast/*/31337/
 /smart-contracts/broadcast/**/dry-run/
 

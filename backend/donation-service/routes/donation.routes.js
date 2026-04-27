@@ -1,5 +1,10 @@
 const express = require("express");
-const { getDonationsByCampaign, getDonationsByDonor } = require("../controllers/donation.controller");
+const {
+    getDonationsByCampaign,
+    getDonationsByDonor,
+    getDonationsByCampaignAndDonor,
+    getTopDonors,
+} = require("../controllers/donation.controller");
 const validateAddress = require("../middlewares/validateAddress");
 
 const router = express.Router();
@@ -32,6 +37,12 @@ const router = express.Router();
  */
 router.get("/campaign/:id", getDonationsByCampaign);
 
+router.get(
+    "/campaign/:id/donor/:wallet",
+    validateAddress,
+    getDonationsByCampaignAndDonor,
+);
+
 /**
  * @swagger
  * /donor/{wallet}:
@@ -52,5 +63,11 @@ router.get("/campaign/:id", getDonationsByCampaign);
  *         description: Địa chỉ ví không hợp lệ
  */
 router.get("/donor/:wallet", validateAddress, getDonationsByDonor);
+
+/**
+ * GET /api/donations/leaderboard/top-donors?limit=10
+ * Top nhà hảo tâm theo tổng ETH đã quyên góp (từ indexer Donated).
+ */
+router.get("/leaderboard/top-donors", getTopDonors);
 
 module.exports = router;
