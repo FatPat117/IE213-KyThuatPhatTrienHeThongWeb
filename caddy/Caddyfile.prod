@@ -1,0 +1,25 @@
+{
+    email buiquochuytd@gmail.com
+    debug
+}
+
+:80 {
+
+    log {
+        output stdout
+        format console
+        level INFO
+    }
+
+    @api_routes {
+        path /api/*
+    }
+
+    handle @api_routes {
+        reverse_proxy gateway:4000
+    }
+
+    handle {
+        reverse_proxy frontend:3000
+    }
+}
