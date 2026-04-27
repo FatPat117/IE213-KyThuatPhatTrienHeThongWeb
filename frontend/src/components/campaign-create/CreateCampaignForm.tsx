@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef } from 'react';
 import Link from 'next/link';
 import CreateCampaignStatusAlerts from './CreateCampaignStatusAlerts';
 
@@ -18,7 +19,14 @@ interface CreateCampaignFormProps {
   txHash?: string;
   etherscanLink: string | null;
   errorMessage: string | null;
+  /** Preview URL (object URL or cloudinary URL) for the selected thumbnail */
+  thumbnailPreview: string | null;
+  /** Upload progress 0-100, or null when not uploading */
+  thumbnailUploadProgress: number | null;
+  /** Error message from thumbnail upload attempt */
+  thumbnailUploadError: string | null;
   onFieldChange: (name: string, value: string) => void;
+  onThumbnailFileChange: (file: File | null) => void;
   onSubmit: (event: React.FormEvent) => void;
 }
 
@@ -34,9 +42,14 @@ export default function CreateCampaignForm({
   txHash,
   etherscanLink,
   errorMessage,
+  thumbnailPreview,
+  thumbnailUploadProgress,
+  thumbnailUploadError,
   onFieldChange,
+  onThumbnailFileChange,
   onSubmit,
 }: CreateCampaignFormProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   return (
     <form onSubmit={onSubmit} className="space-y-6">
       <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-4">
@@ -137,6 +150,81 @@ export default function CreateCampaignForm({
           {formErrors.deadline && <p className="mt-2 text-sm text-red-600">❌ {formErrors.deadline}</p>}
           <p className="mt-2 text-xs text-slate-500">Tối đa: 1 năm từ hiện tại</p>
         </div>
+      </div>
+
+      {/* Thumbnail Upload */}
+      <div>
+        <label className="block text-sm font-semibold text-slate-900 mb-2">
+          Ảnh thumbnail chiến dịch
+        </label>
+        <div
+          className="relative flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-xl cursor-pointer transition bg-slate-50 hover:bg-slate-100 border-slate-300 hover:border-blue-400"
+          onClick={() => !isBusy && fileInputRef.current?.click()}
+          onDragOver={(e) => { e.preventDefault(); }}
+          onDrop={(e) => {
+            e.preventDefault();
+            if (isBusy) return;
+            const file = e.dataTransfer.files?.[0];
+            if (file) onThumbnailFileChange(file);
+          }}
+        >
+          {thumbnailPreview ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={thumbnailPreview}
+              alt="Thumbnail preview"
+              className="absolute inset-0 h-full w-full object-cover rounded-xl opacity-90"
+            />
+          ) : (
+            <div className="text-center px-4">
+              <span className="text-4xl">🖼️</span>
+              <p className="mt-2 text-sm font-medium text-slate-600">Kéo thả hoặc click để chọn ảnh</p>
+              <p className="text-xs text-slate-400 mt-1">JPEG, PNG, WebP, GIF · tối đa 5MB</p>
+            </div>
+          )}
+          {thumbnailPreview && (
+            <div className="absolute inset-0 flex items-end justify-end p-2 rounded-xl">
+              <button
+                type="button"
+                disabled={isBusy}
+                onClick={(e) => { e.stopPropagation(); onThumbnailFileChange(null); }}
+                className="rounded-full bg-white/90 border border-slate-200 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 shadow"
+              >
+                Xoá ảnh
+              </button>
+            </div>
+          )}
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          className="hidden"
+          disabled={isBusy}
+          onChange={(e) => {
+            const file = e.target.files?.[0] ?? null;
+            onThumbnailFileChange(file);
+            // Reset so same file can be re-picked after clearing
+            e.target.value = '';
+          }}
+        />
+        {thumbnailUploadProgress !== null && thumbnailUploadProgress < 100 && (
+          <div className="mt-2">
+            <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-500 transition-all duration-200 rounded-full"
+                style={{ width: `${thumbnailUploadProgress}%` }}
+              />
+            </div>
+            <p className="text-xs text-slate-500 mt-1">Đang tải lên... {thumbnailUploadProgress}%</p>
+          </div>
+        )}
+        {thumbnailUploadError && (
+          <p className="mt-1 text-xs text-red-600">❌ {thumbnailUploadError}</p>
+        )}
+        <p className="mt-1 text-xs text-slate-500">
+          Ảnh sẽ được tải lên Cloudinary. Nếu không chọn, hệ thống sẽ dùng ảnh mặc định.
+        </p>
       </div>
 
       <div>

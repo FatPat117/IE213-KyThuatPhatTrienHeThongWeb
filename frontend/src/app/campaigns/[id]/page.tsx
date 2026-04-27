@@ -34,7 +34,6 @@ import {
 } from "wagmi";
 import CampaignInfoPanel from "@/components/campaign-detail/CampaignInfoPanel";
 import { MilestonePreviewCard } from "@/components/campaign-milestones";
-import CreatorActionsPanel from "@/components/campaign-detail/CreatorActionsPanel";
 import DonatePanel from "@/components/campaign-detail/DonatePanel";
 import RefundAndMintPanel from "@/components/campaign-detail/RefundAndMintPanel";
 import BackButton from "@/components/navigation/BackButton";
@@ -707,6 +706,7 @@ export default function CampaignDetailPage() {
                                     }
                                     reviewerSafe={backendCampaign.data?.reviewerSafe}
                                     progress={progress}
+                                    thumbnailUrl={backendCampaign.data?.thumbnailUrl ?? null}
                                 />
 
                                 {/* Donation History Card */}
@@ -899,21 +899,6 @@ export default function CampaignDetailPage() {
                                         )}
                                     </div>
                                 )}
-                                <CreatorActionsPanel
-                                    visible={Boolean(
-                                        isCreator &&
-                                        canDisburseCurrentMilestone,
-                                    )}
-                                    isPending={disbursePending}
-                                    isConfirming={disburseConfirming}
-                                    isWithdrawn={!canDisburseCurrentMilestone}
-                                    isConfirmed={disburseConfirmed}
-                                    txHash={disburseHash}
-                                    errorMessage={getFriendlyError(
-                                        disburseError,
-                                    )}
-                                    onWithdraw={handleWithdraw}
-                                />
                                 <RefundAndMintPanel
                                     showRefund={Boolean(
                                         (isCampaignFailed ||

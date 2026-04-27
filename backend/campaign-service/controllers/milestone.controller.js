@@ -924,6 +924,7 @@ const createMilestoneForCampaign = async (req, res) => {
             description = "",
             financialTargetWei,
             deadline,
+            allocationBps,
         } = req.body || {};
 
         const callerWallet = req.headers["x-wallet-address"];
@@ -985,10 +986,12 @@ const createMilestoneForCampaign = async (req, res) => {
         const milestone = await Milestone.create({
             campaignId: campaign._id,
             campaignOnChainId: Number(campaignOnChainId),
+            milestoneId: indexToUse,
             milestoneIndex: indexToUse,
             title,
             description,
             financialTargetWei: String(financialTargetWei),
+            allocationBps: Number.isFinite(Number(allocationBps)) ? Number(allocationBps) : 0,
             deadline: new Date(deadline),
         });
 

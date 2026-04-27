@@ -25,6 +25,7 @@ interface CampaignInfoPanelProps {
     backendTitle?: string;
     reviewerSafe?: string;
     progress: number;
+    thumbnailUrl?: string | null;
 }
 
 function formatEthAmount(value: number) {
@@ -95,6 +96,7 @@ export default function CampaignInfoPanel({
     backendTitle,
     reviewerSafe,
     progress,
+    thumbnailUrl,
 }: CampaignInfoPanelProps) {
     const goalEth = Number(formatEther(campaign.goal));
     const raisedEth = Number(formatEther(campaign.raised));
@@ -105,6 +107,20 @@ export default function CampaignInfoPanel({
 
     return (
         <div className="rounded-2xl bg-white border border-slate-200 p-8 shadow-sm">
+
+            {thumbnailUrl && (
+                <div className="w-full h-56 sm:h-64 bg-slate-100 overflow-hidden">
+                    <img
+                        src={thumbnailUrl}
+                        alt={`Thumbnail chiến dịch ${backendTitle || campaign.title || `Campaign ${campaign.id}`}`}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).style.display = 'none';
+                        }}
+                    />
+                </div>
+            )}
+
             <div className="mb-6">
                 <h2 className="mb-3 break-words text-3xl font-bold text-slate-900">
                     {backendTitle ||

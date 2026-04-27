@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { decodeEventLog, parseEther } from "viem";
 import {
@@ -30,6 +30,10 @@ import CreateCampaignHeader from "@/components/campaign-create/CreateCampaignHea
 import CreateCampaignSuccessCard from "@/components/campaign-create/CreateCampaignSuccessCard";
 import MilestoneBuilder from "@/components/campaign-create/MilestoneBuilder";
 import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
+import {
+    uploadImageToCloud,
+    validateImageFile,
+} from "@/lib/utils/uploadImage";
 
 const SEPOLIA_CHAIN_ID = 11155111;
 
@@ -74,6 +78,12 @@ export default function CreateCampaignPage() {
     const [reviewerOptions, setReviewerOptions] = useState<
         Array<{ value: string; label: string }>
     >([]);
+    // Thumbnail upload state
+    const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
+    const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
+    const [thumbnailUploadProgress, setThumbnailUploadProgress] = useState<number | null>(null);
+    const [thumbnailUploadError, setThumbnailUploadError] = useState<string | null>(null);
+    const [uploadedThumbnailUrl, setUploadedThumbnailUrl] = useState<string | null>(null);
     const reviewerSafesQuery = useReadReviewerSafes();
     const normalizedReviewerSafe = formData.reviewerSafe.trim().toLowerCase();
     const reviewerSafeLooksValid = /^0x[a-f0-9]{40}$/.test(
@@ -236,6 +246,30 @@ export default function CreateCampaignPage() {
         const run = async () => {
             setIsMetadataSyncing(true);
             setMetadataSyncError(null);
+
+            // --- Upload thumbnail to Cloudinary if a file was picked ---
+            let thumbnailUrl = uploadedThumbnailUrl;
+            if (thumbnailFile && !thumbnailUrl) {
+                try {
+                    setThumbnailUploadProgress(0);
+                    const result = await uploadImageToCloud(
+                        thumbnailFile,
+                        (progress) => setThumbnailUploadProgress(progress),
+                    );
+                    thumbnailUrl = result.url;
+                    setUploadedThumbnailUrl(result.url);
+                    setThumbnailUploadProgress(100);
+                } catch (uploadErr) {
+                    const errMsg =
+                        uploadErr instanceof Error
+                            ? uploadErr.message
+                            : 'Upload ảnh thất bại.';
+                    setThumbnailUploadError(errMsg);
+                    setThumbnailUploadProgress(null);
+                    // Fall back to placeholder - don't abort the whole metadata sync
+                }
+            }
+
             // Wait until backend has indexed this campaign before patching metadata.
             // Do not hard-timeout here because indexing lag can fluctuate a lot.
             let retryDelayMs = 2000;
@@ -263,7 +297,7 @@ export default function CreateCampaignPage() {
                 await updateCampaignMetadata(createdCampaignId, token, {
                     title: normalizedTitle,
                     description: formData.description,
-                    thumbnailUrl: fallbackThumbnailUrl,
+                    thumbnailUrl: thumbnailUrl || fallbackThumbnailUrl,
                     reviewerSafe: normalizedReviewerSafe,
                     milestones: milestoneMetadata.map((milestone, index) => ({
                         milestoneId: index,
@@ -307,7 +341,9 @@ export default function CreateCampaignPage() {
         isConfirmed,
         metadataSynced,
         milestoneMetadata,
+        thumbnailFile,
         token,
+        uploadedThumbnailUrl,
     ]);
 
     useEffect(() => {
@@ -385,6 +421,29 @@ export default function CreateCampaignPage() {
         }
         if (manualError) setManualError(null);
     };
+
+    const handleThumbnailFileChange = useCallback((file: File | null) => {
+        // Revoke previous object URL to prevent memory leaks
+        if (thumbnailPreview && thumbnailPreview.startsWith('blob:')) {
+            URL.revokeObjectURL(thumbnailPreview);
+        }
+        setThumbnailUploadError(null);
+        setUploadedThumbnailUrl(null);
+        if (!file) {
+            setThumbnailFile(null);
+            setThumbnailPreview(null);
+            setThumbnailUploadProgress(null);
+            return;
+        }
+        const validationError = validateImageFile(file);
+        if (validationError) {
+            setThumbnailUploadError(validationError);
+            return;
+        }
+        setThumbnailFile(file);
+        setThumbnailPreview(URL.createObjectURL(file));
+        setThumbnailUploadProgress(null);
+    }, [thumbnailPreview]);
 
     const handleSubmit = async (event: React.FormEvent) => {
         event.preventDefault();
@@ -675,7 +734,11 @@ export default function CreateCampaignPage() {
                             txHash={submittedTxHash}
                             etherscanLink={etherscanLink}
                             errorMessage={transactionError}
+                            thumbnailPreview={thumbnailPreview}
+                            thumbnailUploadProgress={thumbnailUploadProgress}
+                            thumbnailUploadError={thumbnailUploadError}
                             onFieldChange={handleFieldChange}
+                            onThumbnailFileChange={handleThumbnailFileChange}
                             onSubmit={handleSubmit}
                         />
                     )}
