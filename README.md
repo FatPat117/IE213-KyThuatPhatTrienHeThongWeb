@@ -1,4 +1,4 @@
-# Hệ Thống Gây Quỹ Cộng Đồng (Community Funding Platform)
+# Hệ Thống Gây Quỹ Xây Trường Học (Community Funding Platform)
 
 ## Giới thiệu
 
@@ -10,7 +10,7 @@ Hệ thống gây quỹ cộng đồng cho phép người dùng:
 - Rút tiền khi chiến dịch thành công
 - Nhận hoàn tiền khi chiến dịch thất bại
 
-Hệ thống gồm các thành phần:
+**Hệ thống gồm các thành phần:**
 
 - **Frontend:** Giao diện người dùng (Next.js)
 - **Backend:** Các dịch vụ microservice (Node.js, MongoDB)
@@ -59,6 +59,14 @@ docker compose up -d --build
 
 ---
 
+## Mạng Blockchain sử dụng
+
+- **Testnet:** Ethereum Sepolia
+- **Địa chỉ smart contract:** `0x543c9F923CaCEAf5d2799b0dc84e9d8E440Df6F9`
+- **Source code:** thư mục `smart-contracts/`
+
+---
+
 ## Cấu trúc thư mục
 
 ```
@@ -72,7 +80,45 @@ docker compose up -d --build
 
 ---
 
-## Hướng dẫn sử dụng nhanh
+## Hướng dẫn demo sử dụng hệ thống
+
+### 1. Đăng nhập bằng ví MetaMask
+
+- Truy cập [http://localhost](http://localhost)
+- Nhấn “Đăng nhập” và kết nối ví MetaMask (chọn mạng Sepolia Testnet)
+- Hệ thống sẽ xác thực ví và tạo tài khoản nếu lần đầu đăng nhập
+
+### 2. Tạo chiến dịch gây quỹ
+
+- Chọn “Tạo chiến dịch”
+- Nhập thông tin: tên, mô tả, mục tiêu, thời gian, milestone...
+- Xác nhận giao dịch trên MetaMask (tạo campaign on-chain)
+- Sau khi thành công, chiến dịch sẽ xuất hiện trên trang chủ
+
+### 3. Quyên góp vào chiến dịch
+
+- Chọn một chiến dịch đang hoạt động
+- Nhấn “Quyên góp”, nhập số tiền muốn ủng hộ
+- Xác nhận giao dịch trên MetaMask (donate on-chain)
+- Sau khi thành công, số tiền sẽ được cập nhật realtime
+
+### 4. Nhận chứng nhận NFT
+
+- Sau khi quyên góp, hệ thống sẽ tự động mint NFT chứng nhận cho ví của bạn
+- Vào trang “Chứng nhận” để xem danh sách NFT đã nhận
+- Có thể kiểm tra NFT trên Sepolia Testnet qua các explorer (ví dụ: sepolia.etherscan.io)
+
+### 5. Rút tiền/Hoàn tiền
+
+- Chủ chiến dịch có thể rút tiền khi chiến dịch đạt mục tiêu
+- Nếu chiến dịch thất bại, người quyên góp có thể yêu cầu hoàn tiền (refund)
+- Các thao tác này đều xác nhận qua MetaMask và ghi nhận on-chain
+
+### 6. Kiểm thử nhanh (demo test)
+
+- Có thể dùng nhiều tài khoản ví (MetaMask) để tạo, donate, kiểm tra các flow trên
+- Xem log giao dịch trên MetaMask hoặc Sepolia explorer
+- Đảm bảo luôn chọn đúng mạng Sepolia Testnet khi thao tác
 
 1. **Đăng nhập bằng ví MetaMask**
    Người dùng đăng nhập bằng ví blockchain để xác thực.
@@ -89,13 +135,6 @@ docker compose up -d --build
 5. **Rút tiền/Hoàn tiền**
     - Chủ chiến dịch rút tiền khi chiến dịch thành công.
     - Người quyên góp nhận hoàn tiền nếu chiến dịch thất bại.
-
----
-
-## Thông tin smart contract
-
-- Địa chỉ Sepolia: `0x543c9F923CaCEAf5d2799b0dc84e9d8E440Df6F9`
-- Source code: thư mục `smart-contracts/`
 
 ---
 
@@ -131,3 +170,5 @@ forge test -vv
 ## Đóng góp & liên hệ
 
 - Báo lỗi hoặc góp ý: Tạo issue trên GitHub hoặc liên hệ nhóm phát triển.
+
+---
