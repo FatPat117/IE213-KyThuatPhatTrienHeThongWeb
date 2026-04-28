@@ -265,6 +265,8 @@ services:
             args:
                 NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
                 NEXT_PUBLIC_ADMIN_WALLETS: ${NEXT_PUBLIC_ADMIN_WALLETS}
+                NEXT_PUBLIC_CROWDFUNDING_CONTRACT_ADDRESS: ${NEXT_PUBLIC_CROWDFUNDING_CONTRACT_ADDRESS}  # thêm
+                NEXT_PUBLIC_SEPOLIA_RPC_URL: ${NEXT_PUBLIC_SEPOLIA_RPC_URL}
         container_name: frontend
         env_file:
             - ./.env

@@ -62,7 +62,7 @@ docker compose up -d --build
 ## Mạng Blockchain sử dụng
 
 - **Testnet:** Ethereum Sepolia
-- **Địa chỉ smart contract:** `0x543c9F923CaCEAf5d2799b0dc84e9d8E440Df6F9`
+- **Địa chỉ smart contract:** `0x9115896155aE445CC1649391aFC934F7399914FB`
 - **Source code:** thư mục `smart-contracts/`
 
 ---

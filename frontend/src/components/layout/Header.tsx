@@ -81,16 +81,21 @@ export default function Header() {
         { href: "/campaigns", label: "Chiến dịch" },
     ];
     const roleLinks: Array<{ href: string; label: string }> = [];
-    if (isSignedIn && !isAdmin) {
-        roleLinks.push({ href: "/my-campaigns", label: "Campaign của tôi" });
+
+    // Only compute role-based links on client to avoid hydration mismatch
+    if (isMounted) {
+        if (isSignedIn && !isAdmin) {
+            roleLinks.push({ href: "/my-campaigns", label: "Campaign của tôi" });
+        }
+        if (isReviewer && !isAdmin) {
+            roleLinks.push({ href: "/reviewer", label: "Duyệt milestone" });
+        }
+        if (isAdmin) {
+            roleLinks.push({ href: "/admin/campaigns", label: "Duyệt campaign" });
+            roleLinks.push({ href: "/admin/reviewers", label: "Quản lý Reviewer" });
+        }
     }
-    if (isReviewer && !isAdmin) {
-        roleLinks.push({ href: "/reviewer", label: "Duyệt milestone" });
-    }
-    if (isAdmin) {
-        roleLinks.push({ href: "/admin/campaigns", label: "Duyệt campaign" });
-        roleLinks.push({ href: "/admin/reviewers", label: "Quản lý Reviewer" });
-    }
+
     const navLinks = [...publicLinks, ...roleLinks];
 
     // Các trang cá nhân gom vào nhóm "Tài khoản" để header gọn hơn
