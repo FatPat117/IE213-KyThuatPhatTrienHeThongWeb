@@ -1,6 +1,6 @@
 "use client";
 
-import { API_BASE_URL, apiRequest } from "./client";
+import { API_BASE_URL, apiRequest, trackedFetch } from "./client";
 import type { CampaignRecord } from "./types";
 
 export interface PublicCampaignItem {
@@ -331,7 +331,7 @@ export async function getPublicCampaignMilestones(onChainId: number) {
 
         // Backward compatible fallback for environments that still expose
         // milestone timeline via milestone-service endpoint.
-        const response = await fetch(
+        const response = await trackedFetch(
             `${API_BASE_URL}/milestones/campaigns/${normalizedId}`,
             {
                 cache: "no-store",
@@ -340,6 +340,7 @@ export async function getPublicCampaignMilestones(onChainId: number) {
                     Pragma: "no-cache",
                 },
             },
+            `/milestones/campaigns/${normalizedId}`,
         );
         const payload = (await response.json()) as MilestoneServiceResponse;
         if (!response.ok || payload.status !== "success") {
