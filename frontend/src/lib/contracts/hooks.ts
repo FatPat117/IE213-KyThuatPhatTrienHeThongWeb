@@ -11,6 +11,13 @@ import {
 } from "wagmi";
 import { CROWDFUNDING_CONTRACT_ADDRESS, contractConfig } from "./config";
 
+// ── DEBUG: kiểm tra địa chỉ contract đang dùng ──
+console.log(
+    "[hooks] CROWDFUNDING_CONTRACT_ADDRESS =",
+    CROWDFUNDING_CONTRACT_ADDRESS,
+);
+console.log("[hooks] contractConfig =", contractConfig);
+
 type CampaignTuple = {
     id: bigint;
     creator: Address;
@@ -91,13 +98,36 @@ async function readReviewerSafeExists(
     publicClient: NonNullable<ReturnType<typeof usePublicClient>>,
     safe: Address,
 ) {
+    console.log(
+        "[readReviewerSafeExists] contract =",
+        CROWDFUNDING_CONTRACT_ADDRESS,
+    );
+    console.log("[readReviewerSafeExists] safe =", safe);
     try {
         const safes = (await publicClient.readContract({
             address: CROWDFUNDING_CONTRACT_ADDRESS,
             abi: REVIEWER_REGISTRY_ABI,
             functionName: "getReviewerSafes",
         })) as Address[];
+        console.log(
+            "[readReviewerSafeExists] getReviewerSafes result =",
+            safes,
+        );
         const normalizedSafe = safe.toLowerCase();
+        safes.forEach((item, i) => {
+            console.log(
+                `[compare] safes[${i}] =`,
+                JSON.stringify(item.toLowerCase()),
+            );
+            console.log(
+                `[compare] normalizedSafe =`,
+                JSON.stringify(normalizedSafe),
+            );
+            console.log(
+                `[compare] match =`,
+                item.toLowerCase() === normalizedSafe,
+            );
+        });
         return safes.some((item) => item.toLowerCase() === normalizedSafe);
     } catch {
         // Fallback for deployments that only expose reviewerSafes mapping getter.
@@ -108,8 +138,15 @@ async function readReviewerSafeExists(
                 functionName: "reviewerSafes",
                 args: [safe],
             })) as boolean;
+            console.log(
+                "[readReviewerSafeExists] reviewerSafes result =",
+                approved,
+            );
             return approved;
         } catch {
+            console.log(
+                "[readReviewerSafeExists] Error occurred while checking reviewer safe existence.",
+            );
             return null;
         }
     }
@@ -1042,8 +1079,7 @@ export function useSubmitMilestoneProof() {
                 throw new Error(
                     "Contract từ chối submit minh chứng. Vui lòng kiểm tra trạng thái chiến dịch/milestone trước khi gửi.",
                 );
-            }
-            else {
+            } else {
                 throw new Error(rawMessage);
             }
         }
@@ -1089,7 +1125,10 @@ export function useDisburseMilestone() {
     const { writeContractAsync, data, isPending, error } = useWriteContract();
     const DISBURSE_MILESTONE_DEFAULT_GAS = 350_000n;
 
-    const disburseMilestone = async (campaignId: number, milestoneId: number) => {
+    const disburseMilestone = async (
+        campaignId: number,
+        milestoneId: number,
+    ) => {
         if (!publicClient) {
             throw new Error("Không thể kết nối RPC để ước lượng gas.");
         }
@@ -1118,7 +1157,9 @@ export function useDisburseMilestone() {
                 // Some RPCs fail estimate/simulation for valid txs; fallback gas is applied below.
             } else if (message.includes("milestone not approved")) {
                 throw new Error("Milestone hiện tại chưa được reviewer duyệt.");
-            } else if (message.includes("only current milestone can be disbursed")) {
+            } else if (
+                message.includes("only current milestone can be disbursed")
+            ) {
                 throw new Error("Chỉ có thể giải ngân milestone hiện tại.");
             } else if (message.includes("execution reverted")) {
                 throw new Error(
