@@ -1,4 +1,4 @@
-# IE213 – Kỹ thuật phát triển hệ thống Web  
+# IE213 – Kỹ thuật phát triển hệ thống Web
 # Báo cáo đồ án: Nền tảng gây quỹ & Cấp chứng chỉ NFT (Funding Platform)
 
 ## LỜI CẢM ƠN
@@ -32,14 +32,14 @@ Báo cáo này trình bày quá trình thực hiện dự án trong 5 chương:
 
 ## MỤC LỤC (gợi ý)
 
-- LỜI CẢM ƠN  
-- LỜI MỞ ĐẦU  
-- Chương 1. Tổng quan  
-- Chương 2. Cơ sở lý thuyết  
-- Chương 3. Phương pháp đề xuất  
-- Chương 4. Thực nghiệm  
-- Chương 5. Kết luận  
-- Tài liệu tham khảo  
+- LỜI CẢM ƠN
+- LỜI MỞ ĐẦU
+- Chương 1. Tổng quan
+- Chương 2. Cơ sở lý thuyết
+- Chương 3. Phương pháp đề xuất
+- Chương 4. Thực nghiệm
+- Chương 5. Kết luận
+- Tài liệu tham khảo
 - Phụ lục (hướng dẫn chạy)
 
 ---
@@ -164,9 +164,9 @@ Hệ thống cung cấp nền tảng gây quỹ cộng đồng gồm các thành
 
 ### 3.2 Kiến trúc luồng dữ liệu (On-chain + Off-chain)
 
-1) **Người dùng thao tác on-chain** (create/donate/withdraw/refund/mint)  
-2) Frontend nhận `txHash`, hiển thị trạng thái pending/confirming/success  
-3) Frontend ghi log giao dịch “pending” sang backend (transaction-service) cho một số action (createCampaign/donate/mintNFT)  
+1) **Người dùng thao tác on-chain** (create/donate/withdraw/refund/mint)
+2) Frontend nhận `txHash`, hiển thị trạng thái pending/confirming/success
+3) Frontend ghi log giao dịch “pending” sang backend (transaction-service) cho một số action (createCampaign/donate/mintNFT)
 4) Listener-service bắt event on-chain, publish RabbitMQ để:
    - Campaign-service / Donation-service / Certificate-service ghi dữ liệu index vào MongoDB
    - Transaction-service được patch status sang `success` (đối với create/donate theo thiết kế hiện tại)
@@ -180,7 +180,7 @@ Hệ thống cung cấp nền tảng gây quỹ cộng đồng gồm các thành
 
 #### 4.1.1 Trang chủ (`/`)
 
-> **[CHÈN HÌNH UI.1]** Screenshot trang chủ: hero + wallet status + contract stats + featured campaigns.  
+> **[CHÈN HÌNH UI.1]** Screenshot trang chủ: hero + wallet status + contract stats + featured campaigns.
 > File gợi ý: `docs/images/ui-01-home.png`
 
 - Hiển thị **dữ liệu on-chain trực tiếp** (thống kê contract, danh sách chiến dịch nổi bật).
@@ -194,7 +194,7 @@ Hệ thống cung cấp nền tảng gây quỹ cộng đồng gồm các thành
 
 #### 4.1.2 Kết nối ví + Đăng nhập SIWE (Wallet + JWT)
 
-> **[CHÈN HÌNH]** Ảnh MetaMask popup ký message SIWE + trạng thái “đã đăng nhập” trên UI (nếu có hiển thị).  
+> **[CHÈN HÌNH]** Ảnh MetaMask popup ký message SIWE + trạng thái “đã đăng nhập” trên UI (nếu có hiển thị).
 > File gợi ý: `docs/images/ui-auth-siwe.png`
 
 - Kết nối MetaMask/Web3 wallet.
@@ -206,7 +206,7 @@ Hệ thống cung cấp nền tảng gây quỹ cộng đồng gồm các thành
 
 #### 4.1.3 Danh sách chiến dịch (`/campaigns`)
 
-> **[CHÈN HÌNH UI.2]** Screenshot danh sách chiến dịch: search + filter + sort + cards.  
+> **[CHÈN HÌNH UI.2]** Screenshot danh sách chiến dịch: search + filter + sort + cards.
 > File gợi ý: `docs/images/ui-02-campaigns-list.png`
 
 - Load danh sách từ backend (metadata title/description) và **merge** dữ liệu on-chain (goal/raised/status) để cập nhật số liệu mới nhất.
@@ -219,7 +219,7 @@ Hệ thống cung cấp nền tảng gây quỹ cộng đồng gồm các thành
 
 #### 4.1.4 Tạo chiến dịch (`/campaigns/create`)
 
-> **[CHÈN HÌNH UI.3]** Screenshot form tạo chiến dịch + trạng thái pending/confirming/success (nếu có).  
+> **[CHÈN HÌNH UI.3]** Screenshot form tạo chiến dịch + trạng thái pending/confirming/success (nếu có).
 > File gợi ý: `docs/images/ui-03-create-campaign.png`
 
 - Guard chặt chẽ:
@@ -238,13 +238,13 @@ Hệ thống cung cấp nền tảng gây quỹ cộng đồng gồm các thành
 
 #### 4.1.5 Chi tiết chiến dịch (`/campaigns/[id]`)
 
-> **[CHÈN HÌNH UI.4]** Screenshot detail campaign tổng quan (info + donate + history).  
+> **[CHÈN HÌNH UI.4]** Screenshot detail campaign tổng quan (info + donate + history).
 > File gợi ý: `docs/images/ui-04-campaign-detail.png`
 >
-> **[CHÈN HÌNH UI.5]** Screenshot khu vực creator actions (withdraw/mark failed).  
+> **[CHÈN HÌNH UI.5]** Screenshot khu vực creator actions (withdraw/mark failed).
 > File gợi ý: `docs/images/ui-05-campaign-creator-actions.png`
 >
-> **[CHÈN HÌNH UI.6]** Screenshot khu vực refund/mint (donor).  
+> **[CHÈN HÌNH UI.6]** Screenshot khu vực refund/mint (donor).
 > File gợi ý: `docs/images/ui-06-campaign-refund-mint.png`
 
 Trang chi tiết là nơi thực hiện các thao tác nghiệp vụ chính:
@@ -273,7 +273,7 @@ Trang chi tiết là nơi thực hiện các thao tác nghiệp vụ chính:
 
 #### 4.1.6 Chiến dịch của tôi (`/my-campaigns`)
 
-> **[CHÈN HÌNH UI.7]** Screenshot trang “Chiến dịch bạn đã tạo”, chia nhóm active/ended/failed.  
+> **[CHÈN HÌNH UI.7]** Screenshot trang “Chiến dịch bạn đã tạo”, chia nhóm active/ended/failed.
 > File gợi ý: `docs/images/ui-07-my-campaigns.png`
 
 - Bắt buộc kết nối ví và đúng Sepolia.
@@ -283,7 +283,7 @@ Trang chi tiết là nơi thực hiện các thao tác nghiệp vụ chính:
 
 #### 4.1.7 Lịch sử quyên góp (`/donations`)
 
-> **[CHÈN HÌNH UI.8]** Screenshot trang donations + (nếu có) transaction log modal.  
+> **[CHÈN HÌNH UI.8]** Screenshot trang donations + (nếu có) transaction log modal.
 > File gợi ý: `docs/images/ui-08-donations.png`
 
 - 2 chế độ:
@@ -296,7 +296,7 @@ Trang chi tiết là nơi thực hiện các thao tác nghiệp vụ chính:
 
 #### 4.1.8 Chứng chỉ NFT (`/certificates`)
 
-> **[CHÈN HÌNH UI.9]** Screenshot trang certificates: list + filter/sort + preview/print.  
+> **[CHÈN HÌNH UI.9]** Screenshot trang certificates: list + filter/sort + preview/print.
 > File gợi ý: `docs/images/ui-09-certificates.png`
 
 - Bắt buộc connect ví để xem chứng chỉ của chính user.
@@ -310,7 +310,7 @@ Trang chi tiết là nơi thực hiện các thao tác nghiệp vụ chính:
 
 #### 4.1.9 Dashboard (`/dashboard`)
 
-> **[CHÈN HÌNH UI.10]** Screenshot dashboard: summary cards + recent donations + recent certificates.  
+> **[CHÈN HÌNH UI.10]** Screenshot dashboard: summary cards + recent donations + recent certificates.
 > File gợi ý: `docs/images/ui-10-dashboard.png`
 
 - Bắt buộc connect ví.
@@ -323,7 +323,7 @@ Trang chi tiết là nơi thực hiện các thao tác nghiệp vụ chính:
 
 #### 4.1.10 Leaderboard (`/leaderboard`)
 
-> **[CHÈN HÌNH UI.11]** Screenshot leaderboard: top campaigns + top donors.  
+> **[CHÈN HÌNH UI.11]** Screenshot leaderboard: top campaigns + top donors.
 > File gợi ý: `docs/images/ui-11-leaderboard.png`
 
 - Xếp hạng:
@@ -334,7 +334,7 @@ Trang chi tiết là nơi thực hiện các thao tác nghiệp vụ chính:
 
 #### 4.1.11 Settings / Hồ sơ (`/settings`)
 
-> **[CHÈN HÌNH UI.12]** Screenshot settings: displayName + upload avatar + preview.  
+> **[CHÈN HÌNH UI.12]** Screenshot settings: displayName + upload avatar + preview.
 > File gợi ý: `docs/images/ui-12-settings.png`
 
 - Bắt buộc connect ví, và cần JWT để update.
@@ -347,7 +347,7 @@ Trang chi tiết là nơi thực hiện các thao tác nghiệp vụ chính:
 
 #### 4.1.12 System status (`/status`)
 
-> **[CHÈN HÌNH UI.13]** Screenshot status page: wallet/network/balance/RPC/contract checks.  
+> **[CHÈN HÌNH UI.13]** Screenshot status page: wallet/network/balance/RPC/contract checks.
 > File gợi ý: `docs/images/ui-13-status.png`
 
 - Kiểm tra nhanh trạng thái hệ thống (diagnostic):
@@ -360,7 +360,7 @@ Trang chi tiết là nơi thực hiện các thao tác nghiệp vụ chính:
 
 #### 4.1.13 Giao diện nộp bằng chứng (`/campaigns/[id]/milestones/upload`)
 
-> **[CHÈN HÌNH UI.14]** Screenshot màn hình upload bằng chứng: chọn mốc, chọn file, upload thành công và hiển thị CID/txHash.  
+> **[CHÈN HÌNH UI.14]** Screenshot màn hình upload bằng chứng: chọn mốc, chọn file, upload thành công và hiển thị CID/txHash.
 > File gợi ý: `docs/images/ui-14-milestone-evidence-upload.png`
 
 Màn hình này hiện thực luồng “tải minh chứng -> lưu IPFS -> ghi CID lên blockchain” cho từng mốc giải ngân:
@@ -796,69 +796,69 @@ sequenceDiagram
 
 #### F.1 Nhóm test: Wallet & Auth
 
-- **TC-01 (SIWE login success)**  
-  - Given wallet đã connect  
-  - When ký message SIWE  
+- **TC-01 (SIWE login success)**
+  - Given wallet đã connect
+  - When ký message SIWE
   - Then nhận token + user profile, lưu auth state
 
-- **TC-02 (Reject SIWE)**  
-  - When reject trong MetaMask  
+- **TC-02 (Reject SIWE)**
+  - When reject trong MetaMask
   - Then FE báo lỗi rõ ràng, không lưu token
 
 #### F.2 Nhóm test: Campaign
 
-- **TC-03 (Network guard)**  
-  - Given đang ở chain khác Sepolia  
-  - When vào `/campaigns/create`  
+- **TC-03 (Network guard)**
+  - Given đang ở chain khác Sepolia
+  - When vào `/campaigns/create`
   - Then không cho submit, hiển thị cảnh báo “Sai mạng”
 
-- **TC-04 (Create campaign)**  
-  - When submit create + confirm tx  
+- **TC-04 (Create campaign)**
+  - When submit create + confirm tx
   - Then decode được `CampaignCreated`, tạo tx record, metadata sync, redirect detail
 
 #### F.3 Nhóm test: Donate / Mint / Withdraw / Refund
 
-- **TC-05 (Donate)**  
-  - When donate success  
+- **TC-05 (Donate)**
+  - When donate success
   - Then watch Donated update list, donation xuất hiện ở `/donations` sau sync
 
-- **TC-06 (Mint certificate)**  
-  - Given đã donate campaign  
-  - When mint certificate  
+- **TC-06 (Mint certificate)**
+  - Given đã donate campaign
+  - When mint certificate
   - Then certificate xuất hiện ở `/certificates` (có thể trễ vài giây)
 
-- **TC-07 (Withdraw)**  
-  - Given campaign success  
-  - When creator withdraw  
+- **TC-07 (Withdraw)**
+  - Given campaign success
+  - When creator withdraw
   - Then tx success, UI cập nhật trạng thái
 
-- **TC-08 (Refund)**  
-  - Given campaign failed + donor có donation  
-  - When claimRefund  
+- **TC-08 (Refund)**
+  - Given campaign failed + donor có donation
+  - When claimRefund
   - Then refund success, UI thông báo
 
 ### G) Kịch bản Demo (đề xuất để quay video/thuyết trình)
 
 #### Demo 1 – Public browsing (không cần ví)
 
-1) Vào `/` xem contract stats + featured campaigns  
-2) Vào `/campaigns` search/sort/filter + vào detail  
-3) Vào `/leaderboard` xem top donors/top campaigns  
+1) Vào `/` xem contract stats + featured campaigns
+2) Vào `/campaigns` search/sort/filter + vào detail
+3) Vào `/leaderboard` xem top donors/top campaigns
 4) Vào `/donations` xem lịch sử donate toàn hệ thống (on-chain)
 
 #### Demo 2 – Full flow với ví (Sepolia)
 
-1) Connect wallet + SIWE login  
-2) Tạo campaign ở `/campaigns/create`  
-3) Dùng ví khác donate, quan sát realtime update  
-4) Mint certificate, vào `/certificates` xem certificate  
+1) Connect wallet + SIWE login
+2) Tạo campaign ở `/campaigns/create`
+3) Dùng ví khác donate, quan sát realtime update
+4) Mint certificate, vào `/certificates` xem certificate
 5) Nếu đạt goal: withdraw bằng creator/beneficiary
 
 #### Demo 3 – Refund flow (campaign failed)
 
-1) Tạo campaign duration ngắn, goal cao  
-2) Donate nhỏ, chờ qua deadline  
-3) Mark as failed (nếu cần) → claimRefund  
+1) Tạo campaign duration ngắn, goal cao
+2) Donate nhỏ, chờ qua deadline
+3) Mark as failed (nếu cần) → claimRefund
 4) Tra cứu tx trên Etherscan Sepolia
 
 ---
@@ -1202,5 +1202,5 @@ docker compose up -d --build
 
 Theo `README.md` của repo, contract hiện tại đang live trên Sepolia tại địa chỉ:
 
-- `0x543c9F923CaCEAf5d2799b0dc84e9d8E440Df6F9`
+- `0x9115896155aE445CC1649391aFC934F7399914FB`
 
