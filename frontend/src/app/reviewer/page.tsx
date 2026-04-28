@@ -1294,9 +1294,12 @@ export default function ReviewerWorkspacePage() {
                                                 {hasEvidence && (
                                                     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                                                         {milestone.reportCids.map(
-                                                            (item) => (
+                                                            (
+                                                                item,
+                                                                itemIndex,
+                                                            ) => (
                                                                 <EvidenceCard
-                                                                    key={`${milestone.milestoneId}-${item.cid}`}
+                                                                    key={`${milestone.milestoneId}-${item.cid}-${item.submittedAt}-${itemIndex}`}
                                                                     cid={
                                                                         item.cid
                                                                     }

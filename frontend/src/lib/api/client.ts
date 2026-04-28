@@ -22,6 +22,184 @@ export const API_BASE_URL = normalizeApiBaseUrl(
     process.env.NEXT_PUBLIC_API_URL,
 );
 
+interface RpcFlowMetric {
+    count: number;
+    endpoints: Record<string, number>;
+    startedAt: number;
+}
+
+interface RpcMetricStore {
+    totalCalls: number;
+    endpointCounts: Record<string, number>;
+    flows: Record<string, RpcFlowMetric>;
+}
+
+declare global {
+    interface Window {
+        __rpcMetrics?: {
+            start: (flowName: string) => void;
+            end: (flowName?: string) => RpcFlowMetric | null;
+            snapshot: () => ReturnType<typeof getRpcMetricsSnapshot>;
+            reset: () => void;
+        };
+    }
+}
+
+const RPC_METRIC_STORE_KEY = "__ie213RpcMetricStore__";
+const RPC_ACTIVE_FLOW_KEY = "__ie213RpcActiveFlow__";
+
+function createEmptyRpcMetricStore(): RpcMetricStore {
+    return {
+        totalCalls: 0,
+        endpointCounts: {},
+        flows: {},
+    };
+}
+
+function getRpcMetricStore(): RpcMetricStore {
+    if (typeof window === "undefined") return createEmptyRpcMetricStore();
+    const host = window as Window & {
+        [RPC_METRIC_STORE_KEY]?: RpcMetricStore;
+        [RPC_ACTIVE_FLOW_KEY]?: string;
+    };
+    if (!host[RPC_METRIC_STORE_KEY]) {
+        host[RPC_METRIC_STORE_KEY] = createEmptyRpcMetricStore();
+    }
+    return host[RPC_METRIC_STORE_KEY]!;
+}
+
+function getActiveRpcFlowName(): string | null {
+    if (typeof window === "undefined") return null;
+    const host = window as Window & { [RPC_ACTIVE_FLOW_KEY]?: string };
+    return host[RPC_ACTIVE_FLOW_KEY] || null;
+}
+
+function setActiveRpcFlowName(flowName: string | null) {
+    if (typeof window === "undefined") return;
+    const host = window as Window & { [RPC_ACTIVE_FLOW_KEY]?: string };
+    if (flowName) {
+        host[RPC_ACTIVE_FLOW_KEY] = flowName;
+    } else {
+        delete host[RPC_ACTIVE_FLOW_KEY];
+    }
+}
+
+function ensureRpcDebugApi() {
+    if (typeof window === "undefined") return;
+    if (window.__rpcMetrics) return;
+    window.__rpcMetrics = {
+        start: startRpcMeasureFlow,
+        end: endRpcMeasureFlow,
+        snapshot: getRpcMetricsSnapshot,
+        reset: resetRpcMetrics,
+    };
+}
+
+function normalizeMetricEndpoint(endpoint: string): string {
+    return endpoint.split("?")[0] || endpoint;
+}
+
+function incrementEndpointMap(
+    endpointCounts: Record<string, number>,
+    endpoint: string,
+) {
+    endpointCounts[endpoint] = (endpointCounts[endpoint] || 0) + 1;
+}
+
+function recordRpcCall(endpoint: string) {
+    if (typeof window === "undefined") return;
+    const store = getRpcMetricStore();
+    const normalizedEndpoint = normalizeMetricEndpoint(endpoint);
+    store.totalCalls += 1;
+    incrementEndpointMap(store.endpointCounts, normalizedEndpoint);
+
+    const activeFlow = getActiveRpcFlowName();
+    if (!activeFlow) return;
+    const flowMetric =
+        store.flows[activeFlow] ||
+        (store.flows[activeFlow] = {
+            count: 0,
+            endpoints: {},
+            startedAt: Date.now(),
+        });
+    flowMetric.count += 1;
+    incrementEndpointMap(flowMetric.endpoints, normalizedEndpoint);
+}
+
+export function resetRpcMetrics() {
+    ensureRpcDebugApi();
+    if (typeof window === "undefined") return;
+    const host = window as Window & {
+        [RPC_METRIC_STORE_KEY]?: RpcMetricStore;
+        [RPC_ACTIVE_FLOW_KEY]?: string;
+    };
+    host[RPC_METRIC_STORE_KEY] = createEmptyRpcMetricStore();
+    delete host[RPC_ACTIVE_FLOW_KEY];
+}
+
+export function startRpcMeasureFlow(flowName: string) {
+    ensureRpcDebugApi();
+    if (!flowName || typeof window === "undefined") return;
+    const store = getRpcMetricStore();
+    store.flows[flowName] = {
+        count: 0,
+        endpoints: {},
+        startedAt: Date.now(),
+    };
+    setActiveRpcFlowName(flowName);
+    console.info(`[RPC_METRICS] started flow: ${flowName}`);
+}
+
+export function endRpcMeasureFlow(flowName?: string) {
+    ensureRpcDebugApi();
+    if (typeof window === "undefined") return null;
+    const store = getRpcMetricStore();
+    const selectedFlow = flowName || getActiveRpcFlowName();
+    if (!selectedFlow) return null;
+    const result = store.flows[selectedFlow] || null;
+    if (!flowName || flowName === selectedFlow) {
+        setActiveRpcFlowName(null);
+    }
+    console.info(
+        `[RPC_METRICS] flow result: ${selectedFlow}`,
+        result
+            ? {
+                  count: result.count,
+                  endpoints: result.endpoints,
+                  durationMs: Date.now() - result.startedAt,
+              }
+            : null,
+    );
+    return result;
+}
+
+export function getRpcMetricsSnapshot() {
+    ensureRpcDebugApi();
+    const store = getRpcMetricStore();
+    return {
+        totalCalls: store.totalCalls,
+        endpointCounts: { ...store.endpointCounts },
+        flows: JSON.parse(JSON.stringify(store.flows)) as RpcMetricStore["flows"],
+    };
+}
+
+export async function trackedFetch(
+    input: RequestInfo | URL,
+    init?: RequestInit,
+    metricLabel?: string,
+) {
+    ensureRpcDebugApi();
+    const endpoint =
+        metricLabel ||
+        (typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.pathname
+              : input.url);
+    recordRpcCall(endpoint);
+    return fetch(input, init);
+}
+
 export interface ApiSuccess<T> {
     success: true;
     data: T;
@@ -75,6 +253,7 @@ export async function apiRequest<T>(
     path: string,
     init?: RequestInit & { token?: string | null; timeoutMs?: number },
 ): Promise<T> {
+    ensureRpcDebugApi();
     const headers = new Headers(init?.headers || {});
     headers.set("Content-Type", "application/json");
     headers.set("Cache-Control", "no-cache");
@@ -115,6 +294,7 @@ export async function apiRequest<T>(
 
         let response: Response;
         try {
+            recordRpcCall(path);
             response = await fetch(`${API_BASE_URL}${path}`, {
                 ...init,
                 cache: "no-store",
