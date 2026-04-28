@@ -1,0 +1,200 @@
+services:
+    - type: web
+      name: gateway
+      runtime: node
+      rootDir: backend/gateway
+      buildCommand: npm install
+      startCommand: npm start
+      envVars:
+          - key: NODE_ENV
+            value: production
+          - key: PORT
+            value: 10000
+          - key: JWT_SECRET
+            value: ie213-crowdfunding-super-secret-key
+          - key: JWT_EXPIRES_IN
+            value: 7d
+          - key: AUTH_SERVICE_URL
+            value: http://auth-service:10000
+          - key: USER_SERVICE_URL
+            value: http://user-service:10000
+          - key: CAMPAIGN_SERVICE_URL
+            value: http://campaign-service:10000
+          - key: DONATION_SERVICE_URL
+            value: http://donation-service:10000
+          - key: CERTIFICATE_SERVICE_URL
+            value: http://certificate-service:10000
+          - key: TRANSACTION_SERVICE_URL
+            value: http://transaction-service:10000
+
+    - type: web
+      name: auth-service
+      runtime: node
+      rootDir: backend/auth-service
+      buildCommand: npm install
+      startCommand: npm start
+      envVars:
+          - key: NODE_ENV
+            value: production
+          - key: PORT
+            value: 10000
+          - key: MONGO_URI
+            value: mongodb+srv://duynhan1412_db_user:g7ftzfpAxuVbjcDF@fundraising.etfuwjk.mongodb.net/users?retryWrites=true&w=majority&appName=Fundraising
+          - key: JWT_SECRET
+            value: ie213-crowdfunding-super-secret-key
+          - key: JWT_EXPIRES_IN
+            value: 7d
+          - key: ADMIN_WALLETS
+            value: 0x6D19E2427077c03eAcd0F06a83D41De38dFc007F
+          - key: INITIAL_ADMIN_WALLET
+            value: 0x6D19E2427077c03eAcd0F06a83D41De38dFc007F
+
+    - type: web
+      name: user-service
+      runtime: node
+      rootDir: backend/user-service
+      buildCommand: npm install
+      startCommand: npm start
+      envVars:
+          - key: NODE_ENV
+            value: production
+          - key: PORT
+            value: 10000
+          - key: MONGO_URI
+            value: mongodb+srv://duynhan1412_db_user:g7ftzfpAxuVbjcDF@fundraising.etfuwjk.mongodb.net/users?retryWrites=true&w=majority&appName=Fundraising
+          - key: JWT_SECRET
+            value: ie213-crowdfunding-super-secret-key
+          - key: RABBITMQ_URL
+            value: amqps://nzgeradf:ixYNPwwaiu70F--w4cDMJ9qyUdnItW6Z@armadillo.rmq.cloudamqp.com/nzgeradf
+          - key: RABBITMQ_EXCHANGE
+            value: funding.events
+
+    - type: web
+      name: campaign-service
+      runtime: node
+      rootDir: backend/campaign-service
+      buildCommand: npm install
+      startCommand: npm start
+      envVars:
+          - key: NODE_ENV
+            value: production
+          - key: PORT
+            value: 10000
+          - key: MONGO_URI
+            value: mongodb+srv://duynhan1412_db_user:g7ftzfpAxuVbjcDF@fundraising.etfuwjk.mongodb.net/campaigns?retryWrites=true&w=majority&appName=Fundraising
+          - key: JWT_SECRET
+            value: ie213-crowdfunding-super-secret-key
+          - key: RABBITMQ_URL
+            value: amqps://nzgeradf:ixYNPwwaiu70F--w4cDMJ9qyUdnItW6Z@armadillo.rmq.cloudamqp.com/nzgeradf
+          - key: RABBITMQ_EXCHANGE
+            value: funding.events
+          - key: SEPOLIA_RPC_URL
+            value: https://eth-sepolia.g.alchemy.com/v2/k6DQrtxhrKASuuiDjngMb
+          - key: CROWDFUNDING_CONTRACT_ADDRESS
+            value: 0x9115896155aE445CC1649391aFC934F7399914FB
+
+    - type: web
+      name: donation-service
+      runtime: node
+      rootDir: backend/donation-service
+      buildCommand: npm install
+      startCommand: npm start
+      envVars:
+          - key: NODE_ENV
+            value: production
+          - key: PORT
+            value: 10000
+          - key: MONGO_URI
+            value: mongodb+srv://duynhan1412_db_user:g7ftzfpAxuVbjcDF@fundraising.etfuwjk.mongodb.net/donations?retryWrites=true&w=majority&appName=Fundraising
+          - key: JWT_SECRET
+            value: ie213-crowdfunding-super-secret-key
+          - key: RABBITMQ_URL
+            value: amqps://nzgeradf:ixYNPwwaiu70F--w4cDMJ9qyUdnItW6Z@armadillo.rmq.cloudamqp.com/nzgeradf
+          - key: RABBITMQ_EXCHANGE
+            value: funding.events
+
+    - type: web
+      name: certificate-service
+      runtime: node
+      rootDir: backend/certificate-service
+      buildCommand: npm install
+      startCommand: npm start
+      envVars:
+          - key: NODE_ENV
+            value: production
+          - key: PORT
+            value: 10000
+          - key: MONGO_URI
+            value: mongodb+srv://duynhan1412_db_user:g7ftzfpAxuVbjcDF@fundraising.etfuwjk.mongodb.net/certificates?retryWrites=true&w=majority&appName=Fundraising
+          - key: JWT_SECRET
+            value: ie213-crowdfunding-super-secret-key
+          - key: RABBITMQ_URL
+            value: amqps://nzgeradf:ixYNPwwaiu70F--w4cDMJ9qyUdnItW6Z@armadillo.rmq.cloudamqp.com/nzgeradf
+          - key: PINATA_API_KEY
+            value: e63f877d5ccad927d636
+          - key: PINATA_API_SECRET
+            value: 99a0cf330fe03d97a9a5e8d1cfa1863bba248ac9da454a1c4ff01f505ecdd1ce
+          - key: PINATA_GATEWAY_URL
+            value: https://gateway.pinata.cloud
+
+    - type: web
+      name: transaction-service
+      runtime: node
+      rootDir: backend/transaction-service
+      buildCommand: npm install
+      startCommand: npm start
+      envVars:
+          - key: NODE_ENV
+            value: production
+          - key: PORT
+            value: 10000
+          - key: MONGO_URI
+            value: mongodb+srv://duynhan1412_db_user:g7ftzfpAxuVbjcDF@fundraising.etfuwjk.mongodb.net/transactions?retryWrites=true&w=majority&appName=Fundraising
+          - key: JWT_SECRET
+            value: ie213-crowdfunding-super-secret-key
+          - key: RABBITMQ_URL
+            value: amqps://nzgeradf:ixYNPwwaiu70F--w4cDMJ9qyUdnItW6Z@armadillo.rmq.cloudamqp.com/nzgeradf
+          - key: RABBITMQ_EXCHANGE
+            value: funding.events
+
+    - type: worker
+      name: listener-service
+      runtime: node
+      rootDir: backend/listener-service
+      buildCommand: npm install
+      startCommand: npm start
+      envVars:
+          - key: NODE_ENV
+            value: production
+          - key: MONGO_URI
+            value: mongodb+srv://duynhan1412_db_user:g7ftzfpAxuVbjcDF@fundraising.etfuwjk.mongodb.net/transactions?retryWrites=true&w=majority&appName=Fundraising
+          - key: RABBITMQ_URL
+            value: amqps://nzgeradf:ixYNPwwaiu70F--w4cDMJ9qyUdnItW6Z@armadillo.rmq.cloudamqp.com/nzgeradf
+          - key: RABBITMQ_EXCHANGE
+            value: funding.events
+          - key: SEPOLIA_RPC_URL
+            value: https://eth-sepolia.g.alchemy.com/v2/k6DQrtxhrKASuuiDjngMb
+          - key: CROWDFUNDING_CONTRACT_ADDRESS
+            value: 0x9115896155aE445CC1649391aFC934F7399914FB
+          - key: PRIVATE_KEY
+            value: 0x1c9c4bffef933eccb2503c191e53a9c3c81a32399fc076b2180b53678f02c9b3
+          - key: DEPLOYER_PRIVATE_KEY
+            value: 0x1c9c4bffef933eccb2503c191e53a9c3c81a32399fc076b2180b53678f02c9b3
+          - key: MARK_FAILED_PRIVATE_KEY
+            value: 0x1c9c4bffef933eccb2503c191e53a9c3c81a32399fc076b2180b53678f02c9b3
+          - key: MARK_FAILED_JOB_ENABLED
+            value: true
+          - key: MARK_FAILED_JOB_CRON
+            value: 0 0 * * *
+          - key: MARK_FAILED_JOB_TIMEZONE
+            value: UTC
+          - key: ETHERSCAN_API_KEY
+            value: 92STG6TWK5HMA5AEHA3QUGYP1SCPJP9U4W
+          - key: ETHERSCAN_LOGS_API_URL
+            value: https://api.etherscan.io/v2/api
+          - key: ETHERSCAN_CHAIN_ID
+            value: 11155111
+          - key: ETHERSCAN_LOGS_MAX_PAGES
+            value: 5
+          - key: ETHERSCAN_LOGS_OFFSET
+            value: 1000
