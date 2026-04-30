@@ -4,6 +4,10 @@ const campaignService = require("../services/campaign.service");
 const { Campaign, Milestone, Donation } = require("../models");
 const { successRes, errorRes } = require("../utils/response");
 
+// Approval status cache (for getMilestoneApprovalStatus)
+const approvalStatusCache = new Map();
+const APPROVAL_STATUS_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
+
 const CHAIN_READER_ABI = [
     {
         type: "function",
@@ -730,6 +734,24 @@ async function getMilestoneApprovalStatus(req, res, next) {
 
         console.log(`[getMilestoneApprovalStatus] campaign.reviewerSafe:`, safeAddress);
 
+        // Validate and get checksum address early
+        let checksumSafe;
+        try {
+            checksumSafe = getAddress(safeAddress);
+        } catch {
+            return errorRes(res, "Campaign reviewerSafe is invalid", 400);
+        }
+
+        console.log(`[getMilestoneApprovalStatus] checksumSafe:`, checksumSafe);
+
+        // Check cache first (skip if milestone already approved in DB - that's handled below)
+        const cacheKey = `${campaignOnChainId}-${milestoneId}`;
+        const cached = approvalStatusCache.get(cacheKey);
+        if (cached && Date.now() < cached.expiresAt) {
+          console.log(`[getMilestoneApprovalStatus] Cache HIT for ${cacheKey}`);
+          return successRes(res, cached.data);
+        }
+
         // FIX: Check if milestone is already approved in DB
         const milestone = await Milestone.findOne({
             campaignOnChainId,
@@ -748,15 +770,6 @@ async function getMilestoneApprovalStatus(req, res, next) {
                 pendingTxHash: "",
             });
         }
-
-        let checksumSafe;
-        try {
-            checksumSafe = getAddress(safeAddress);
-        } catch {
-            return errorRes(res, "Campaign reviewerSafe is invalid", 400);
-        }
-
-        console.log(`[getMilestoneApprovalStatus] checksumSafe:`, checksumSafe);
 
         // Use correct Safe Transaction Service API with query params to get only pending transactions
         const safeApiUrl = `https://api.safe.global/tx-service/sep/api/v1/safes/${checksumSafe}/multisig-transactions/?executed=false&ordering=-nonce`;
@@ -826,18 +839,29 @@ async function getMilestoneApprovalStatus(req, res, next) {
                     `[campaign.controller] Failed to update milestone ${campaignOnChainId}/${milestoneId} to approved: ${err.message}`
                 );
             });
+
+            // Invalidate cache for this milestone
+            approvalStatusCache.delete(cacheKey);
         }
 
         if (!pendingTx) {
             console.log(`[getMilestoneApprovalStatus] No pending transaction found for this milestone`);
-            return successRes(res, {
+            const result = {
                 safeAddress: checksumSafe,
                 required: 0,
                 confirmed: 0,
                 executed: Boolean(executedTx),
                 signers: [],
                 pendingTxHash: executedTx?.safeTxHash || executedTx?.transactionHash || "",
+            };
+
+            // Save to cache
+            approvalStatusCache.set(cacheKey, {
+                data: result,
+                expiresAt: Date.now() + APPROVAL_STATUS_CACHE_TTL,
             });
+
+            return successRes(res, result);
         }
 
         const confirmations = Array.isArray(pendingTx.confirmations)
@@ -853,19 +877,27 @@ async function getMilestoneApprovalStatus(req, res, next) {
             signers: signers.length,
         });
 
-        return successRes(res, {
+        const result = {
             safeAddress: checksumSafe,
             required: Number(
                 pendingTx.confirmationsRequired ||
                     pendingTx.confirmations_required ||
-                    0,
+                    0
             ),
             confirmed: confirmations.length,
             executed: false,
             signers,
             pendingTxHash:
                 pendingTx.safeTxHash || pendingTx.transactionHash || "",
+        };
+
+        // Save to cache
+        approvalStatusCache.set(cacheKey, {
+            data: result,
+            expiresAt: Date.now() + APPROVAL_STATUS_CACHE_TTL,
         });
+
+        return successRes(res, result);
     } catch (err) {
         if (err.response) {
             return errorRes(res, `Safe API error: ${err.response.status}`, 502);
@@ -918,6 +950,17 @@ async function createCampaignWithMilestones(req, res, next) {
     );
 }
 
+/**
+ * Invalidate cache for a specific milestone approval status
+ * @param {number} campaignOnChainId
+ * @param {number} milestoneId
+ */
+function invalidateApprovalCache(campaignOnChainId, milestoneId) {
+    const cacheKey = `${campaignOnChainId}-${milestoneId}`;
+    approvalStatusCache.delete(cacheKey);
+    console.log(`[campaign.controller] Invalidated approval cache for ${cacheKey}`);
+}
+
 module.exports = {
     getAllCampaigns,
     getCampaignById,
@@ -930,4 +973,5 @@ module.exports = {
     getPublicCampaignByOnChainId,
     getPublicCampaignMilestones,
     getMilestoneApprovalStatus,
+    invalidateApprovalCache,
 };

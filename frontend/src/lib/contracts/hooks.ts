@@ -174,6 +174,85 @@ function isTerminalStatus(status: number) {
     ].includes(status);
 }
 
+// ── GLOBAL CACHE cho Safe owners & threshold (giảm rate limit) ──
+const SAFE_INFO_CACHE_TTL_MS = 30 * 60 * 1000; // 30 phút
+const SAFE_INFO_CACHE = new Map<string, { owners: string[]; threshold: number; expiresAt: number }>();
+
+async function getSafeOwnersAndThreshold(safe: string): Promise<{ owners: string[]; threshold: number }> {
+  // Validate and convert to checksum first
+  let checksumSafe: string;
+  try {
+    checksumSafe = getAddress(safe as Address);
+  } catch (error) {
+    console.error('[getSafeOwnersAndThreshold] Invalid address:', safe, error);
+    throw new Error(`Invalid Safe address: ${safe}`);
+  }
+
+  const normalizedSafe = checksumSafe.toLowerCase();
+  const cached = SAFE_INFO_CACHE.get(normalizedSafe);
+  const now = Date.now();
+
+  if (cached && now < cached.expiresAt) {
+    console.log('[SafeInfoCache] Cache HIT for', normalizedSafe, '->', cached.owners.length, 'owners, threshold:', cached.threshold);
+    return { owners: cached.owners, threshold: cached.threshold };
+  }
+
+  console.log('[SafeInfoCache] Cache MISS for', normalizedSafe, '- fetching from API');
+
+  // Fetch owners & threshold together từ Safe API using CHECKSUM address
+  const safeInfoRes = await fetch(
+    `https://safe-transaction-sepolia.safe.global/api/v1/safes/${checksumSafe}/`,
+    { cache: "no-store" }
+  );
+
+  if (!safeInfoRes.ok) {
+    throw new Error(`Không thể lấy thông tin Safe: ${safeInfoRes.status}`);
+  }
+
+  const safeInfo = await safeInfoRes.json();
+  const owners = Array.isArray(safeInfo.owners) ? safeInfo.owners.map((o: string) => o.toLowerCase()) : [];
+  const threshold = safeInfo.threshold;
+
+  // Update cache
+  SAFE_INFO_CACHE.set(normalizedSafe, {
+    owners,
+    threshold,
+    expiresAt: now + SAFE_INFO_CACHE_TTL_MS,
+  });
+
+  return { owners, threshold };
+}
+
+async function getSafeNonceFresh(safe: string): Promise<number> {
+  // Validate and convert to checksum first
+  let checksumSafe: string;
+  try {
+    checksumSafe = getAddress(safe as Address);
+  } catch (error) {
+    console.error('[getSafeNonceFresh] Invalid address:', safe, error);
+    throw new Error(`Invalid Safe address: ${safe}`);
+  }
+
+  // Always fetch fresh nonce (nonce changes with each transaction)
+  const safeInfoRes = await fetch(
+    `https://safe-transaction-sepolia.safe.global/api/v1/safes/${checksumSafe}/`,
+    { cache: "no-store" }
+  );
+
+  if (!safeInfoRes.ok) {
+    throw new Error(`Không thể lấy nonce của Safe: ${safeInfoRes.status}`);
+  }
+
+  const safeInfo = await safeInfoRes.json();
+  const nonce = safeInfo.nonce;
+
+  if (typeof nonce === "undefined") {
+    throw new Error("Safe API trả về dữ liệu không hợp lệ (thiếu nonce).");
+  }
+
+  return nonce;
+}
+
 function normalizeCampaign(
     raw: Partial<CampaignTuple> | null | undefined,
     fallbackId?: number,
@@ -1388,27 +1467,19 @@ export function useProposeSafeTransaction() {
             args: [BigInt(campaignId), BigInt(milestoneId)],
         });
 
-        // 2. Fetch Safe nonce and threshold from Safe Transaction Service
-        const checksumSafe = getAddress(reviewerSafe);
-        const safeInfoRes = await fetch(
-            `https://safe-transaction-sepolia.safe.global/api/v1/safes/${checksumSafe}/`,
-            { cache: "no-store" }
-        );
-        if (!safeInfoRes.ok) {
-            throw new Error(
-                `Không thể lấy thông tin Safe: ${safeInfoRes.status}. Địa chỉ Safe có thể không hợp lệ.`
-            );
+        // 2. Fetch Safe owners & threshold from CACHE (30min TTL) + nonce FRESH
+        // Validate reviewerSafe address first
+        const normalizedReviewerSafe = (reviewerSafe || "").trim().toLowerCase();
+        if (!/^0x[a-f0-9]{40}$/.test(normalizedReviewerSafe)) {
+            throw new Error(`Invalid reviewerSafe address: "${reviewerSafe}". Expected a valid EVM address (0x + 40 hex chars).`);
         }
-        const safeInfo = await safeInfoRes.json();
-        const nonce = safeInfo.nonce;
-        const threshold = safeInfo.threshold;
+        const checksumSafe = getAddress(normalizedReviewerSafe as Address);
 
-        if (typeof nonce === "undefined" || typeof threshold === "undefined") {
-            throw new Error("Safe API trả về dữ liệu không hợp lệ (thiếu nonce hoặc threshold).");
-        }
+        // Owners & threshold: cached (shared across all instances)
+        const { owners, threshold } = await getSafeOwnersAndThreshold(normalizedReviewerSafe);
 
-        // 2b. Verify wallet is an owner of this Safe using safeInfo.owners
-        const owners = Array.isArray(safeInfo.owners) ? safeInfo.owners : [];
+        // Nonce: always fresh (required for transaction)
+        const nonce = await getSafeNonceFresh(reviewerSafe);
         const normalizedWallet = walletAddress.toLowerCase();
         const isOwner = owners.some((owner: string) => owner.toLowerCase() === normalizedWallet);
         console.log('[useProposeSafeTransaction] Safe owners:', owners.map((o: string) => getAddress(o)));
@@ -1701,10 +1772,15 @@ export function useExecuteSafeTransaction() {
       throw new Error("Không tìm thấy địa chỉ ví để gửi giao dịch.");
     }
 
-    const checksumSafe = getAddress(safeAddress);
+    // Validate safeAddress first
+    const normalizedSafeAddress = (safeAddress || "").trim().toLowerCase();
+    if (!/^0x[a-f0-9]{40}$/.test(normalizedSafeAddress)) {
+      throw new Error(`Invalid Safe address: "${safeAddress}". Expected a valid EVM address (0x + 40 hex chars).`);
+    }
+    const checksumSafe = getAddress(normalizedSafeAddress as Address);
 
     // 1. Fetch pending transactions for the Safe from Safe Transaction Service
-    const safeApiUrl = `https://api.safe.global/tx-service/sep/api/v1/safes/${checksumSafe}/multisig-transactions/?executed=false&ordering=-nonce`;
+    const safeApiUrl = `https://safe-transaction-sepolia.safe.global/api/v1/safes/${checksumSafe}/multisig-transactions/?executed=false&ordering=-nonce`;
     const response = await fetch(safeApiUrl, { cache: "no-store" });
     if (!response.ok) {
       throw new Error(

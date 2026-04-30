@@ -273,7 +273,7 @@ export default function ReviewerWorkspacePage() {
         refreshApprovalStatuses();
         const timer = window.setInterval(() => {
             refreshApprovalStatuses();
-        }, 30_000);
+        }, 120_000); // 2 minutes (reduced from 30s to prevent rate limiting)
 
         return () => window.clearInterval(timer);
     }, [hasReviewerAccess, refreshApprovalStatuses, rows.length]);

@@ -6,7 +6,7 @@ import { contractConfig, useAuth, useReadContractOwner, useReadReviewerSafesOnCh
 import { useOwnerSafes } from "@/lib/hooks/use-owner-safes";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 function isLinkActive(href: string, pathname: string): boolean {
     if (href === "/campaigns") {
@@ -28,8 +28,8 @@ export default function Header() {
     const [isMounted, setIsMounted] = useState(false);
     const { token, user } = useAuth();
     const { owner } = useReadContractOwner();
-    const { safes: ownerSafes } = useOwnerSafes();
-    const { reviewerSafes: registeredSafes } = useReadReviewerSafesOnChain();
+    const { safes: ownerSafes, isLoading: isLoadingOwnerSafes } = useOwnerSafes();
+    const { reviewerSafes: registeredSafes, isLoading: isLoadingRegisteredSafes } = useReadReviewerSafesOnChain();
 
     useEffect(() => {
         setIsMounted(true);
@@ -45,7 +45,8 @@ export default function Header() {
     const roleFromAuth = (user?.role || "").toString().trim().toLowerCase();
     const isReviewerByRole = roleFromAuth === "reviewer";
 
-    // Check if user is a reviewer: any of their owned safes is registered as a reviewer safe
+    // Optimistic reviewer state: keep previous value while loading
+    const prevIsReviewerRef = useRef<boolean>(false);
     const isReviewer = useMemo(() => {
         console.log('[Header Debug]', {
             isSignedIn,
@@ -54,14 +55,27 @@ export default function Header() {
             registeredSafes,
             ownerSafesCount: ownerSafes.length,
             registeredSafesCount: registeredSafes.length,
+            isLoadingOwnerSafes,
+            isLoadingRegisteredSafes,
         });
         if (!isSignedIn) return false;
         if (isReviewerByRole) return true;
-        if (!ownerSafes.length || !registeredSafes.length) return false;
+
+        // While loading, keep previous state to avoid flicker
+        if (isLoadingOwnerSafes || isLoadingRegisteredSafes) {
+            return prevIsReviewerRef.current;
+        }
+
+        if (!ownerSafes.length || !registeredSafes.length) {
+            prevIsReviewerRef.current = false;
+            return false;
+        }
+
         const hasIntersection = ownerSafes.some((safe) => registeredSafes.includes(safe));
         console.log('[Header Debug] Intersection check:', hasIntersection);
+        prevIsReviewerRef.current = hasIntersection;
         return hasIntersection;
-    }, [ownerSafes, registeredSafes, isSignedIn, isReviewerByRole]);
+    }, [ownerSafes, registeredSafes, isSignedIn, isReviewerByRole, isLoadingOwnerSafes, isLoadingRegisteredSafes]);
 
     const adminWallets = (process.env.NEXT_PUBLIC_ADMIN_WALLETS || "")
         .split(",")
