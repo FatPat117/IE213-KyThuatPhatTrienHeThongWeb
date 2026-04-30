@@ -156,7 +156,12 @@ function getMilestoneActivityTimestamp(milestone: {
     );
 }
 
-function buildSignatureProgressLabel(status: MilestoneApprovalStatus): string {
+function buildSignatureProgressLabel(status: MilestoneApprovalStatus, milestoneApprovedAt?: string | null): string {
+    // If milestone is already approved in DB, show approved message
+    if (milestoneApprovedAt) {
+        return "✅ Đã được phê duyệt";
+    }
+
     if (!status.required || status.required <= 0) {
         return "Chưa có đề xuất đang chờ trên Gnosis Safe";
     }
@@ -183,7 +188,7 @@ export default function ReviewerWorkspacePage() {
         [address, user?.wallet],
     );
 
-    const [filter, setFilter] = useState<ReviewFilter>("all");
+    const [filter, setFilter] = useState<ReviewFilter>("pending");
     const [approvalStatusMap, setApprovalStatusMap] = useState<
         Record<string, MilestoneApprovalStatus>
     >({});
@@ -809,8 +814,8 @@ export default function ReviewerWorkspacePage() {
                                         const isRejecting =
                                             rejectingKey === key;
                                         const isPendingMilestone =
-                                            !CLEARLY_DONE_STATUSES.has(milestone.status) &&
-                                            (milestone.status === "disbursed" ? !milestone.approvedAt : true);
+                                            CLEARLY_PENDING_STATUSES.has(milestone.status) ||
+                                            (milestone.status === "disbursed" && !milestone.approvedAt);
                                         const hasEvidence =
                                             milestone.reportCids.length > 0;
                                         const campaignReviewerSafe = row.campaign.reviewerSafe?.trim().toLowerCase() || "";
@@ -875,6 +880,7 @@ export default function ReviewerWorkspacePage() {
                                                 <div className="mb-3 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-800">
                                                     {buildSignatureProgressLabel(
                                                         approvalStatus,
+                                                        milestone.approvedAt,
                                                     )}
                                                 </div>
 

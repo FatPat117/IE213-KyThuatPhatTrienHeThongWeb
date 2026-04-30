@@ -730,6 +730,25 @@ async function getMilestoneApprovalStatus(req, res, next) {
 
         console.log(`[getMilestoneApprovalStatus] campaign.reviewerSafe:`, safeAddress);
 
+        // FIX: Check if milestone is already approved in DB
+        const milestone = await Milestone.findOne({
+            campaignOnChainId,
+            milestoneId
+        }).lean();
+
+        if (milestone && milestone.status === "approved") {
+            console.log(`[getMilestoneApprovalStatus] Milestone already approved in DB, returning early`);
+
+            return successRes(res, {
+                safeAddress: checksumSafe,
+                required: 2, // Default threshold for 2/3 multisig
+                confirmed: 2, // Pretend fully confirmed
+                executed: true,
+                signers: [],
+                pendingTxHash: "",
+            });
+        }
+
         let checksumSafe;
         try {
             checksumSafe = getAddress(safeAddress);
