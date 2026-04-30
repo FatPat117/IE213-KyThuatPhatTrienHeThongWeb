@@ -10,8 +10,11 @@ interface MilestoneTimelineProps {
     campaignId: number;
     contractAddress: string;
     canUploadEvidence: boolean;
-    /** Tổng đã huy động — hiển thị mục tiêu mốc = raised * allocationBps / 10000 */
+    /** Tổng đã huy động — tính mục tiêu thực tế khi campaign đang InProgress */
     raisedWei?: bigint;
+    /** Mục tiêu gây quỹ — dùng để tính mục tiêu mốc khi chưa có ai donate */
+    goalWei?: bigint;
+    userDonatedWei?: bigint;
 }
 
 function formatDate(value: Date) {
@@ -24,7 +27,7 @@ function formatDate(value: Date) {
 
 function formatEthAmount(value: number) {
     if (!Number.isFinite(value) || value <= 0) return "0";
-    if (value < 0.01) return value.toFixed(4).replace(/\.?0+$/, "");
+    if (value % 0.01 !== 0) return value.toFixed(4).replace(/\.?0+$/, "");
     return value.toFixed(2);
 }
 
@@ -111,6 +114,7 @@ export default function MilestoneTimeline({
     contractAddress,
     canUploadEvidence,
     raisedWei = 0n,
+    goalWei = 0n,
 }: MilestoneTimelineProps) {
     const { proofCidsByIndex } = useReadMilestonesOnChain(
         campaignId,
@@ -129,18 +133,39 @@ export default function MilestoneTimeline({
             </div>
 
             <div className="relative ml-2 border-l-2 border-slate-200 pl-6">
-                {milestones.map((milestone) => {
+                {milestones.map((milestone, index) => {
                     const statusMeta = getStatusMeta(milestone.status);
                     const idx = chainIndexForMilestone(milestone.milestoneId);
                     const onChainCids = proofCidsByIndex.get(idx) ?? [];
                     const bps = milestone.allocationBps || 0;
-                    const milestoneTargetWei =
+                    // Sử dụng targetWei từ backend, fallback tính toán từ goalWei nếu DB chưa có giá trị
+                    let milestoneTargetWei = BigInt(milestone.amountWei || "0");
+                    if (milestoneTargetWei === 0n && goalWei > 0n && bps > 0) {
+                        milestoneTargetWei = (goalWei * BigInt(bps)) / 10000n;
+                    }
+                    const milestoneTargetEth = Number(formatEther(milestoneTargetWei));
+
+                    // Số tiền đã thực tế quyên góp được phân bổ cho mốc này
+                    const raisedAllocationWei =
                         raisedWei > 0n && bps > 0
                             ? (raisedWei * BigInt(bps)) / 10000n
-                            : BigInt(milestone.amountWei || "0");
-                    const milestoneTargetEth = Number(
-                        formatEther(milestoneTargetWei),
-                    );
+                            : 0n;
+                    const raisedAllocationEth = Number(formatEther(raisedAllocationWei));
+
+                    // Tính tổng % đã giải ngân trước mốc này
+                    let accumulatedBps = 0;
+                    for (let j = 0; j < index; j++) {
+                        accumulatedBps += milestones[j].allocationBps || 0;
+                    }
+                    const remainingBps = 10000 - accumulatedBps;
+
+                    // Số tiền hoàn lại nếu mốc thất bại = Toàn bộ quỹ còn lại chưa giải ngân
+                    const refundWei =
+                        raisedWei > 0n
+                            ? (raisedWei * BigInt(remainingBps)) / 10000n
+                            : 0n;
+                    const refundEth = Number(formatEther(refundWei));
+
                     const allocationPercent = (milestone.allocationBps / 100)
                         .toFixed(2)
                         .replace(/\.00$/, "");
@@ -199,7 +224,7 @@ export default function MilestoneTimeline({
                                 </span>
                             </div>
 
-                            <div className="grid gap-3 text-sm sm:grid-cols-3">
+                            <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
                                 <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
                                     <p className="text-xs text-slate-500">
                                         Hạn chót dự kiến
@@ -210,22 +235,39 @@ export default function MilestoneTimeline({
                                         )}
                                     </p>
                                 </div>
-                                <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                                    <p className="text-xs text-slate-500">
+                                <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
+                                    <p className="text-xs text-blue-600">
                                         Mục tiêu tài chính mốc
                                     </p>
-                                    <p className="font-semibold text-slate-900">
+                                    <p className="font-semibold text-blue-900">
                                         {formatEthAmount(milestoneTargetEth)}{" "}
                                         ETH ({allocationPercent}%)
                                     </p>
                                 </div>
-                                <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                                    <p className="text-xs text-slate-500">
-                                        Mã mốc on-chain
+                                <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
+                                    <p className="text-xs text-emerald-600">
+                                        Đã quyên góp cho mốc
                                     </p>
-                                    <p className="font-semibold text-slate-900">
-                                        #{milestone.milestoneId}
+                                    <p className="font-semibold text-emerald-900">
+                                        {raisedWei > 0n
+                                            ? `${formatEthAmount(raisedAllocationEth)} ETH`
+                                            : "Chưa có"}
                                     </p>
+                                </div>
+                                <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
+                                    <p className="text-xs text-amber-600">
+                                        Hoàn lại nếu thất bại
+                                    </p>
+                                    <p className="font-semibold text-amber-900">
+                                        {raisedWei > 0n
+                                            ? `${formatEthAmount(refundEth)} ETH`
+                                            : "Chưa xác định"}
+                                    </p>
+                                    {userDonatedWei && userDonatedWei > 0n && raisedWei && raisedWei > 0n && (
+                                        <div className="mt-1 pt-1 border-t border-amber-200">
+                                            <p className="text-[10px] text-amber-700">Của bạn: {formatEthAmount(Number(formatEther((userDonatedWei * milestoneTargetWei) / goalWei || 0n)))} ETH</p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
