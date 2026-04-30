@@ -2,11 +2,11 @@
 
 import NotificationBell from "@/components/layout/NotificationBell";
 import WalletConnectButton from "@/components/wallet/WalletConnectButton";
-import { contractConfig, useAuth, useReadContractOwner } from "@/lib";
+import { contractConfig, useAuth, useReadContractOwner, useReadReviewerSafesOnChain } from "@/lib";
+import { useOwnerSafes } from "@/lib/hooks/use-owner-safes";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
-import { useReadContract } from "wagmi";
+import { useEffect, useState, useMemo } from "react";
 
 function isLinkActive(href: string, pathname: string): boolean {
     if (href === "/campaigns") {
@@ -28,6 +28,8 @@ export default function Header() {
     const [isMounted, setIsMounted] = useState(false);
     const { token, user } = useAuth();
     const { owner } = useReadContractOwner();
+    const { safes: ownerSafes } = useOwnerSafes();
+    const { reviewerSafes: registeredSafes } = useReadReviewerSafesOnChain();
 
     useEffect(() => {
         setIsMounted(true);
@@ -39,30 +41,28 @@ export default function Header() {
     const isSignedIn = isMounted ? Boolean(token && user?.wallet) : false;
     const walletAddress = (user?.wallet || "").trim().toLowerCase();
 
-    // Contract exposes `reviewerSafes(address) => bool` (not `isActiveReviewer`)
-    const { data: isReviewerSafeOnChain } = useReadContract({
-        address: contractConfig.address,
-        abi: [
-            {
-                type: "function",
-                name: "reviewerSafes",
-                stateMutability: "view",
-                inputs: [{ name: "safe", type: "address" }],
-                outputs: [{ name: "", type: "bool" }],
-            },
-        ] as const,
-        functionName: "reviewerSafes",
-        args: walletAddress ? [walletAddress as `0x${string}`] : undefined,
-        query: {
-            enabled: Boolean(walletAddress),
-            staleTime: 30_000,
-            refetchOnWindowFocus: true,
-        },
-    });
-
+    // Role from auth
     const roleFromAuth = (user?.role || "").toString().trim().toLowerCase();
     const isReviewerByRole = roleFromAuth === "reviewer";
-    const isReviewer = isSignedIn && (Boolean(isReviewerSafeOnChain) || isReviewerByRole);
+
+    // Check if user is a reviewer: any of their owned safes is registered as a reviewer safe
+    const isReviewer = useMemo(() => {
+        console.log('[Header Debug]', {
+            isSignedIn,
+            isReviewerByRole,
+            ownerSafes,
+            registeredSafes,
+            ownerSafesCount: ownerSafes.length,
+            registeredSafesCount: registeredSafes.length,
+        });
+        if (!isSignedIn) return false;
+        if (isReviewerByRole) return true;
+        if (!ownerSafes.length || !registeredSafes.length) return false;
+        const hasIntersection = ownerSafes.some((safe) => registeredSafes.includes(safe));
+        console.log('[Header Debug] Intersection check:', hasIntersection);
+        return hasIntersection;
+    }, [ownerSafes, registeredSafes, isSignedIn, isReviewerByRole]);
+
     const adminWallets = (process.env.NEXT_PUBLIC_ADMIN_WALLETS || "")
         .split(",")
         .map((item) => item.trim().toLowerCase())

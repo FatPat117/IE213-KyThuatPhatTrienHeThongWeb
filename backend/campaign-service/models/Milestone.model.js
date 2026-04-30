@@ -94,6 +94,10 @@ const MilestoneSchema = new mongoose.Schema(
             type: Date,
             default: null,
         },
+        safeTxHash: {
+            type: String,
+            default: "",
+        },
     },
     { timestamps: true },
 );

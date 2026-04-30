@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useAccount } from "wagmi";
+import { useAccount, useChainId } from "wagmi";
 import { getAddress } from "viem";
 import { useAuth } from "@/lib";
 import {
@@ -16,13 +16,23 @@ import { useWaitForTransactionReceipt } from "wagmi";
 import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 import { showSuccessToast } from "@/lib/ui/toast";
 
+const SEPOLIA_CHAIN_ID = 11155111;
 const SAFE_META_RETRY_AFTER_429_MS = 60_000;
 
 export default function AdminReviewersPage() {
     const { token, user } = useAuth();
     const { address } = useAccount();
+    const chainId = useChainId();
     const { owner } = useReadContractOwner();
+    const isSepolia = chainId === SEPOLIA_CHAIN_ID;
     const [newSafe, setNewSafe] = useState("");
+    const [newSafeValidation, setNewSafeValidation] = useState<{
+        status: "idle" | "validating" | "valid" | "invalid";
+        threshold?: number;
+        ownerCount?: number;
+        owners?: string[];
+        error?: string;
+    }>({ status: "idle" });
     const [txHash, setTxHash] = useState<`0x${string}` | undefined>(undefined);
     const [pendingAction, setPendingAction] = useState<{
         type: "add" | "remove";
@@ -206,6 +216,69 @@ export default function AdminReviewersPage() {
         };
     }, [normalizedReviewerSafes, reviewerSafesKey]);
 
+    // Debounced validation for new Safe input
+    useEffect(() => {
+        const timer = setTimeout(async () => {
+            const input = newSafe.trim().toLowerCase();
+            if (!/^0x[a-f0-9]{40}$/.test(input)) {
+                setNewSafeValidation({ status: "idle" });
+                return;
+            }
+
+            setNewSafeValidation({ status: "validating" });
+
+            try {
+                const checksumSafe = getAddress(input);
+                const res = await fetch(
+                    `https://safe-transaction-sepolia.safe.global/api/v1/safes/${checksumSafe}/`,
+                    { cache: "no-store" },
+                );
+
+                if (!res.ok) {
+                    if (res.status === 404) {
+                        setNewSafeValidation({
+                            status: "invalid",
+                            error: "Địa chỉ này không phải Gnosis Safe hợp lệ trên Sepolia",
+                        });
+                    } else {
+                        setNewSafeValidation({
+                            status: "invalid",
+                            error: `Safe API error (${res.status})`,
+                        });
+                    }
+                    return;
+                }
+
+                const payload = (await res.json()) as {
+                    threshold?: number;
+                    owners?: string[];
+                };
+
+                if (!payload.threshold || !Array.isArray(payload.owners)) {
+                    setNewSafeValidation({
+                        status: "invalid",
+                        error: "Safe metadata không hợp lệ",
+                    });
+                    return;
+                }
+
+                setNewSafeValidation({
+                    status: "valid",
+                    threshold: payload.threshold,
+                    ownerCount: payload.owners.length,
+                    owners: payload.owners,
+                });
+            } catch (error) {
+                setNewSafeValidation({
+                    status: "invalid",
+                    error: "Không thể kết nối đến Safe API",
+                });
+            }
+        }, 500);
+
+        return () => clearTimeout(timer);
+    }, [newSafe]);
+
     useEffect(() => {
         if (!txHash || !pendingAction) return;
         if (isConfirming) return;
@@ -278,21 +351,67 @@ export default function AdminReviewersPage() {
                         owner on-chain, nên không thể thêm/xóa reviewer Safe.
                     </p>
                 )}
+                {!isSepolia && (
+                    <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                        ⚠️ Bạn đang kết nối đến network không phải Sepolia. Reviewer Safe chỉ được đồng bộ trên Sepolia. Vui lòng chuyển sang Sepolia trước khi thêm/xóa reviewer.
+                    </p>
+                )}
                 {actionError && (
                     <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                         {actionError}
                     </p>
                 )}
                 <div className="mt-4 flex gap-2">
-                    <input
-                        value={newSafe}
-                        onChange={(e) => setNewSafe(e.target.value)}
-                        placeholder="0x..."
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                    />
+                    <div className="flex-1">
+                        <input
+                            value={newSafe}
+                            onChange={(e) => setNewSafe(e.target.value)}
+                            placeholder="0x..."
+                            className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                                newSafeValidation.status === "invalid"
+                                    ? "border-red-300 bg-red-50 focus:border-red-400 focus:ring-1 focus:ring-red-200"
+                                    : newSafeValidation.status === "valid"
+                                    ? "border-emerald-300 bg-emerald-50 focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200"
+                                    : "border-slate-300 focus:border-blue-400 focus:ring-1 focus:ring-blue-200"
+                            }`}
+                        />
+                        {newSafeValidation.status === "validating" && (
+                            <p className="mt-1 text-xs text-blue-600">
+                                Đang kiểm tra Safe...
+                            </p>
+                        )}
+                        {newSafeValidation.status === "valid" && (
+                            <div className="mt-2 space-y-1 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                                <p className="text-xs font-semibold text-emerald-800">
+                                    ✅ Địa chỉ Safe hợp lệ
+                                </p>
+                                <p className="text-xs text-emerald-700">
+                                    Threshold: {newSafeValidation.threshold} / {newSafeValidation.ownerCount} owners
+                                </p>
+                                <p className="text-xs text-emerald-600">
+                                    Có thể thêm vào danh sách reviewer
+                                </p>
+                            </div>
+                        )}
+                        {newSafeValidation.status === "invalid" && (
+                            <p className="mt-1 text-xs text-red-600">
+                                {newSafeValidation.error}
+                            </p>
+                        )}
+                    </div>
                     <button
                         type="button"
-                        disabled={!isContractOwner}
+                        disabled={
+                            !isContractOwner ||
+                            !isSepolia ||
+                            newSafeValidation.status !== "valid" ||
+                            !/^0x[a-f0-9]{40}$/.test(newSafe.trim().toLowerCase())
+                        }
+                        title={
+                            !isSepolia
+                                ? "Cần chuyển sang Sepolia để thêm reviewer"
+                                : undefined
+                        }
                         className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={async () => {
                             try {
@@ -312,6 +431,7 @@ export default function AdminReviewersPage() {
                                     safe: normalized,
                                 });
                                 setNewSafe("");
+                                setNewSafeValidation({ status: "idle" });
                             } catch (error) {
                                 setActionError(
                                     error instanceof Error
