@@ -1,15 +1,16 @@
 "use client";
 
 import { useMemo } from "react";
-import { Address, formatEther, parseEther } from "viem";
+import { Address, encodeFunctionData, encodePacked, formatEther, getAddress, hashTypedData, keccak256, parseEther, recoverAddress } from "viem";
 import {
     useAccount,
     usePublicClient,
     useReadContract,
     useReadContracts,
+    useSignTypedData,
     useWriteContract,
 } from "wagmi";
-import { CROWDFUNDING_CONTRACT_ADDRESS, contractConfig } from "./config";
+import { CROWDFUNDING_ABI, CROWDFUNDING_CONTRACT_ADDRESS, SEPOLIA_CHAIN_ID, contractConfig } from "./config";
 
 // ── DEBUG: kiểm tra địa chỉ contract đang dùng ──
 console.log(
@@ -171,6 +172,85 @@ function isTerminalStatus(status: number) {
         FAILED_STATUS,
         CANCELLED_STATUS,
     ].includes(status);
+}
+
+// ── GLOBAL CACHE cho Safe owners & threshold (giảm rate limit) ──
+const SAFE_INFO_CACHE_TTL_MS = 30 * 60 * 1000; // 30 phút
+const SAFE_INFO_CACHE = new Map<string, { owners: string[]; threshold: number; expiresAt: number }>();
+
+async function getSafeOwnersAndThreshold(safe: string): Promise<{ owners: string[]; threshold: number }> {
+  // Validate and convert to checksum first
+  let checksumSafe: string;
+  try {
+    checksumSafe = getAddress(safe as Address);
+  } catch (error) {
+    console.error('[getSafeOwnersAndThreshold] Invalid address:', safe, error);
+    throw new Error(`Invalid Safe address: ${safe}`);
+  }
+
+  const normalizedSafe = checksumSafe.toLowerCase();
+  const cached = SAFE_INFO_CACHE.get(normalizedSafe);
+  const now = Date.now();
+
+  if (cached && now < cached.expiresAt) {
+    console.log('[SafeInfoCache] Cache HIT for', normalizedSafe, '->', cached.owners.length, 'owners, threshold:', cached.threshold);
+    return { owners: cached.owners, threshold: cached.threshold };
+  }
+
+  console.log('[SafeInfoCache] Cache MISS for', normalizedSafe, '- fetching from API');
+
+  // Fetch owners & threshold together từ Safe API using CHECKSUM address
+  const safeInfoRes = await fetch(
+    `https://safe-transaction-sepolia.safe.global/api/v1/safes/${checksumSafe}/`,
+    { cache: "no-store" }
+  );
+
+  if (!safeInfoRes.ok) {
+    throw new Error(`Không thể lấy thông tin Safe: ${safeInfoRes.status}`);
+  }
+
+  const safeInfo = await safeInfoRes.json();
+  const owners = Array.isArray(safeInfo.owners) ? safeInfo.owners.map((o: string) => o.toLowerCase()) : [];
+  const threshold = safeInfo.threshold;
+
+  // Update cache
+  SAFE_INFO_CACHE.set(normalizedSafe, {
+    owners,
+    threshold,
+    expiresAt: now + SAFE_INFO_CACHE_TTL_MS,
+  });
+
+  return { owners, threshold };
+}
+
+async function getSafeNonceFresh(safe: string): Promise<number> {
+  // Validate and convert to checksum first
+  let checksumSafe: string;
+  try {
+    checksumSafe = getAddress(safe as Address);
+  } catch (error) {
+    console.error('[getSafeNonceFresh] Invalid address:', safe, error);
+    throw new Error(`Invalid Safe address: ${safe}`);
+  }
+
+  // Always fetch fresh nonce (nonce changes with each transaction)
+  const safeInfoRes = await fetch(
+    `https://safe-transaction-sepolia.safe.global/api/v1/safes/${checksumSafe}/`,
+    { cache: "no-store" }
+  );
+
+  if (!safeInfoRes.ok) {
+    throw new Error(`Không thể lấy nonce của Safe: ${safeInfoRes.status}`);
+  }
+
+  const safeInfo = await safeInfoRes.json();
+  const nonce = safeInfo.nonce;
+
+  if (typeof nonce === "undefined") {
+    throw new Error("Safe API trả về dữ liệu không hợp lệ (thiếu nonce).");
+  }
+
+  return nonce;
 }
 
 function normalizeCampaign(
@@ -1358,4 +1438,510 @@ export function useReadCampaignReviewersBatch(campaignCount: number) {
         error: error?.message || null,
         refetch,
     };
+}
+
+/**
+ * Hook for proposing Safe multisig transactions (for reviewer approvals)
+ */
+export function useProposeSafeTransaction() {
+    const { address: walletAddress } = useAccount();
+    const { signTypedDataAsync } = useSignTypedData();
+
+    const propose = async (
+        campaignId: number,
+        milestoneId: number,
+        reviewerSafe: Address
+    ): Promise<{
+        safeTxHash: string;
+        safeUiUrl: string;
+        message: string;
+    }> => {
+        if (!walletAddress) {
+            throw new Error("Ví chưa kết nối. Vui lòng kết nối ví để đề xuất giao dịch.");
+        }
+
+        // 1. Encode approveMilestone function data
+        const encodedData = encodeFunctionData({
+            abi: CROWDFUNDING_ABI,
+            functionName: "approveMilestone",
+            args: [BigInt(campaignId), BigInt(milestoneId)],
+        });
+
+        // 2. Fetch Safe owners & threshold from CACHE (30min TTL) + nonce FRESH
+        // Validate reviewerSafe address first
+        const normalizedReviewerSafe = (reviewerSafe || "").trim().toLowerCase();
+        if (!/^0x[a-f0-9]{40}$/.test(normalizedReviewerSafe)) {
+            throw new Error(`Invalid reviewerSafe address: "${reviewerSafe}". Expected a valid EVM address (0x + 40 hex chars).`);
+        }
+        const checksumSafe = getAddress(normalizedReviewerSafe as Address);
+
+        // Owners & threshold: cached (shared across all instances)
+        const { owners, threshold } = await getSafeOwnersAndThreshold(normalizedReviewerSafe);
+
+        // Nonce: always fresh (required for transaction)
+        const nonce = await getSafeNonceFresh(reviewerSafe);
+        const normalizedWallet = walletAddress.toLowerCase();
+        const isOwner = owners.some((owner: string) => owner.toLowerCase() === normalizedWallet);
+        console.log('[useProposeSafeTransaction] Safe owners:', owners.map((o: string) => getAddress(o)));
+        console.log('[useProposeSafeTransaction] Is wallet an owner?', isOwner);
+        if (!isOwner) {
+            const ownersList = owners.map((o: string) => getAddress(o)).join(', ');
+            throw new Error(
+                `Ví (${walletAddress}) không phải là owner của Safe ${checksumSafe}. ` +
+                `Chỉ owner mới có thể đề xuất giao dịch.\n\n` +
+                `Các owner hiện tại của Safe:\n${ownersList}\n\n` +
+                `Vui lòng chuyển sang tài khoản là một trong các owner trên trong MetaMask.`
+            );
+        }
+
+        // 3. Prepare EIP-712 typed data according to Safe specification
+        // Domain: ONLY chainId and verifyingContract (no name/version)
+        const domain = {
+            chainId: SEPOLIA_CHAIN_ID,
+            verifyingContract: checksumSafe,
+        } as const;
+
+        // Types: Full 10-field SafeTx schema (NOT the shortened version)
+        const types = {
+            SafeTx: [
+                { name: "to", type: "address" },
+                { name: "value", type: "uint256" },
+                { name: "data", type: "bytes" },
+                { name: "operation", type: "uint8" },
+                { name: "safeTxGas", type: "uint256" },
+                { name: "baseGas", type: "uint256" },
+                { name: "gasPrice", type: "uint256" },
+                { name: "gasToken", type: "address" },
+                { name: "refundReceiver", type: "address" },
+                { name: "nonce", type: "uint256" },
+            ],
+        } as const;
+
+        // Message: Full transaction data matching the SafeTx schema
+        const typedMessage = {
+            to: CROWDFUNDING_CONTRACT_ADDRESS as Address,
+            value: 0n,
+            data: encodedData,
+            operation: 0,
+            safeTxGas: 0n,
+            baseGas: 0n,
+            gasPrice: 0n,
+            gasToken: "0x0000000000000000000000000000000000000000" as Address,
+            refundReceiver: "0x0000000000000000000000000000000000000000" as Address,
+            nonce: BigInt(nonce),
+        };
+
+        // 4. Compute safeTxHash by hashing the typed data (Safe standard)
+        const safeTxHash = hashTypedData({
+            domain,
+            types,
+            primaryType: "SafeTx",
+            message: typedMessage,
+        });
+        console.log('[useProposeSafeTransaction] safeTxHash (from typed data):', safeTxHash);
+
+        // 5. Get EIP-712 signature from reviewer's wallet
+        const signature = await signTypedDataAsync({
+            domain,
+            types,
+            primaryType: "SafeTx" as const,
+            message: typedMessage,
+        });
+
+        // 6. Verify the signature signer is one of the Safe owners
+        let recoveredSigner: string;
+        try {
+            // Compute the typed data hash (digest) that was signed
+            const digest = hashTypedData({
+                domain,
+                types,
+                primaryType: "SafeTx",
+                message: typedMessage,
+            });
+            console.log('[useProposeSafeTransaction] Typed data digest:', digest);
+
+            // Recover the signer address from the signature and digest
+            recoveredSigner = await recoverAddress({ hash: digest, signature });
+            const normalizedRecovered = recoveredSigner.toLowerCase();
+            const isRecoveredOwner = owners.some((owner: string) => owner.toLowerCase() === normalizedRecovered);
+            console.log('[useProposeSafeTransaction] Recovered signer:', recoveredSigner);
+            console.log('[useProposeSafeTransaction] Is recovered signer an owner?', isRecoveredOwner);
+
+            if (!isRecoveredOwner) {
+                throw new Error(
+                    `Chữ ký được tạo bởi ${recoveredSigner} không phải là owner của Safe ${checksumSafe}. ` +
+                    `Chỉ owner mới có thể ký. Các owner hiện tại: ${owners.map((o: string) => getAddress(o)).join(', ')}.`
+                );
+            }
+
+            // Also verify the recovered signer matches the expected walletAddress
+            if (normalizedRecovered !== normalizedWallet) {
+                throw new Error(
+                    `MetaMask đã sử dụng account ${recoveredSigner} để ký (khác với account kết nối ${walletAddress}). ` +
+                    `Vui lòng chuyển sang account ${walletAddress} trong MetaMask và xác nhận lại.`
+                );
+            }
+        } catch (signerError) {
+            console.error('[useProposeSafeTransaction] Signature verification error:', signerError);
+            throw signerError;
+        }
+
+        // 7. Final check before sending to Safe API
+        console.log('[useProposeSafeTransaction] Final check before POST:', {
+            sender: walletAddress,
+            normalizedWallet,
+            signature,
+            owners: owners.map((o: string) => getAddress(o)),
+            recoveredSigner,
+        });
+
+        // 8. DEBUG: Log values before sending
+        console.log('[useProposeSafeTransaction] typedMessage:', typedMessage);
+        console.log('[useProposeSafeTransaction] safeTxHash:', safeTxHash);
+        console.log('[useProposeSafeTransaction] nonce:', nonce);
+        console.log('[useProposeSafeTransaction] POST payload:', {
+            to: CROWDFUNDING_CONTRACT_ADDRESS,
+            value: "0",
+            data: encodedData,
+            operation: 0,
+            safeTxGas: "0",
+            baseGas: "0",
+            gasPrice: "0",
+            gasToken: "0x0000000000000000000000000000000000000000",
+            refundReceiver: "0x0000000000000000000000000000000000000000",
+            nonce: String(nonce),
+            contractTransactionHash: safeTxHash,
+            sender: walletAddress,
+            signature,
+        });
+
+        // 9. Propose transaction to Safe Transaction Service
+        const proposeRes = await fetch(
+            `https://safe-transaction-sepolia.safe.global/api/v1/safes/${checksumSafe}/multisig-transactions/`,
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    to: CROWDFUNDING_CONTRACT_ADDRESS,
+                    value: 0,
+                    data: encodedData,
+                    operation: 0,
+                    safeTxGas: 0,
+                    baseGas: 0,
+                    gasPrice: 0,
+                    gasToken: "0x0000000000000000000000000000000000000000",
+                    refundReceiver: "0x0000000000000000000000000000000000000000",
+                    nonce: String(nonce),
+                    contractTransactionHash: safeTxHash,
+                    sender: walletAddress,
+                    signature,
+                }),
+            }
+        );
+
+        if (!proposeRes.ok) {
+            let errBody: Record<string, unknown> = {};
+            try {
+                const errorText = await proposeRes.text();
+                if (errorText && errorText.length > 0) {
+                    try {
+                        errBody = JSON.parse(errorText);
+                    } catch {
+                        errBody = { raw: errorText };
+                    }
+                } else {
+                    errBody = { raw: '(empty response body)' };
+                }
+            } catch (e) {
+                errBody = { error: 'Failed to read error response', details: String(e) };
+            }
+            console.error('[useProposeSafeTransaction] Safe API error response:', {
+                status: proposeRes.status,
+                statusText: proposeRes.statusText,
+                body: errBody,
+            });
+            throw new Error(
+                (typeof errBody.message === 'string' && errBody.message) ||
+                (Array.isArray(errBody.nonFieldErrors) ? errBody.nonFieldErrors.join(', ') : undefined) ||
+                (typeof errBody.detail === 'object' && errBody.detail !== null && typeof (errBody.detail as { message?: string }).message === 'string' ? (errBody.detail as { message?: string }).message : undefined) ||
+                (typeof errBody.raw === 'string' && errBody.raw) ||
+                (typeof errBody.error === 'string' && errBody.error) ||
+                `Lỗi khi đề xuất Safe transaction: ${proposeRes.status} ${proposeRes.statusText}`
+            );
+        }
+
+        // Parse response - Safe API may return 201 with JSON or 200/204 with empty body
+        let result: { safeTxHash?: string; transactionHash?: string } = {};
+        try {
+            const text = await proposeRes.text();
+            console.log('[useProposeSafeTransaction] Response status:', proposeRes.status);
+            console.log('[useProposeSafeTransaction] Response headers:', Object.fromEntries(proposeRes.headers.entries()));
+            console.log('[useProposeSafeTransaction] Response body:', text);
+            if (text && text.length > 0) {
+                try {
+                    result = JSON.parse(text);
+                } catch (parseError) {
+                    console.log('[useProposeSafeTransaction] Response is not JSON:', parseError);
+                    // Some Safe API deployments may return empty body on success
+                    result = { safeTxHash: safeTxHash };
+                }
+            } else {
+                console.log('[useProposeSafeTransaction] Empty response body, using safeTxHash from request');
+                result = { safeTxHash: safeTxHash };
+            }
+        } catch (error) {
+            console.error('[useProposeSafeTransaction] Failed to read response:', error);
+            result = { safeTxHash: safeTxHash };
+        }
+
+        const returnedSafeTxHash = result.safeTxHash || result.transactionHash || safeTxHash;
+
+        // 9. Return success info
+        return {
+            safeTxHash: returnedSafeTxHash,
+            safeUiUrl: `https://app.safe.global/sep:${checksumSafe}/transactions/queue`,
+            message: `Đã đề xuất phê duyệt. Cần thêm ${threshold - 1} chữ ký nữa để thực thi.`,
+        };
+    };
+
+    return { propose };
+}
+
+// ABI for Safe's execTransaction function
+const SAFE_EXEC_ABI = [
+  {
+    type: "function",
+    name: "execTransaction",
+    stateMutability: "payable",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "value", type: "uint256" },
+      { name: "data", type: "bytes" },
+      { name: "operation", type: "uint8" },
+      { name: "safeTxGas", type: "uint256" },
+      { name: "baseGas", type: "uint256" },
+      { name: "gasPrice", type: "uint256" },
+      { name: "gasToken", type: "address" },
+      { name: "refundReceiver", type: "address" },
+      { name: "signatures", type: "bytes" },
+    ],
+    outputs: [{ name: "success", type: "bool" }],
+  },
+] as const;
+
+interface SafeConfirmation {
+  owner: string;
+  signature: string;
+}
+
+interface SafeTransaction {
+  safeTxHash?: string;
+  transactionHash?: string;
+  to: string;
+  value: string;
+  data: string;
+  operation: number;
+  safeTxGas: string;
+  baseGas: string;
+  gasPrice: string;
+  gasToken?: string;
+  refundReceiver?: string;
+  confirmations: SafeConfirmation[];
+  confirmationsRequired?: number;
+  confirmations_required?: number;
+  isExecuted?: boolean;
+  executed?: boolean;
+}
+
+/**
+ * Hook for executing Safe multisig transactions directly from the app
+ */
+export function useExecuteSafeTransaction() {
+  const { address } = useAccount();
+  const publicClient = usePublicClient();
+  const { writeContractAsync, data, isPending, error } = useWriteContract();
+
+  const execute = async (
+    safeAddress: Address,
+    safeTxHash: string
+  ): Promise<`0x${string}`> => {
+    if (!publicClient) {
+      throw new Error("Không thể kết nối RPC để ước lượng gas.");
+    }
+    if (!address) {
+      throw new Error("Không tìm thấy địa chỉ ví để gửi giao dịch.");
+    }
+
+    // Validate safeAddress first
+    const normalizedSafeAddress = (safeAddress || "").trim().toLowerCase();
+    if (!/^0x[a-f0-9]{40}$/.test(normalizedSafeAddress)) {
+      throw new Error(`Invalid Safe address: "${safeAddress}". Expected a valid EVM address (0x + 40 hex chars).`);
+    }
+    const checksumSafe = getAddress(normalizedSafeAddress as Address);
+
+    // 1. Fetch pending transactions for the Safe from Safe Transaction Service
+    const safeApiUrl = `https://safe-transaction-sepolia.safe.global/api/v1/safes/${checksumSafe}/multisig-transactions/?executed=false&ordering=-nonce`;
+    const response = await fetch(safeApiUrl, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(
+        `Không thể lấy danh sách pending transactions từ Safe API: ${response.status}`
+      );
+    }
+    const payload = await response.json();
+    const results = Array.isArray(payload?.results) ? payload.results : [];
+
+    // 2. Find the specific transaction by safeTxHash
+    const tx = results.find(
+      (t: SafeTransaction) => (t.safeTxHash || t.transactionHash) === safeTxHash
+    );
+    if (!tx) {
+      throw new Error(
+        `Không tìm thấy pending transaction với hash ${safeTxHash}. Có thể đã được execute hoặc bị xóa.`
+      );
+    }
+
+    // 3. Validate threshold reached
+    const confirmations = Array.isArray(tx.confirmations)
+      ? tx.confirmations
+      : [];
+    const required = Number(
+      tx.confirmationsRequired || tx.confirmations_required || 0
+    );
+    const confirmed = confirmations.length;
+
+    if (confirmed < required) {
+      throw new Error(
+        `Chưa đủ chữ ký để thực thi. Cần ${required}, đã có ${confirmed}.`
+      );
+    }
+
+    // 4. Check not already executed
+    const isExecuted = Boolean(tx.isExecuted ?? tx.executed ?? false);
+    if (isExecuted) {
+      throw new Error("Giao dịch này đã được thực thi trước đó.");
+    }
+
+    // 5. Extract transaction parameters
+    const {
+      to,
+      value,
+      data: txData,
+      operation,
+      safeTxGas,
+      baseGas,
+      gasPrice,
+      gasToken,
+      refundReceiver,
+    } = tx;
+
+    if (!to || !txData) {
+      throw new Error("Dữ liệu transaction không hợp lệ từ Safe API.");
+    }
+
+    // 6. Sort confirmations by owner address (ascending) - MANDATORY for Safe
+    const sortedConfirmations = [...confirmations].sort((a, b) =>
+      a.owner.toLowerCase().localeCompare(b.owner.toLowerCase())
+    );
+
+    // 7. Concatenate signatures into single bytes string
+    // Each signature is hex string like "0x..."
+    const signatures: `0x${string}` =
+      "0x" +
+      sortedConfirmations
+        .map((c) => c.signature.slice(2)) // remove 0x prefix
+        .join("") as `0x${string}`;
+
+    // 8. Build args for execTransaction
+    const args: [
+      to: Address,
+      value: bigint,
+      data: `0x${string}`,
+      operation: number,
+      safeTxGas: bigint,
+      baseGas: bigint,
+      gasPrice: bigint,
+      gasToken: Address,
+      refundReceiver: Address,
+      signatures: `0x${string}`
+    ] = [
+      to as Address,
+      BigInt(value || 0),
+      txData as `0x${string}`,
+      Number(operation || 0),
+      BigInt(safeTxGas || 0),
+      BigInt(baseGas || 0),
+      BigInt(gasPrice || 0),
+      (gasToken || "0x0000000000000000000000000000000000000000") as Address,
+      (refundReceiver || "0x0000000000000000000000000000000000000000") as Address,
+      signatures,
+    ];
+
+    // 9. Simulate contract call to validate and estimate gas
+    let estimatedGas: bigint;
+    try {
+      await publicClient.simulateContract({
+        address: checksumSafe,
+        abi: SAFE_EXEC_ABI,
+        functionName: "execTransaction",
+        args,
+        account: address,
+      });
+      // simulation may return gasEstimate in some implementations
+      // but viem's simulateContract doesn't return it directly
+    } catch (simulationError) {
+      const message =
+        simulationError instanceof Error
+          ? simulationError.message.toLowerCase()
+          : "";
+      if (message.includes("gas limit too high")) {
+        // Continue with fallback gas
+      } else if (message.includes("already executed")) {
+        throw new Error("Giao dịch đã được thực thi trước đó.");
+      } else if (message.includes("invalid signature")) {
+        throw new Error(
+          "Chữ ký không hợp lệ. Có thể do Safe contract không khớp."
+        );
+      } else {
+        throw simulationError;
+      }
+    }
+
+    // 10. Estimate gas with buffer
+    try {
+      const gasEstimate = await publicClient.estimateContractGas({
+        address: checksumSafe,
+        abi: SAFE_EXEC_ABI,
+        functionName: "execTransaction",
+        args,
+        account: address,
+      });
+      estimatedGas = (gasEstimate * 120n) / 100n; // 20% buffer
+    } catch (estimateError) {
+      // Use safe fallback if estimation fails
+      console.warn(
+        "[useExecuteSafeTransaction] Gas estimation failed, using fallback",
+        estimateError
+      );
+      estimatedGas = 2_000_000n;
+    }
+
+    // 11. Execute transaction on-chain
+    const hash = await writeContractAsync({
+      address: checksumSafe,
+      abi: SAFE_EXEC_ABI,
+      functionName: "execTransaction",
+      args,
+      gas: estimatedGas,
+      value: 0n, // Safe execTransaction is payable, but we send 0 ETH
+    });
+
+    return hash as `0x${string}`;
+  };
+
+  return {
+    execute,
+    hash: data,
+    isPending,
+    error,
+  };
 }

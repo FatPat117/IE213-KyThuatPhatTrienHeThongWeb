@@ -15,9 +15,11 @@ export {
     useCreateCampaign,
     useDisburseMilestone,
     useDonateToCampaign,
+    useExecuteSafeTransaction,
     useMarkAsFailed,
     useMarkMilestoneFailed,
     useMintCertificate,
+    useProposeSafeTransaction,
     useReadAllCampaigns,
     useReadCampaign,
     useReadCampaignReviewersBatch,
@@ -68,6 +70,12 @@ export {
     useWalletStatus,
     useWalletValidation,
 } from "./hooks/use-wallet";
+export {
+    useOwnerSafes,
+} from "./hooks/use-owner-safes";
+export {
+    useReviewerCampaigns,
+} from "./hooks/use-reviewer-campaigns";
 export {
     getCampaignMetadataFromCache,
     isPlaceholderCampaignDescription,
