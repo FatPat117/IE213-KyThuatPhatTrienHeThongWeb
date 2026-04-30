@@ -134,6 +134,8 @@ services:
             - PINATA_API_KEY=${PINATA_API_KEY}
             - PINATA_API_SECRET=${PINATA_API_SECRET}
             - PINATA_GATEWAY_URL=${PINATA_GATEWAY_URL}
+            - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}
+            - CROWDFUNDING_CONTRACT_ADDRESS=${CROWDFUNDING_CONTRACT_ADDRESS}
         volumes:
             - ./backend/campaign-service:/app
             - /app/node_modules
