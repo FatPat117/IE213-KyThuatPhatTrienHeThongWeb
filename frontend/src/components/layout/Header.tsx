@@ -86,9 +86,16 @@ export default function Header() {
     const isAdminByRole = roleFromAuth === "admin";
     const isAdminByConfig =
         Boolean(walletAddress) && adminWallets.includes(walletAddress);
+    const isAdminBySafeOwner = useMemo(() => {
+        if (!owner || ownerSafes.length === 0) return false;
+        return ownerSafes.includes(owner.toLowerCase());
+    }, [owner, ownerSafes]);
+
     const isAdmin =
         Boolean(walletAddress) &&
-        (isAdminByOwner || isAdminByRole || isAdminByConfig);
+        (isAdminByOwner || isAdminByRole || isAdminByConfig || isAdminBySafeOwner);
+
+    const displayRole = isAdmin ? "admin" : (roleFromAuth || "user");
 
     const publicLinks: Array<{ href: string; label: string }> = [
         { href: "/", label: "Trang chủ" },
@@ -206,7 +213,7 @@ export default function Header() {
                         {isSignedIn && <NotificationBell token={token} />}
                         {isSignedIn ? (
                             <div className="relative hidden md:block group">
-                                <WalletConnectButton />
+                                <WalletConnectButton displayRole={displayRole} />
                                 {/* THE INVISIBLE BRIDGE FIX IS ADDED HERE */}
                                 <div className="invisible absolute right-0 top-full z-40 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 text-sm text-slate-700 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 before:absolute before:-top-2 before:left-0 before:h-2 before:w-full before:content-['']">
                                     {visibleAccountLinks.map((link) => {
@@ -231,12 +238,12 @@ export default function Header() {
                                 </div>
                             </div>
                         ) : (
-                            <WalletConnectButton />
+                            <WalletConnectButton displayRole={displayRole} />
                         )}
 
                         {isSignedIn && (
                             <div className="md:hidden">
-                                <WalletConnectButton />
+                                <WalletConnectButton displayRole={displayRole} />
                             </div>
                         )}
 

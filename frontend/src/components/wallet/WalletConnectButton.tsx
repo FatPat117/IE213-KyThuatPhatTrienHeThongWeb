@@ -25,7 +25,11 @@ const isIgnorableConnectorError = (message: string) => {
     return normalized.includes("connector not connected");
 };
 
-export default function WalletConnectButton() {
+export default function WalletConnectButton({
+    displayRole,
+}: {
+    displayRole?: string | null;
+}) {
     const isHydrated = useSyncExternalStore(
         EMPTY_SUBSCRIBE,
         () => true,
@@ -225,7 +229,7 @@ export default function WalletConnectButton() {
         <WalletConnectedCard
             address={address}
             isSepoliaNetwork={isSepoliaNetwork}
-            authRole={user?.role ?? null}
+            authRole={displayRole ?? user?.role ?? null}
             displayName={user?.displayName}
             avatarUrl={user?.avatarUrl}
             onDisconnect={handleDisconnect}
