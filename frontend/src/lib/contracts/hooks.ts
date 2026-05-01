@@ -1449,7 +1449,7 @@ export function useProposeSafeTransaction() {
 
     const propose = async (
         campaignId: number,
-        milestoneId: number,
+        milestoneId: number | null,
         reviewerSafe: Address
     ): Promise<{
         safeTxHash: string;
@@ -1460,12 +1460,27 @@ export function useProposeSafeTransaction() {
             throw new Error("Ví chưa kết nối. Vui lòng kết nối ví để đề xuất giao dịch.");
         }
 
-        // 1. Encode approveMilestone function data
-        const encodedData = encodeFunctionData({
-            abi: CROWDFUNDING_ABI,
-            functionName: "approveMilestone",
-            args: [BigInt(campaignId), BigInt(milestoneId)],
-        });
+        // 1. Encode function data based on milestoneId
+        let encodedData: `0x${string}`;
+        let functionName: string;
+
+        if (milestoneId === null) {
+            // adminApprove(uint256 campaignId)
+            functionName = "adminApprove";
+            encodedData = encodeFunctionData({
+                abi: CROWDFUNDING_ABI,
+                functionName: "adminApprove",
+                args: [BigInt(campaignId)],
+            });
+        } else {
+            // approveMilestone(uint256 campaignId, uint256 milestoneId)
+            functionName = "approveMilestone";
+            encodedData = encodeFunctionData({
+                abi: CROWDFUNDING_ABI,
+                functionName: "approveMilestone",
+                args: [BigInt(campaignId), BigInt(milestoneId)],
+            });
+        }
 
         // 2. Fetch Safe owners & threshold from CACHE (30min TTL) + nonce FRESH
         // Validate reviewerSafe address first

@@ -4,6 +4,7 @@ const { Campaign } = require("../models");
 const { ethers } = require("ethers");
 const { recordTransaction } = require("../utils/recordTransaction");
 const notificationService = require("../services/notification.service");
+const { getSafeOwners } = require("../utils/safeUtils");
 
 const QUEUE =
     process.env.RABBITMQ_QUEUE_MILESTONE_REPORT_SUBMITTED ||

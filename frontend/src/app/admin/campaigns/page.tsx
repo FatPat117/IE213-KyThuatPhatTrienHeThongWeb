@@ -2,17 +2,19 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { formatEther } from "viem";
-import { useAccount, useWaitForTransactionReceipt } from "wagmi";
+import { formatEther, getAddress } from "viem";
+import { useAccount, usePublicClient } from "wagmi";
 import { updateCampaignStatus, useAuth, useBackendCampaigns } from "@/lib";
 import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
 import {
-    useAdminApproveCampaign,
     useReadAllCampaigns,
     useReadCampaignReviewersBatch,
     useReadContractOwner,
 } from "@/lib/contracts/hooks";
 import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
+import { useOwnerSafes } from "@/lib/hooks/use-owner-safes";
+import { useProposeSafeTransaction } from "@/lib/contracts/hooks";
+import { CROWDFUNDING_CONTRACT_ADDRESS, contractConfig } from "@/lib/contracts/config";
 
 function formatEthFromWei(wei: bigint | number | string) {
     try {
@@ -49,33 +51,29 @@ function getRemainingDays(
 export default function AdminCampaignApprovalsPage() {
     const { user, token } = useAuth();
     const { address } = useAccount();
+    const publicClient = usePublicClient();
+
+    // Hooks
     const { owner } = useReadContractOwner();
-    const { campaigns, isLoading, refetch } = useReadAllCampaigns();
+    const { safes: ownerSafes, isLoading: isLoadingOwnerSafes } = useOwnerSafes();
+    const { propose: proposeAdminViaSafe } = useProposeSafeTransaction();
+
+    const [isProposing, setIsProposing] = useState(false);
+
+    const { campaigns, isLoading: isLoadingCampaigns, refetch } = useReadAllCampaigns();
     const backendCampaigns = useBackendCampaigns();
     const backendRefetch = backendCampaigns.refetch;
     const { reviewersByCampaignId } = useReadCampaignReviewersBatch(campaigns.length);
-    const { adminApproveCampaign, isPending } = useAdminApproveCampaign();
-    const [txHash, setTxHash] = useState<`0x${string}` | undefined>(undefined);
-    const [lastApprovedId, setLastApprovedId] = useState<number | null>(null);
-    const [mounted, setMounted] = useState(false);
-    const lastSyncedTxHashRef = useRef<`0x${string}` | undefined>(undefined);
-    const lastNotifiedSuccessTxHashRef = useRef<`0x${string}` | undefined>(
-        undefined,
-    );
-    const lastNotifiedFailureTxHashRef = useRef<`0x${string}` | undefined>(
-        undefined,
-    );
-    const [actionError, setActionError] = useState<string | null>(null);
-    const {
-        isLoading: isConfirming,
-        isSuccess: isConfirmed,
-        isError: isConfirmError,
-        error: confirmError,
-        data: receipt,
-    } = useWaitForTransactionReceipt({ hash: txHash });
-    useRegisterWalletTxOverlay(isPending || isConfirming);
 
-    // mounted guard: chằn SSR khỏi render phân nhánh isAdmin (tài khoản chưa có dữ liệu wallet)
+    const [mounted, setMounted] = useState(false);
+    const [actionError, setActionError] = useState<string | null>(null);
+    const [actionMessage, setActionMessage] = useState<string | null>(null);
+    const [lastProposedTx, setLastProposedTx] = useState<{ safeTxHash: string; safeUiUrl: string; campaignId: number } | null>(null);
+    const [txStatus, setTxStatus] = useState<"idle" | "proposed" | "executed" | "failed">("idle");
+
+    // Polling reference để cleanup
+    const pollingRef = useRef<NodeJS.Timeout | null>(null);
+
     useEffect(() => { setMounted(true); }, []);
 
     const normalizedWallet = (address || "").toLowerCase();
@@ -83,11 +81,24 @@ export default function AdminCampaignApprovalsPage() {
         .split(",")
         .map((item) => item.trim().toLowerCase())
         .filter((item) => /^0x[a-f0-9]{40}$/.test(item));
-    const isAdminByOwner = Boolean(normalizedWallet) && normalizedWallet === owner;
+
+    const isAdminByOwner = Boolean(normalizedWallet) && normalizedWallet === owner?.toLowerCase();
     const isAdminByRole = (user?.role || "").toLowerCase() === "admin";
     const isAdminByConfig = Boolean(normalizedWallet) && adminWallets.includes(normalizedWallet);
-    const isAdmin = Boolean(token && (isAdminByOwner || isAdminByRole || isAdminByConfig));
 
+    // Kiểm tra user có phải owner của Safe (owner của contract)
+    const isAdminBySafeOwner = useMemo(() => {
+        if (!owner || ownerSafes.length === 0) return false;
+        const normalizedOwner = owner.toLowerCase();
+        return ownerSafes.includes(normalizedOwner);
+    }, [owner, ownerSafes]);
+
+    const isAdmin = Boolean(
+        token &&
+        (isAdminByOwner || isAdminByRole || isAdminByConfig || isAdminBySafeOwner)
+    );
+
+    // Lấy metadata từ backend
     const metadataById = useMemo(() => {
         const map = new Map<
             number,
@@ -116,6 +127,8 @@ export default function AdminCampaignApprovalsPage() {
         });
         return map;
     }, [backendCampaigns.data]);
+
+    // Lọc campaigns pending approval
     const pendingItems = useMemo(
         () =>
             campaigns
@@ -135,59 +148,116 @@ export default function AdminCampaignApprovalsPage() {
         [campaigns, metadataById],
     );
 
+    // Polling Safe API để check transaction status via queue
     useEffect(() => {
-        if (isConfirming || !txHash || txHash === lastSyncedTxHashRef.current)
-            return;
-        refetch();
-        backendRefetch();
-        lastSyncedTxHashRef.current = txHash;
-    }, [backendRefetch, isConfirming, refetch, txHash]);
+        if (!lastProposedTx?.safeTxHash || !owner) return;
 
-    useEffect(() => {
-        if (
-            !txHash ||
-            !isConfirmed ||
-            txHash === lastNotifiedSuccessTxHashRef.current
-        )
-            return;
-        if (receipt?.status === "success") {
-            showSuccessToast("Duyệt campaign thành công.");
-            if (token && lastApprovedId) {
-                updateCampaignStatus(lastApprovedId, token, "active")
-                    .then(() => {
+        let mounted = true;
+        let attempts = 0;
+        const MAX_ATTEMPTS = 30; // 30 lần * 2s = 60s max
+
+        const checkStatus = async () => {
+            if (!mounted) return;
+
+            attempts++;
+            try {
+                const safeAddress = getAddress(owner as string);
+                const safeTxHash = lastProposedTx.safeTxHash;
+                // Query all transactions and filter by safeTxHash
+                const url = `https://api.safe.global/tx-service/sep/api/v1/safes/${safeAddress}/multisig-transactions/`;
+
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`Safe API error: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (!mounted) return;
+
+                console.log('[AdminPage] Safe queue response:', data);
+
+                // Safe API returns { results: [...] } or direct array
+                const transactions = Array.isArray(data) ? data : (data.results || []);
+
+                // Find our transaction by safeTxHash
+                const ourTx = transactions.find((tx: any) =>
+                    tx.safeTxHash === safeTxHash ||
+                    tx.contractTransactionHash === safeTxHash
+                );
+
+                if (ourTx) {
+                    console.log('[AdminPage] Found transaction in queue:', ourTx);
+
+                    if (ourTx.executionDate || ourTx.executed) {
+                        // Transaction executed (executionDate indicates it's been executed)
+                        setTxStatus("executed");
+                        setActionMessage("✅ Duyệt campaign thành công!");
+                        refetch();
                         backendRefetch();
-                    })
-                    .catch((error) => {
-                        showErrorToast(
-                            error instanceof Error
-                                ? error.message
-                                : "Không thể đồng bộ trạng thái campaign.",
-                        );
-                    });
+
+                        // Clear sau 3s
+                        setTimeout(() => {
+                            if (mounted) {
+                                setLastProposedTx(null);
+                                setTxStatus("idle");
+                            }
+                        }, 3000);
+                    } else if (ourTx.failed) {
+                        setTxStatus("failed");
+                        setActionError("Giao dịch thất bại trên Safe.");
+                        setLastProposedTx(null);
+                    } else {
+                        // Still pending (needs more confirmations or execution)
+                        if (mounted && attempts < MAX_ATTEMPTS) {
+                            pollingRef.current = setTimeout(checkStatus, 2000);
+                        } else if (mounted) {
+                            setTxStatus("failed");
+                            setActionError("Quá thời gian chờ. Vui lòng kiểm tra trên Safe UI.");
+                            setLastProposedTx(null);
+                        }
+                    }
+                } else {
+                    // Transaction not found in queue yet? Continue polling
+                    if (mounted && attempts < MAX_ATTEMPTS) {
+                        pollingRef.current = setTimeout(checkStatus, 2000);
+                    } else if (mounted) {
+                        setTxStatus("failed");
+                        setActionError("Không tìm thấy giao dịch trong queue. Vui lòng kiểm tra trên Safe UI.");
+                        setLastProposedTx(null);
+                    }
+                }
+            } catch (error) {
+                console.error('[AdminPage] Error polling Safe transaction:', error);
+                if (mounted && attempts < MAX_ATTEMPTS) {
+                    pollingRef.current = setTimeout(checkStatus, 5000);
+                } else if (mounted) {
+                    setTxStatus("failed");
+                    setActionError("Không thể kiểm tra trạng thái giao dịch.");
+                    setLastProposedTx(null);
+                }
             }
-            lastNotifiedSuccessTxHashRef.current = txHash;
-        }
-    }, [backendRefetch, isConfirmed, lastApprovedId, receipt?.status, token, txHash]);
+        };
 
+        // Bắt đầu poll ngay lập tức
+        checkStatus();
+
+        return () => {
+            mounted = false;
+            if (pollingRef.current) {
+                clearTimeout(pollingRef.current);
+            }
+        };
+    }, [lastProposedTx?.safeTxHash, owner, refetch, backendRefetch]);
+
+    // Cleanup khi unmount
     useEffect(() => {
-        if (!txHash || txHash === lastNotifiedFailureTxHashRef.current) return;
-
-        if (receipt?.status === "reverted") {
-            const message = "Giao dịch duyệt campaign đã bị revert.";
-            showErrorToast(message);
-            lastNotifiedFailureTxHashRef.current = txHash;
-            return;
-        }
-
-        if (isConfirmError) {
-            const message =
-                confirmError instanceof Error
-                    ? confirmError.message
-                    : "Không thể xác nhận giao dịch duyệt campaign.";
-            showErrorToast(message);
-            lastNotifiedFailureTxHashRef.current = txHash;
-        }
-    }, [confirmError, isConfirmError, receipt?.status, txHash]);
+        return () => {
+            if (pollingRef.current) {
+                clearTimeout(pollingRef.current);
+            }
+        };
+    }, []);
 
     if (!mounted) {
         return (
@@ -206,7 +276,17 @@ export default function AdminCampaignApprovalsPage() {
         return (
             <div className="min-h-screen bg-slate-50 px-6 py-10">
                 <main className="mx-auto max-w-3xl rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-900">
-                    Tài khoản hiện tại không có quyền truy cập trang quản trị campaign.
+                    <h2 className="text-lg font-bold">Không có quyền truy cập</h2>
+                    <p className="mt-2">
+                        Tài khoản hiện tại không có quyền truy cập trang quản trị campaign.
+                    </p>
+                    <div className="mt-4 space-y-1 text-xs">
+                        <p>Wallet của bạn: {address ? `${address.slice(0, 10)}...` : "Chưa connect"}</p>
+                        <p>Contract owner: {owner ? `${owner.slice(0, 10)}...` : "Loading..."}</p>
+                        <p>Bạn là owner của Safe này? {isAdminBySafeOwner ? "✅ Có" : "❌ Không"}</p>
+                        <p>Quyền từ role: {isAdminByRole ? "✅ Admin" : "❌ Không"}</p>
+                        <p>Quyền từ config: {isAdminByConfig ? "✅ Có" : "❌ Không"}</p>
+                    </div>
                 </main>
             </div>
         );
@@ -218,267 +298,272 @@ export default function AdminCampaignApprovalsPage() {
                 <h1 className="text-2xl font-bold text-slate-900">Duyệt campaign</h1>
                 <p className="mt-1 text-sm text-slate-600">
                     Danh sách campaign đang ở trạng thái chờ duyệt.
+                    {isAdminBySafeOwner && (
+                        <span className="ml-2 text-indigo-600 font-medium">
+                            (Đang dùng Safe multisig làm owner)
+                        </span>
+                    )}
                 </p>
-                {isLoading ? <p className="mt-4 text-sm">Đang tải...</p> : null}
-                {txHash && isConfirming ? (
-                    <p className="mt-4 text-sm text-blue-700">
-                        Đã gửi giao dịch duyệt. Đang chờ xác nhận on-chain...
-                    </p>
-                ) : null}
-                {txHash && isConfirmed && receipt?.status === "success" ? (
-                    <p className="mt-4 text-sm text-emerald-700">
-                        Campaign đã được duyệt thành công.
-                    </p>
-                ) : null}
-                {actionError ? <p className="mt-4 text-sm text-red-600">{actionError}</p> : null}
-                <div className="mt-4 space-y-3">
-                    {pendingItems.map((item) => (
-                        <div key={item.id} className="rounded-xl border border-slate-200 p-5 hover:border-blue-200 hover:bg-blue-50/30 transition-colors">
-                            <div className="flex items-start justify-between gap-4 mb-3">
-                                <div className="flex-1 min-w-0">
-                                    <p className="font-semibold text-slate-900 text-base">
-                                        {metadataById.get(item.id)?.title || `Campaign #${item.id}`}
-                                    </p>
-                                    {metadataById.get(item.id)?.description && (
-                                        <p className="text-xs text-slate-500 mt-1 line-clamp-2">
-                                            {metadataById.get(item.id)?.description}
-                                        </p>
-                                    )}
-                                </div>
-                                <Link
-                                    href={`/campaigns/${item.id}`}
-                                    target="_blank"
-                                    className="shrink-0 text-xs text-blue-600 hover:text-blue-700 hover:underline"
-                                >
-                                    Xem chi tiết →
-                                </Link>
-                            </div>
-                            {(() => {
-                                const metadata = metadataById.get(item.id);
-                                const goalWei = metadata?.goal || "0";
-                                const raisedWei = metadata?.raised || "0";
-                                const goalBigInt = (() => {
-                                    try {
-                                        return BigInt(goalWei);
-                                    } catch {
-                                        return 0n;
-                                    }
-                                })();
-                                const raisedBigInt = (() => {
-                                    try {
-                                        return BigInt(raisedWei);
-                                    } catch {
-                                        return 0n;
-                                    }
-                                })();
-                                const remainingBigInt =
-                                    goalBigInt > raisedBigInt
-                                        ? goalBigInt - raisedBigInt
-                                        : 0n;
-                                const progress = (() => {
-                                    try {
-                                        const goal = Number(formatEther(goalBigInt));
-                                        const raised = Number(formatEther(raisedBigInt));
-                                        if (goal <= 0) return 0;
-                                        return Math.min((raised / goal) * 100, 100);
-                                    } catch {
-                                        return 0;
-                                    }
-                                })();
-                                const createdAt = metadata?.createdAt;
-                                const ageDays = getCampaignAgeDays(createdAt);
-                                const remainingDays = getRemainingDays(
-                                    metadata?.deadline,
-                                    item.deadline,
-                                );
-                                const credibilityLabel =
-                                    progress >= 75
-                                        ? "Uy tín cao (đã gần đủ vốn)"
-                                        : progress >= 40
-                                          ? "Uy tín trung bình"
-                                          : "Uy tín thấp (vốn huy động còn thấp)";
-                                const needsAttention = remainingDays !== null && remainingDays <= 3;
-                                const isNewCampaign = ageDays !== null && ageDays <= 1;
-                                const hasReviewer = Boolean(
-                                    reviewersByCampaignId.get(item.id),
-                                );
 
-                                return (
-                                    <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                                        <div className="mb-2 flex flex-wrap items-center gap-2">
-                                            <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700">
-                                                Ưu tiên duyệt #{pendingItems.length - pendingItems.indexOf(item)}
-                                            </span>
-                                            {isNewCampaign && (
-                                                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
-                                                    Campaign mới tạo
-                                                </span>
-                                            )}
-                                            {needsAttention && (
-                                                <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
-                                                    Gần tới hạn gọi vốn
-                                                </span>
-                                            )}
-                                            {!hasReviewer && (
-                                                <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700">
-                                                    Thiếu reviewer an toàn
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div className="mb-2 flex items-center justify-between text-xs">
-                                            <span className="font-medium text-slate-700">Tiến độ gây quỹ</span>
-                                            <span className="font-semibold text-slate-900">
-                                                {progress.toFixed(1)}%
-                                            </span>
-                                        </div>
-                                        <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
-                                            <div
-                                                className="h-full rounded-full bg-emerald-500 transition-all"
-                                                style={{ width: `${Math.max(2, progress)}%` }}
-                                            />
-                                        </div>
-                                        <div className="mt-2 grid gap-1 text-[11px] text-slate-600 sm:grid-cols-2">
-                                            <p>Đánh giá nhanh: {credibilityLabel}</p>
-                                            <p className="sm:text-right">
-                                                Còn thiếu {formatEthFromWei(remainingBigInt)} ETH để chạm mục tiêu
-                                            </p>
-                                        </div>
-                                    </div>
-                                );
-                            })()}
-                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-600 mb-3">
-                                <p>
-                                    <span className="font-medium">Người tạo:</span>{" "}
-                                    <a
-                                        href={`https://sepolia.etherscan.io/address/${item.creator}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="font-mono text-blue-600 hover:underline"
-                                    >
-                                        {item.creator.slice(0, 8)}...{item.creator.slice(-6)}
-                                    </a>
-                                </p>
-                                <p>
-                                    <span className="font-medium">Mục tiêu:</span>{" "}
-                                    {formatEthFromWei(item.goal)} ETH
-                                </p>
-                                <p>
-                                    <span className="font-medium">Đã huy động:</span>{" "}
-                                    {formatEthFromWei(item.raised)} ETH
-                                </p>
-                                <p>
-                                    <span className="font-medium">Còn thiếu:</span>{" "}
-                                    {(() => {
-                                        try {
-                                            const remaining = item.goal - item.raised;
-                                            return formatEthFromWei(
-                                                remaining > 0n ? remaining : 0n,
-                                            );
-                                        } catch {
-                                            return "0.000";
-                                        }
-                                    })()}{" "}
-                                    ETH
-                                </p>
-                                <p>
-                                    <span className="font-medium">Tuổi campaign:</span>{" "}
-                                    {(() => {
-                                        const days = getCampaignAgeDays(
-                                            metadataById.get(item.id)?.createdAt,
-                                        );
-                                        if (days === null) return "-";
-                                        if (days === 0) return "Hôm nay";
-                                        return `${days} ngày`;
-                                    })()}
-                                </p>
-                                <p>
-                                    <span className="font-medium">Còn lại tới deadline:</span>{" "}
-                                    {(() => {
-                                        const days = getRemainingDays(
-                                            metadataById.get(item.id)?.deadline,
-                                            item.deadline,
-                                        );
-                                        if (days === null) return "-";
-                                        if (days < 0) return "Đã quá hạn";
-                                        return `${days} ngày`;
-                                    })()}
-                                </p>
-                                <p>
-                                    <span className="font-medium">Milestone:</span>{" "}
-                                    {metadataById.get(item.id)?.milestoneCount ?? item.milestoneCount}
-                                </p>
-                                <p>
-                                    <span className="font-medium">Đang ở mốc:</span>{" "}
-                                    {item.currentMilestoneId + 1}/{item.milestoneCount}
-                                </p>
-                                <p className="col-span-2">
-                                    <span className="font-medium">Reviewer:</span>{" "}
-                                    {reviewersByCampaignId.get(item.id)
-                                        ? (
-                                            <a
-                                                href={`https://sepolia.etherscan.io/address/${reviewersByCampaignId.get(item.id)}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="font-mono text-violet-600 hover:underline"
-                                            >
-                                                {(reviewersByCampaignId.get(item.id) || "").slice(0, 8)}...{(reviewersByCampaignId.get(item.id) || "").slice(-6)}
-                                            </a>
-                                        )
-                                        : <span className="text-slate-400">Chưa có</span>
-                                    }
-                                </p>
-                                <p className="col-span-2">
-                                    <span className="font-medium">Hạn gọi vốn:</span>{" "}
-                                    <span suppressHydrationWarning>
-                                        {metadataById.get(item.id)?.deadline
-                                            ? new Date(
-                                                  metadataById.get(item.id)?.deadline || "",
-                                              ).toLocaleString("vi-VN")
-                                            : item.deadline > 0
-                                              ? new Date(
-                                                    Number(item.deadline) * 1000,
-                                                ).toLocaleString("vi-VN")
-                                              : "-"}
-                                    </span>
-                                </p>
-                                <p className="col-span-2">
-                                    <span className="font-medium">Thời gian tạo:</span>{" "}
-                                    <span suppressHydrationWarning>
-                                        {metadataById.get(item.id)?.createdAt
-                                            ? new Date(
-                                                  metadataById.get(item.id)?.createdAt || "",
-                                              ).toLocaleString("vi-VN")
-                                            : "-"}
-                                    </span>
-                                </p>
+                {isLoadingOwnerSafes && (
+                    <p className="mt-2 text-xs text-slate-500">
+                        Đang kiểm tra quyền Safe...
+                    </p>
+                )}
+
+                {actionMessage && txStatus === "executed" && (
+                    <div className="mt-4 rounded-lg bg-emerald-50 border border-emerald-200 p-4 text-emerald-800">
+                        {actionMessage}
+                        {lastProposedTx && (
+                            <div className="mt-3 flex flex-wrap items-center gap-3">
+                                <a
+                                    href={lastProposedTx.safeUiUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                    </svg>
+                                    Xem trên Safe UI
+                                </a>
+                                <span className="text-xs opacity-75 font-mono">
+                                    Tx: {lastProposedTx.safeTxHash.slice(0, 12)}...{lastProposedTx.safeTxHash.slice(-6)}
+                                </span>
                             </div>
-                            <button
-                                type="button"
-                                disabled={isPending || isConfirming}
-                                className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                                onClick={async () => {
-                                    try {
-                                        setActionError(null);
-                                        const hash = await adminApproveCampaign(item.id);
-                                        setLastApprovedId(item.id);
-                                        setTxHash(hash as `0x${string}`);
-                                    } catch (error) {
-                                        setActionError(
-                                            error instanceof Error
-                                                ? error.message
-                                                : "Không thể duyệt campaign",
-                                        );
-                                    }
-                                }}
-                            >
-                                {isPending || isConfirming ? "Đang xử lý..." : "Duyệt campaign"}
-                            </button>
+                        )}
+                    </div>
+                )}
+
+                {actionError && (
+                    <div className="mt-4 rounded-lg bg-red-50 border border-red-200 p-4 text-red-700">
+                        {actionError}
+                    </div>
+                )}
+
+                {txStatus === "proposed" && (
+                    <div className="mt-4 rounded-lg bg-blue-50 border border-blue-200 p-4 text-blue-800">
+                        <div className="flex items-center gap-2">
+                            <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span>
+                                Đã gửi đề xuất đến Safe. Threshold = 1 nên sẽ tự động execute sau khi đủ chữ ký...
+                            </span>
                         </div>
-                    ))}
-                    {!isLoading && pendingItems.length === 0 ? (
-                        <p className="text-sm text-slate-500">Không có campaign chờ duyệt.</p>
-                    ) : null}
-                </div>
+                        {lastProposedTx && (
+                            <div className="mt-2">
+                                <a
+                                    href={lastProposedTx.safeUiUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-sm underline"
+                                >
+                                    Xem transaction trên Safe UI
+                                </a>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {isLoadingCampaigns ? (
+                    <p className="mt-4 text-sm">Đang tải campaigns...</p>
+                ) : (
+                    <div className="mt-4 space-y-3">
+                        {pendingItems.map((item) => (
+                            <div key={item.id} className="rounded-xl border border-slate-200 p-5 hover:border-blue-200 hover:bg-blue-50/30 transition-colors">
+                                <div className="flex items-start justify-between gap-4 mb-3">
+                                    <div className="flex-1 min-w-0">
+                                        <p className="font-semibold text-slate-900 text-base">
+                                            {metadataById.get(item.id)?.title || `Campaign #${item.id}`}
+                                        </p>
+                                        {metadataById.get(item.id)?.description && (
+                                            <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+                                                {metadataById.get(item.id)?.description}
+                                            </p>
+                                        )}
+                                    </div>
+                                    <Link
+                                        href={`/campaigns/${item.id}`}
+                                        target="_blank"
+                                        className="shrink-0 text-xs text-blue-600 hover:text-blue-700 hover:underline"
+                                    >
+                                        Xem chi tiết →
+                                    </Link>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-600 mb-3">
+                                    <p>
+                                        <span className="font-medium">Người tạo:</span>{" "}
+                                        <a
+                                            href={`https://sepolia.etherscan.io/address/${item.creator}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="font-mono text-blue-600 hover:underline"
+                                        >
+                                            {item.creator.slice(0, 8)}...{item.creator.slice(-6)}
+                                        </a>
+                                    </p>
+                                    <p>
+                                        <span className="font-medium">Mục tiêu:</span>{" "}
+                                        {formatEthFromWei(item.goal)} ETH
+                                    </p>
+                                    <p>
+                                        <span className="font-medium">Đã huy động:</span>{" "}
+                                        {formatEthFromWei(item.raised)} ETH
+                                    </p>
+                                    <p>
+                                        <span className="font-medium">Còn thiếu:</span>{" "}
+                                        {(() => {
+                                            try {
+                                                const remaining = item.goal - item.raised;
+                                                return formatEthFromWei(
+                                                    remaining > 0n ? remaining : 0n,
+                                                );
+                                            } catch {
+                                                return "0.000";
+                                            }
+                                        })()}{" "}
+                                        ETH
+                                    </p>
+                                    <p>
+                                        <span className="font-medium">Tuổi campaign:</span>{" "}
+                                        {(() => {
+                                            const days = getCampaignAgeDays(
+                                                metadataById.get(item.id)?.createdAt,
+                                            );
+                                            if (days === null) return "-";
+                                            if (days === 0) return "Hôm nay";
+                                            return `${days} ngày`;
+                                        })()}
+                                    </p>
+                                    <p>
+                                        <span className="font-medium">Còn lại tới deadline:</span>{" "}
+                                        {(() => {
+                                            const days = getRemainingDays(
+                                                metadataById.get(item.id)?.deadline,
+                                                item.deadline,
+                                            );
+                                            if (days === null) return "-";
+                                            if (days < 0) return "Đã quá hạn";
+                                            return `${days} ngày`;
+                                        })()}
+                                    </p>
+                                    <p>
+                                        <span className="font-medium">Milestone:</span>{" "}
+                                        {metadataById.get(item.id)?.milestoneCount ?? item.milestoneCount}
+                                    </p>
+                                    <p>
+                                        <span className="font-medium">Đang ở mốc:</span>{" "}
+                                        {item.currentMilestoneId + 1}/{item.milestoneCount}
+                                    </p>
+                                    <p className="col-span-2">
+                                        <span className="font-medium">Reviewer:</span>{" "}
+                                        {reviewersByCampaignId.get(item.id)
+                                            ? (
+                                                <a
+                                                    href={`https://sepolia.etherscan.io/address/${reviewersByCampaignId.get(item.id)}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="font-mono text-violet-600 hover:underline"
+                                                >
+                                                    {(reviewersByCampaignId.get(item.id) || "").slice(0, 8)}...{(reviewersByCampaignId.get(item.id) || "").slice(-6)}
+                                                </a>
+                                            )
+                                            : <span className="text-slate-400">Chưa có</span>
+                                        }
+                                    </p>
+                                    <p className="col-span-2">
+                                        <span className="font-medium">Hạn gọi vốn:</span>{" "}
+                                        <span suppressHydrationWarning>
+                                            {metadataById.get(item.id)?.deadline
+                                                ? new Date(
+                                                    metadataById.get(item.id)?.deadline || "",
+                                                ).toLocaleString("vi-VN")
+                                                : item.deadline > 0
+                                                  ? new Date(
+                                                        Number(item.deadline) * 1000,
+                                                    ).toLocaleString("vi-VN")
+                                                  : "-"}
+                                        </span>
+                                    </p>
+                                    <p className="col-span-2">
+                                        <span className="font-medium">Thời gian tạo:</span>{" "}
+                                        <span suppressHydrationWarning>
+                                            {metadataById.get(item.id)?.createdAt
+                                                ? new Date(
+                                                    metadataById.get(item.id)?.createdAt || "",
+                                                ).toLocaleString("vi-VN")
+                                                : "-"}
+                                        </span>
+                                    </p>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    disabled={isProposing || txStatus === "proposed" || txStatus === "executed"}
+                                    className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    onClick={async () => {
+                                        try {
+                                            setActionError(null);
+                                            setActionMessage(null);
+                                            setLastProposedTx(null);
+                                            setTxStatus("proposed");
+                                            setIsProposing(true);
+
+                                            if (!publicClient) {
+                                                throw new Error("Không thể kết nối RPC. Vui lòng thử lại.");
+                                            }
+
+                                            // Lấy owner address từ contract
+                                            const ownerAddr = await publicClient.readContract({
+                                                address: CROWDFUNDING_CONTRACT_ADDRESS as `0x${string}`,
+                                                abi: contractConfig.abi,
+                                                functionName: "owner",
+                                            }) as `0x${string}`;
+
+                                            // Propose adminApprove qua Safe
+                                            const result = await proposeAdminViaSafe(
+                                                item.id,
+                                                null, // milestoneId = null → adminApprove
+                                                ownerAddr
+                                            );
+
+                                            setLastProposedTx({
+                                                safeTxHash: result.safeTxHash,
+                                                safeUiUrl: result.safeUiUrl,
+                                                campaignId: item.id,
+                                            });
+
+                                            // Polling sẽ xử lý còn lại
+                                        } catch (error) {
+                                            console.error("Admin approve error:", error);
+                                            setTxStatus("failed");
+                                            setActionError(
+                                                error instanceof Error
+                                                    ? error.message
+                                                    : "Không thể duyệt campaign"
+                                            );
+                                            setLastProposedTx(null);
+                                        } finally {
+                                            setIsProposing(false);
+                                        }
+                                    }}
+                                >
+                                    {isProposing || txStatus === "proposed"
+                                        ? "Đang xử lý..."
+                                        : txStatus === "executed"
+                                        ? "Đã duyệt ✓"
+                                        : "Duyệt campaign"}
+                                </button>
+                            </div>
+                        ))}
+                        {!isLoadingCampaigns && pendingItems.length === 0 && (
+                            <p className="text-sm text-slate-500">Không có campaign chờ duyệt.</p>
+                        )}
+                    </div>
+                )}
             </main>
         </div>
     );

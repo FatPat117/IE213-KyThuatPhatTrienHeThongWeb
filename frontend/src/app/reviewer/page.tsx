@@ -216,7 +216,7 @@ export default function ReviewerWorkspacePage() {
     useRegisterWalletTxOverlay(isConfirming);
 
     // Initialize execute hook
-    const { execute: executeSafeTransaction, isPending: isExecuting, error: executeError } = useExecuteSafeTransaction();
+    const { execute: executeSafeTransaction, isPending: isExecuting } = useExecuteSafeTransaction();
 
     // Check if user has reviewer access (has at least one registered safe)
     const hasReviewerAccess = myReviewerSafes.length > 0;
@@ -227,9 +227,24 @@ export default function ReviewerWorkspacePage() {
         const pendingTargets = rows.flatMap((row) =>
             row.milestones
                 .filter((m) => {
+                    // 1. Filter theo DB status (như cũ)
                     const isPending = !CLEARLY_DONE_STATUSES.has(m.status) &&
                         (m.status === "disbursed" ? !m.approvedAt : true);
-                    return isPending;
+                    if (!isPending) return false;
+
+                    // 2. Skip nếu đã fully approved on-chain (đủ chữ ký VÀ đã execute)
+                    // Điều này tránh gọi API không cần thiết cho milestones đã hoàn tất
+                    const key = toApprovalKey(row.campaign.onChainId, m.milestoneId);
+                    const existingStatus = approvalStatusMap[key];
+
+                    if (existingStatus) {
+                        const isFullyApproved = existingStatus.confirmed >= existingStatus.required;
+                        if (isFullyApproved && existingStatus.executed) {
+                            return false; // Skip - milestone đã được phê duyệt và thực thi hoàn toàn
+                        }
+                    }
+
+                    return true; // Cần fetch approval status
                 })
                 .map((milestone) => ({
                     campaignId: row.campaign.onChainId,
@@ -261,7 +276,7 @@ export default function ReviewerWorkspacePage() {
             }
             return next;
         });
-    }, [rows, token]);
+    }, [rows, token, approvalStatusMap]);
 
     useEffect(() => {
         // Initial load is handled by useReviewerCampaigns hook
@@ -813,6 +828,13 @@ export default function ReviewerWorkspacePage() {
                                             approvingKey === key;
                                         const isRejecting =
                                             rejectingKey === key;
+
+                                        // Check if current wallet has already signed this milestone
+                                        const hasSigned = approvalStatus.signers?.some(
+                                            (signer) =>
+                                                signer.toLowerCase() === walletAddress.toLowerCase()
+                                        ) || false;
+
                                         const isPendingMilestone =
                                             CLEARLY_PENDING_STATUSES.has(milestone.status) ||
                                             (milestone.status === "disbursed" && !milestone.approvedAt);
@@ -822,6 +844,7 @@ export default function ReviewerWorkspacePage() {
                                         const canWalletApproveMilestone =
                                             isPendingMilestone &&
                                             hasEvidence &&
+                                            !hasSigned && // ← Don't allow if already signed
                                             myReviewerSafes.includes(campaignReviewerSafe);
                                         const canExecute =
                                             isPendingMilestone &&
@@ -886,118 +909,132 @@ export default function ReviewerWorkspacePage() {
 
                                                 {isPendingMilestone && (
                                                     <div className="mb-3 flex flex-wrap items-center gap-2">
-                                                        <button
-                                                            onClick={() =>
-                                                                handleApprove(
-                                                                    row.campaign.onChainId,
-                                                                    milestone.milestoneId,
-                                                                )
-                                                            }
-                                                            disabled={
-                                                                isApproving ||
-                                                                isRejecting ||
-                                                                !hasEvidence ||
-                                                                !canWalletApproveMilestone
-                                                            }
-                                                            title={!hasEvidence ? "Milestone chưa có bằng chứng" : !canWalletApproveMilestone ? "Ví không trùng reviewerSafe" : undefined}
-                                                            className="flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                                                        >
-                                                            {isApproving
-                                                                ? "Đang gửi phê duyệt..."
-                                                                : "Phê duyệt mốc"}
-                                                        </button>
+                                                        {hasSigned ? (
+                                                            <span className="rounded-xl bg-emerald-100 px-5 py-2.5 text-sm font-semibold text-emerald-700">
+                                                                ✅ Đã phê duyệt
+                                                            </span>
+                                                        ) : (
+                                                            <>
+                                                                <button
+                                                                    onClick={() =>
+                                                                        handleApprove(
+                                                                            row.campaign.onChainId,
+                                                                            milestone.milestoneId,
+                                                                        )
+                                                                    }
+                                                                    disabled={
+                                                                        isApproving ||
+                                                                        isRejecting ||
+                                                                        !hasEvidence ||
+                                                                        !canWalletApproveMilestone
+                                                                    }
+                                                                    title={!hasEvidence ? "Milestone chưa có bằng chứng" : !canWalletApproveMilestone ? "Ví không trùng reviewerSafe" : undefined}
+                                                                    className="flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                >
+                                                                    {isApproving
+                                                                        ? "Đang gửi phê duyệt..."
+                                                                        : "Phê duyệt mốc"}
+                                                                </button>
 
-                                                        <button
-                                                            onClick={() =>
-                                                                handleExecute(
-                                                                    row.campaign.onChainId,
-                                                                    milestone.milestoneId,
-                                                                )
-                                                            }
-                                                            disabled={
-                                                                isApproving ||
-                                                                isRejecting ||
-                                                                isExecuting ||
-                                                                !canExecute
-                                                            }
-                                                            title={
-                                                                !hasEvidence
-                                                                    ? "Milestone chưa có bằng chứng"
-                                                                    : !myReviewerSafes.includes(
-                                                                          campaignReviewerSafe
-                                                                      )
-                                                                    ? "Ví không nằm trong danh sách reviewer của campaign"
-                                                                    : approvalStatus.confirmed <
-                                                                      approvalStatus.required
-                                                                    ? `Chưa đủ chữ ký (${approvalStatus.confirmed}/${approvalStatus.required})`
-                                                                    : approvalStatus.executed
-                                                                    ? "Giao dịch đã được thực thi"
-                                                                    : Boolean(approvalStatus.pendingTxHash)
-                                                                    ? "Thực thi giao dịch trên Safe contract"
-                                                                    : "Không tìm thấy pending transaction"
-                                                            }
-                                                            className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                                                        >
-                                                            {isExecuting &&
-                                                            executingKey === key ? (
-                                                                "Đang thực thi..."
-                                                            ) : (
-                                                                <>
-                                                                    <svg
-                                                                        xmlns="http://www.w3.org/2000/svg"
-                                                                        className="h-4 w-4"
-                                                                        fill="none"
-                                                                        viewBox="0 0 24 24"
-                                                                        stroke="currentColor"
-                                                                    >
-                                                                        <path
-                                                                            strokeLinecap="round"
-                                                                            strokeLinejoin="round"
-                                                                            strokeWidth={2}
-                                                                            d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-                                                                        />
-                                                                        <path
-                                                                            strokeLinecap="round"
-                                                                            strokeLinejoin="round"
-                                                                            strokeWidth={2}
-                                                                            d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                                                                        />
-                                                                    </svg>
-                                                                    Thực thi
-                                                                </>
-                                                            )}
-                                                        </button>
+                                                                <button
+                                                                    onClick={() =>
+                                                                        handleExecute(
+                                                                            row.campaign.onChainId,
+                                                                            milestone.milestoneId,
+                                                                        )
+                                                                    }
+                                                                    disabled={
+                                                                        isApproving ||
+                                                                        isRejecting ||
+                                                                        isExecuting ||
+                                                                        !canExecute
+                                                                    }
+                                                                    title={
+                                                                        !hasEvidence
+                                                                            ? "Milestone chưa có bằng chứng"
+                                                                            : !myReviewerSafes.includes(
+                                                                                  campaignReviewerSafe
+                                                                              )
+                                                                            ? "Ví không nằm trong danh sách reviewer của campaign"
+                                                                            : approvalStatus.confirmed <
+                                                                              approvalStatus.required
+                                                                            ? `Chưa đủ chữ ký (${approvalStatus.confirmed}/${approvalStatus.required})`
+                                                                            : approvalStatus.executed
+                                                                            ? "Giao dịch đã được thực thi"
+                                                                            : Boolean(approvalStatus.pendingTxHash)
+                                                                            ? "Thực thi giao dịch trên Safe contract"
+                                                                            : "Không tìm thấy pending transaction"
+                                                                    }
+                                                                    className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                >
+                                                                    {isExecuting &&
+                                                                    executingKey === key ? (
+                                                                        "Đang thực thi..."
+                                                                    ) : (
+                                                                        <>
+                                                                            <svg
+                                                                                xmlns="http://www.w3.org/2000/svg"
+                                                                                className="h-4 w-4"
+                                                                                fill="none"
+                                                                                viewBox="0 0 24 24"
+                                                                                stroke="currentColor"
+                                                                            >
+                                                                                <path
+                                                                                    strokeLinecap="round"
+                                                                                    strokeLinejoin="round"
+                                                                                    strokeWidth={2}
+                                                                                    d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                                                                                />
+                                                                                <path
+                                                                                    strokeLinecap="round"
+                                                                                    strokeLinejoin="round"
+                                                                                    strokeWidth={2}
+                                                                                    d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                                                                />
+                                                                            </svg>
+                                                                            Thực thi
+                                                                        </>
+                                                                    )}
+                                                                </button>
 
-                                                        <button
-                                                            onClick={() =>
-                                                                openRejectModal(
-                                                                    row.campaign.onChainId,
-                                                                    milestone.milestoneId,
-                                                                )
-                                                            }
-                                                            disabled={
-                                                                isApproving ||
-                                                                isRejecting ||
-                                                                !canWalletApproveMilestone
-                                                            }
-                                                            title={!canWalletApproveMilestone ? "Ví không trùng reviewerSafe" : undefined}
-                                                            className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-5 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                                                        >
-                                                            {isRejecting
-                                                                ? "Đang xử lý từ chối..."
-                                                                : "Từ chối mốc"}
-                                                        </button>
+                                                                <button
+                                                                    onClick={() =>
+                                                                        openRejectModal(
+                                                                            row.campaign.onChainId,
+                                                                            milestone.milestoneId,
+                                                                        )
+                                                                    }
+                                                                    disabled={
+                                                                        isApproving ||
+                                                                        isRejecting ||
+                                                                        !canWalletApproveMilestone
+                                                                    }
+                                                                    title={!canWalletApproveMilestone ? "Ví không trùng reviewerSafe" : undefined}
+                                                                    className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-5 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                                                >
+                                                                    {isRejecting
+                                                                        ? "Đang xử lý từ chối..."
+                                                                        : "Từ chối mốc"}
+                                                                </button>
+                                                            </>
+                                                        )}
                                                     </div>
                                                 )}
 
-                                                {isPendingMilestone &&
-                                                    !canWalletApproveMilestone &&
-                                                    hasEvidence && (
-                                                        <p className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-                                                            Bạn không được gán quyền reviewer cho Safe address của campaign này.
-                                                            Chỉ owner của Safe mới có thể ký đề xuất approve.
-                                                        </p>
-                                                    )}
+                                                {isPendingMilestone && hasEvidence && (
+                                                    <div className="mb-3">
+                                                        {hasSigned ? (
+                                                            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                                                                Bạn đã ký duyệt mốc này. Đang chờ các reviewer còn lại hoàn tất.
+                                                            </p>
+                                                        ) : !myReviewerSafes.includes(campaignReviewerSafe) ? (
+                                                            <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                                                                Bạn không được gán quyền reviewer cho Safe address của campaign này.
+                                                                Chỉ owner của Safe mới có thể ký đề xuất approve.
+                                                            </p>
+                                                        ) : null}
+                                                    </div>
+                                                )}
 
                                                 {!hasEvidence && (
                                                     <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
