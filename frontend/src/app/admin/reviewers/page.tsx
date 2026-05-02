@@ -23,7 +23,7 @@ export default function AdminReviewersPage() {
     const { token, user } = useAuth();
     const { address } = useAccount();
     const chainId = useChainId();
-    const { owner } = useReadContractOwner();
+    const { isAdminOnChain } = useReadContractOwner();
     const isSepolia = chainId === SEPOLIA_CHAIN_ID;
     const [newSafe, setNewSafe] = useState("");
     const [newSafeValidation, setNewSafeValidation] = useState<{
@@ -93,21 +93,16 @@ export default function AdminReviewersPage() {
         .split(",")
         .map((item) => item.trim().toLowerCase())
         .filter((item) => /^0x[a-f0-9]{40}$/.test(item));
-    const isAdminByOwner =
-        Boolean(normalizedWallet) && normalizedWallet === owner;
     const isAdminByRole = (user?.role || "").toLowerCase() === "admin";
     const isAdminByConfig =
         Boolean(normalizedWallet) && adminWallets.includes(normalizedWallet);
     const isAdmin = Boolean(
-        token && (isAdminByOwner || isAdminByRole || isAdminByConfig),
+        token && (isAdminOnChain || isAdminByRole || isAdminByConfig),
     );
-    const isContractOwner =
-        Boolean(normalizedWallet) && normalizedWallet === owner;
     const shouldShowOwnerMismatchWarning =
         isMounted &&
         Boolean(normalizedWallet) &&
-        Boolean(owner) &&
-        normalizedWallet !== owner;
+        !isAdminOnChain;
 
     useEffect(() => {
         setIsMounted(true);
@@ -347,8 +342,8 @@ export default function AdminReviewersPage() {
                 </h1>
                 {shouldShowOwnerMismatchWarning && (
                     <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                        Ví hiện tại có thể vào trang admin nhưng không phải
-                        owner on-chain, nên không thể thêm/xóa reviewer Safe.
+                        Ví hiện tại có thể vào trang admin nhưng không có quyền
+                        ADMIN_ROLE on-chain, nên không thể thêm/xóa reviewer Safe.
                     </p>
                 )}
                 {!isSepolia && (
@@ -402,7 +397,7 @@ export default function AdminReviewersPage() {
                     <button
                         type="button"
                         disabled={
-                            !isContractOwner ||
+                            !isAdminOnChain ||
                             !isSepolia ||
                             newSafeValidation.status !== "valid" ||
                             !/^0x[a-f0-9]{40}$/.test(newSafe.trim().toLowerCase())
@@ -478,7 +473,7 @@ export default function AdminReviewersPage() {
                             )}
                             <button
                                 type="button"
-                                disabled={!isContractOwner}
+                                disabled={!isAdminOnChain}
                                 className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
                                 onClick={async () => {
                                     try {

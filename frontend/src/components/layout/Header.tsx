@@ -27,7 +27,7 @@ export default function Header() {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
     const { token, user } = useAuth();
-    const { owner } = useReadContractOwner();
+    const { isAdminOnChain } = useReadContractOwner();
     const { safes: ownerSafes, isLoading: isLoadingOwnerSafes } = useOwnerSafes();
     const { reviewerSafes: registeredSafes, isLoading: isLoadingRegisteredSafes } = useReadReviewerSafesOnChain();
 
@@ -81,8 +81,7 @@ export default function Header() {
         .split(",")
         .map((item) => item.trim().toLowerCase())
         .filter((item) => /^0x[a-f0-9]{40}$/.test(item));
-    const isAdminByOwner =
-        Boolean(walletAddress) && Boolean(owner) && walletAddress === owner;
+    const isAdminByOwner = isAdminOnChain;
     const isAdminByRole = roleFromAuth === "admin";
     const isAdminByConfig =
         Boolean(walletAddress) && adminWallets.includes(walletAddress);
