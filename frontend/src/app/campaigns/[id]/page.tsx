@@ -711,6 +711,10 @@ export default function CampaignDetailPage() {
                                     }
                                     progressPercent={progress}
                                     goalWei={campaign.goal}
+                                    raisedWei={campaign.raised}
+                                    disbursedWei={campaign.totalDisbursed}
+                                    userDonatedWei={effectiveUserDonatedAmount}
+                                    milestones={campaign.milestones} // TRUYỀN MILESTONES VÀO ĐÂY
                                     milestoneCount={campaign.milestoneCount}
                                     campaignStatusLabel={campaignStatusLabel}
                                     currentMilestoneId={
@@ -723,6 +727,7 @@ export default function CampaignDetailPage() {
                                         ...campaign,
                                         statusLabel: campaignStatusLabel,
                                     }}
+                                    userDonatedWei={effectiveUserDonatedAmount}
                                     backendTitle={
                                         !isPlaceholderCampaignTitle(
                                             backendCampaign.data?.title,

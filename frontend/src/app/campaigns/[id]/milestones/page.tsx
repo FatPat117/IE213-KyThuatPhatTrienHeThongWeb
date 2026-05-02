@@ -40,6 +40,17 @@ export default function CampaignMilestonesPage() {
     const [milestonesWarning, setMilestonesWarning] = useState<string | null>(
         null,
     );
+    const { data: userDonatedWei } = useReadContract({
+        ...contractConfig,
+        functionName: "donatedAmount",
+        args:
+            id > 0 && address
+                ? [BigInt(id), address]
+                : undefined,
+        query: {
+            enabled: id > 0 && !!address,
+        },
+    });
 
     const progress = useMemo(() => {
         if (!campaign) return 0;
@@ -255,6 +266,8 @@ export default function CampaignMilestonesPage() {
                                 contractAddress={contractConfig.address}
                                 canUploadEvidence={canUploadEvidence}
                                 raisedWei={campaign.raised}
+                                goalWei={campaign.goal}
+                                userDonatedWei={userDonatedWei as bigint}
                             />
                         </div>
                     )}

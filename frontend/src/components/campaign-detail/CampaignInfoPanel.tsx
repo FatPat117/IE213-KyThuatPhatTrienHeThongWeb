@@ -10,6 +10,8 @@ interface CampaignInfoPanelProps {
         creator: string;
         goal: bigint;
         raised: bigint;
+        totalRaised?: bigint;
+        totalDisbursed?: bigint;
         deadline: number;
         completed: boolean;
         statusLabel?:
@@ -21,6 +23,7 @@ interface CampaignInfoPanelProps {
             | "cancelled"
             | "pending_approval";
     };
+    userDonatedWei?: bigint;
     backendDescription?: string;
     backendTitle?: string;
     reviewerSafe?: string;
@@ -30,7 +33,7 @@ interface CampaignInfoPanelProps {
 
 function formatEthAmount(value: number) {
     if (!Number.isFinite(value) || value <= 0) return "0";
-    if (value < 0.01) return value.toFixed(4).replace(/\.?0+$/, "");
+    if (value % 0.01 !== 0) return value.toFixed(4).replace(/\.?0+$/, "");
     return value.toFixed(2);
 }
 
@@ -90,16 +93,26 @@ function getStatusBadge(
 /**
  * Main campaign overview block (title, creator, stats, progress).
  */
-export default function CampaignInfoPanel({
+    export default function CampaignInfoPanel({
     campaign,
     backendDescription,
     backendTitle,
     reviewerSafe,
     progress,
     thumbnailUrl,
+    userDonatedWei = 0n,
 }: CampaignInfoPanelProps) {
     const goalEth = Number(formatEther(campaign.goal));
     const raisedEth = Number(formatEther(campaign.raised));
+    const totalRaisedWei = campaign.totalRaised ?? campaign.raised;
+    const totalDisbursedWei = campaign.totalDisbursed ?? 0n;
+    const remainingWei = totalRaisedWei > totalDisbursedWei ? totalRaisedWei - totalDisbursedWei : 0n;
+
+    // Tính toán số tiền user sẽ nhận lại
+    const userRefundWei = (totalRaisedWei > 0n && userDonatedWei > 0n)
+        ? (userDonatedWei * remainingWei) / totalRaisedWei
+        : 0n;
+
     const statusBadge = getStatusBadge(
         campaign.statusLabel,
         campaign.completed,
@@ -195,7 +208,7 @@ export default function CampaignInfoPanel({
                 </div>
             )}
 
-            <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div className="rounded-xl bg-blue-50 border border-blue-100 p-5">
                     <p className="text-sm font-medium text-blue-600 mb-2">
                         Mục tiêu gây quỹ
@@ -217,6 +230,32 @@ export default function CampaignInfoPanel({
                             ETH
                         </span>
                     </p>
+                </div>
+                <div className="rounded-xl bg-amber-50 border border-amber-100 p-5">
+                    <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-medium text-amber-600">
+                            Hoàn lại nếu thất bại
+                        </p>
+                        <span className="bg-amber-100 text-amber-700 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">
+                            {totalRaisedWei > 0n 
+                                ? `${((Number(remainingWei) * 100) / Number(totalRaisedWei)).toFixed(0)}%` 
+                                : "100%"}
+                        </span>
+                    </div>
+                    <p className="text-2xl font-bold text-slate-900">
+                        {formatEthAmount(Number(formatEther(remainingWei)))}{" "}
+                        <span className="text-base font-normal text-slate-600">
+                            ETH
+                        </span>
+                    </p>
+                    {userDonatedWei > 0n && (
+                        <div className="mt-3 pt-3 border-t border-amber-200/50">
+                            <p className="text-[11px] text-amber-700 font-medium mb-1">Của riêng bạn (dự kiến):</p>
+                            <p className="text-sm font-bold text-amber-900">
+                                {formatEthAmount(Number(formatEther(userRefundWei)))} ETH
+                            </p>
+                        </div>
+                    )}
                 </div>
             </div>
 

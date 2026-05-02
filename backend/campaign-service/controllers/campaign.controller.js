@@ -616,10 +616,11 @@ async function getPublicCampaignMilestones(req, res, next) {
             campaignOnChainId,
             milestones: milestones.map((milestone) => {
                 const allocationBps = Number(milestone.allocationBps || 0);
-                const amountWei = (
-                    (totalRaised * BigInt(allocationBps)) /
-                    10_000n
-                ).toString();
+                const goal = toBigInt(campaign.goalWei || campaign.goal);
+                
+                // LUÔN TÍNH TOÁN LẠI: Đảm bảo số tiền luôn khớp với tỷ lệ % hiển thị
+                // Tránh việc dữ liệu trong DB bị sai lệch so với thực tế %
+                const amountWei = ((goal * BigInt(allocationBps)) / 10_000n).toString();
 
                 return {
                     milestoneId: milestone.milestoneId,
