@@ -7,7 +7,8 @@ import {FundingPlatform} from "../src/FundingPlatform.sol";
 contract Deploy is Script {
     function run() external {
         vm.startBroadcast();
-        new FundingPlatform();
+        address[] memory admins = new address[](0);
+        new FundingPlatform(address(0x1), admins);
         vm.stopBroadcast();
     }
 }

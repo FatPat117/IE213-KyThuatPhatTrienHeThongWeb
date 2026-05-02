@@ -2,10 +2,11 @@
 pragma solidity ^0.8.20;
 
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
+contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
+    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     uint256 public constant BPS_DENOMINATOR = 10_000;
     uint256 public constant DEFAULT_GOAL_WEI = 1 ether;
 
@@ -145,7 +146,29 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
     event ReviewerSafeAdded(address indexed safe);
     event ReviewerSafeRemoved(address indexed safe);
 
-    constructor() ERC721("SchoolCertificate", "SCERT") Ownable(msg.sender) {}
+    constructor(
+        address multisig,
+        address[] memory initialAdmins
+    ) ERC721("SchoolCertificate", "SCERT") {
+        require(multisig != address(0), "Invalid multisig");
+        
+        // Grant super-admin role to multisig
+        _grantRole(DEFAULT_ADMIN_ROLE, multisig);
+        _grantRole(ADMIN_ROLE, multisig);
+
+        // Grant admin role to initial admin list
+        for (uint256 i = 0; i < initialAdmins.length; i++) {
+            _grantRole(ADMIN_ROLE, initialAdmins[i]);
+        }
+    }
+
+    function addAdmin(address account) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        grantRole(ADMIN_ROLE, account);
+    }
+
+    function removeAdmin(address account) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        revokeRole(ADMIN_ROLE, account);
+    }
 
     modifier campaignExists(uint256 campaignId) {
         require(
@@ -272,7 +295,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         );
     }
 
-    function addReviewerSafe(address safe) external onlyOwner {
+    function addReviewerSafe(address safe) external onlyRole(ADMIN_ROLE) {
         require(safe != address(0), "Invalid reviewer");
         require(!reviewerSafes[safe], "Reviewer already approved");
 
@@ -281,7 +304,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         emit ReviewerSafeAdded(safe);
     }
 
-    function removeReviewerSafe(address safe) external onlyOwner {
+    function removeReviewerSafe(address safe) external onlyRole(ADMIN_ROLE) {
         require(reviewerSafes[safe], "Reviewer not approved");
 
         reviewerSafes[safe] = false;
@@ -498,7 +521,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
 
     function adminApprove(
         uint256 campaignId
-    ) external onlyOwner campaignExists(campaignId) {
+    ) external onlyRole(ADMIN_ROLE) campaignExists(campaignId) {
         Campaign storage campaign = campaigns[campaignId];
         require(
             campaign.status == CampaignStatus.PendingApproval,
@@ -635,5 +658,9 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         Campaign storage campaign = campaigns[campaignId];
         Milestone storage milestone = milestones[campaignId][milestoneId];
         return (campaign.totalRaised * milestone.allocationBps) / BPS_DENOMINATOR;
+    }
+
+    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721, AccessControl) returns (bool) {
+        return super.supportsInterface(interfaceId);
     }
 }
