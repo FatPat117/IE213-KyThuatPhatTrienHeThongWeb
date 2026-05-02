@@ -714,7 +714,6 @@ export default function CampaignDetailPage() {
                                     raisedWei={campaign.raised}
                                     disbursedWei={campaign.totalDisbursed}
                                     userDonatedWei={effectiveUserDonatedAmount}
-                                    milestones={campaign.milestones} // TRUYỀN MILESTONES VÀO ĐÂY
                                     milestoneCount={campaign.milestoneCount}
                                     campaignStatusLabel={campaignStatusLabel}
                                     currentMilestoneId={

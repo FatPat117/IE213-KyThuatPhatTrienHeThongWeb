@@ -118,7 +118,7 @@ export default function MilestonePreviewCard({
         progressPercent,
         goalWei,
         totalRaisedWei: raisedWei,
-        milestoneCount,
+        milestoneCount: milestoneCount !== undefined ? Number(milestoneCount) : undefined,
         campaignStatusLabel,
         currentMilestoneId,
     });
@@ -268,7 +268,8 @@ export default function MilestonePreviewCard({
                                 const amountText = (() => {
                                      try {
                                          // CHỈ lấy từ Backend, không tự tính toán lại ở Frontend
-                                         const wei = BigInt(milestone.amountWei || "0");
+                                         const rawWei = "amountWei" in milestone ? milestone.amountWei : undefined;
+                                         const wei = BigInt(rawWei || "0");
                                          const eth = Number(formatEther(wei));
                                          
                                          if (eth <= 0) return "";
@@ -285,8 +286,9 @@ export default function MilestonePreviewCard({
                                     try {
                                         if (!isApiMilestone) return null;
                                         const bps = Number(milestone.allocationBps || 0);
-                                        const milestoneGoalWei = (milestone.amountWei && milestone.amountWei !== "0")
-                                            ? BigInt(milestone.amountWei)
+                                        const apiM = milestone as PublicCampaignMilestone;
+                                        const milestoneGoalWei = (apiM.amountWei && apiM.amountWei !== "0")
+                                            ? BigInt(apiM.amountWei)
                                             : (goalWei * BigInt(bps)) / 10000n;
 
                                         const raisedForMilestone = (raisedWei > 0n && bps > 0)

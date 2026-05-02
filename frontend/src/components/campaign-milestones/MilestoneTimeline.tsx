@@ -115,6 +115,7 @@ export default function MilestoneTimeline({
     canUploadEvidence,
     raisedWei = 0n,
     goalWei = 0n,
+    userDonatedWei,
 }: MilestoneTimelineProps) {
     const { proofCidsByIndex } = useReadMilestonesOnChain(
         campaignId,
