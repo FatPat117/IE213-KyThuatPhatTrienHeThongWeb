@@ -77,19 +77,7 @@ export default function AdminCampaignApprovalsPage() {
 
     useEffect(() => { setMounted(true); }, []);
 
-    const normalizedWallet = (address || "").toLowerCase();
-    const adminWallets = (process.env.NEXT_PUBLIC_ADMIN_WALLETS || "")
-        .split(",")
-        .map((item) => item.trim().toLowerCase())
-        .filter((item) => /^0x[a-f0-9]{40}$/.test(item));
-
-    const isAdminByRole = (user?.role || "").toLowerCase() === "admin";
-    const isAdminByConfig = Boolean(normalizedWallet) && adminWallets.includes(normalizedWallet);
-
-    const isAdmin = Boolean(
-        token &&
-        (isAdminOnChain || isAdminByRole || isAdminByConfig)
-    );
+    const isAdmin = Boolean(token && isAdminOnChain);
 
     // Lấy metadata từ backend
     const metadataById = useMemo(() => {
@@ -273,11 +261,9 @@ export default function AdminCampaignApprovalsPage() {
                     <p className="mt-2">
                         Tài khoản hiện tại không có quyền truy cập trang quản trị campaign.
                     </p>
-                    <div className="mt-4 space-y-1 text-xs">
-                        <p>Wallet của bạn: {address ? `${address.slice(0, 10)}...` : "Chưa connect"}</p>
-                        <p>Quyền Admin on-chain: {isAdminOnChain ? "✅ Có" : "❌ Không"}</p>
-                        <p>Quyền từ role: {isAdminByRole ? "✅ Admin" : "❌ Không"}</p>
-                        <p>Quyền từ config: {isAdminByConfig ? "✅ Có" : "❌ Không"}</p>
+                    <div className="mt-4 space-y-1 text-xs text-slate-500">
+                        <p>Wallet: {address ? `${address.slice(0, 10)}...` : "Chưa connect"}</p>
+                        <p>On-chain Admin: {isAdminOnChain ? "✅ Đã xác thực" : "❌ Chưa có quyền"}</p>
                     </div>
                 </main>
             </div>

@@ -77,8 +77,9 @@ services:
             - MONGO_URI=${MONGO_URI_USERS}
             - JWT_SECRET=${JWT_SECRET}
             - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
-            - INITIAL_ADMIN_WALLET=${INITIAL_ADMIN_WALLET}
             - ADMIN_WALLETS=${ADMIN_WALLETS}
+            - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}
+            - CROWDFUNDING_CONTRACT_ADDRESS=${NEXT_PUBLIC_CROWDFUNDING_CONTRACT_ADDRESS}
         volumes:
             - ./backend/auth-service:/app
             - /app/node_modules
@@ -99,7 +100,7 @@ services:
             - PORT=${USER_SERVICE_PORT}
             - NODE_ENV=${NODE_ENV}
             - MONGO_URI=${MONGO_URI_USERS}
-            - INITIAL_ADMIN_WALLET=${INITIAL_ADMIN_WALLET}
+            - ADMIN_WALLETS=${ADMIN_WALLETS}
             - BODY_SIZE_LIMIT=${USER_SERVICE_BODY_SIZE_LIMIT:-25mb}
         volumes:
             - ./backend/user-service:/app
@@ -136,6 +137,7 @@ services:
             - PINATA_GATEWAY_URL=${PINATA_GATEWAY_URL}
             - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}
             - CROWDFUNDING_CONTRACT_ADDRESS=${CROWDFUNDING_CONTRACT_ADDRESS}
+            - ADMIN_WALLETS=${ADMIN_WALLETS}
         volumes:
             - ./backend/campaign-service:/app
             - /app/node_modules
@@ -156,6 +158,7 @@ services:
             - NODE_ENV=${NODE_ENV}
             - MONGO_URI=${MONGO_URI_DONATIONS}
             - CROWDFUNDING_CONTRACT_ADDRESS=${CROWDFUNDING_CONTRACT_ADDRESS}
+            - ADMIN_WALLETS=${ADMIN_WALLETS}
             - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY}
             - ETHERSCAN_LOGS_API_URL=${ETHERSCAN_LOGS_API_URL}
             - ETHERSCAN_CHAIN_ID=${ETHERSCAN_CHAIN_ID}
@@ -233,6 +236,7 @@ services:
             - NODE_ENV=${NODE_ENV}
             - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}
             - CROWDFUNDING_CONTRACT_ADDRESS=${CROWDFUNDING_CONTRACT_ADDRESS}
+            - ADMIN_WALLETS=${ADMIN_WALLETS}
             - USE_DYNAMIC_CONTRACT_ADDRESS=${USE_DYNAMIC_CONTRACT_ADDRESS}
             - MARK_FAILED_JOB_ENABLED=${MARK_FAILED_JOB_ENABLED}
             - MARK_FAILED_JOB_CRON=${MARK_FAILED_JOB_CRON}
@@ -266,7 +270,6 @@ services:
             dockerfile: Dockerfile
             args:
                 NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-                NEXT_PUBLIC_ADMIN_WALLETS: ${NEXT_PUBLIC_ADMIN_WALLETS}
                 NEXT_PUBLIC_CROWDFUNDING_CONTRACT_ADDRESS: ${NEXT_PUBLIC_CROWDFUNDING_CONTRACT_ADDRESS}  # thêm
                 NEXT_PUBLIC_SEPOLIA_RPC_URL: ${NEXT_PUBLIC_SEPOLIA_RPC_URL}
         container_name: frontend

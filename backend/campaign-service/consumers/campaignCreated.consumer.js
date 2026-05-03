@@ -46,11 +46,7 @@ const MILESTONE_READER_ABI = [
 let milestoneReader = null;
 
 function resolveAdminWalletsFromEnv() {
-    const combined = [
-        process.env.ADMIN_WALLETS || "",
-        process.env.INITIAL_ADMIN_WALLET || "",
-    ]
-        .join(",")
+    const combined = (process.env.ADMIN_WALLETS || "")
         .split(/[,\s;]+/)
         .map((item) => item.trim().toLowerCase())
         .filter((item) => /^0x[a-f0-9]{40}$/.test(item));
@@ -67,7 +63,7 @@ async function loadAdminWalletsFromUserService() {
     const userServiceUrl =
         process.env.USER_SERVICE_URL || "http://user-service:4001";
     const requesterWallet = normalizeWallet(
-        process.env.INITIAL_ADMIN_WALLET ||
+        (process.env.ADMIN_WALLETS || "").split(",")[0] ||
             process.env.DEFAULT_ADMIN_WALLET ||
             "",
     );

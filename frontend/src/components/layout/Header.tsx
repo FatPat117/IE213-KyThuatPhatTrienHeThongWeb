@@ -77,17 +77,7 @@ export default function Header() {
         return hasIntersection;
     }, [ownerSafes, registeredSafes, isSignedIn, isReviewerByRole, isLoadingOwnerSafes, isLoadingRegisteredSafes]);
 
-    const adminWallets = (process.env.NEXT_PUBLIC_ADMIN_WALLETS || "")
-        .split(",")
-        .map((item) => item.trim().toLowerCase())
-        .filter((item) => /^0x[a-f0-9]{40}$/.test(item));
-    const isAdminByOwner = isAdminOnChain;
-    const isAdminByRole = roleFromAuth === "admin";
-    const isAdminByConfig =
-        Boolean(walletAddress) && adminWallets.includes(walletAddress);
-    const isAdmin =
-        Boolean(walletAddress) &&
-        (isAdminByOwner || isAdminByRole || isAdminByConfig);
+    const isAdmin = Boolean(walletAddress) && isAdminOnChain;
 
     const publicLinks: Array<{ href: string; label: string }> = [
         { href: "/", label: "Trang chủ" },

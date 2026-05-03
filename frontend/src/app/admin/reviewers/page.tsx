@@ -89,20 +89,8 @@ export default function AdminReviewersPage() {
     }, [reviewersByCampaignId]);
 
     const normalizedWallet = (address || "").toLowerCase();
-    const adminWallets = (process.env.NEXT_PUBLIC_ADMIN_WALLETS || "")
-        .split(",")
-        .map((item) => item.trim().toLowerCase())
-        .filter((item) => /^0x[a-f0-9]{40}$/.test(item));
-    const isAdminByRole = (user?.role || "").toLowerCase() === "admin";
-    const isAdminByConfig =
-        Boolean(normalizedWallet) && adminWallets.includes(normalizedWallet);
-    const isAdmin = Boolean(
-        token && (isAdminOnChain || isAdminByRole || isAdminByConfig),
-    );
-    const shouldShowOwnerMismatchWarning =
-        isMounted &&
-        Boolean(normalizedWallet) &&
-        !isAdminOnChain;
+    const isAdmin = Boolean(token && isAdminOnChain);
+    const shouldShowOwnerMismatchWarning = false;
 
     useEffect(() => {
         setIsMounted(true);

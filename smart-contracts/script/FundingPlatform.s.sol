@@ -14,7 +14,7 @@ contract DeployFundingPlatform is Script {
 
         address multisig = vm.envAddress("MULTISIG_ADDRESS");
         // For simplicity, we read one admin address. You can expand this if needed.
-        address admin = vm.envAddress("ADMIN_ADDRESS"); 
+        address admin = vm.envAddress("ADMIN_WALLETS"); 
 
         address[] memory admins = new address[](1);
         admins[0] = admin;
