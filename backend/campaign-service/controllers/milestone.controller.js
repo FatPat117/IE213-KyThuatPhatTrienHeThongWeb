@@ -155,28 +155,38 @@ const uploadProgressEvidence = async (req, res) => {
             `[milestoneController.uploadProgressEvidence] IPFS ok: campaign=${campaignOnChainId}, milestone=${milestoneIndex}, cid=${cid}`,
         );
 
-        const progressReport = new ProgressReport({
-            campaignId: campaign._id,
-            campaignOnChainId: parseInt(campaignOnChainId, 10),
-            milestoneId: milestone._id,
-            milestoneIndex: parseInt(milestoneIndex, 10),
-            creatorWallet: creatorAddress.toLowerCase(),
-            cid,
-            gatewayUrl: pinataUrl || ipfsUrl || `${pinataGatewayUrl}/ipfs/${cid}`,
-            mimeType: file.mimetype || "application/octet-stream",
-            fileName: originalName,
-            submittedAt: new Date(),
-        });
-
-        await progressReport.save();
+        // Check if a report with this CID already exists to avoid E11000 duplicate key error
+        let progressReport = await ProgressReport.findOne({ cid });
+        
+        if (!progressReport) {
+            progressReport = new ProgressReport({
+                campaignId: campaign._id,
+                campaignOnChainId: parseInt(campaignOnChainId, 10),
+                milestoneId: milestone._id,
+                milestoneIndex: parseInt(milestoneIndex, 10),
+                creatorWallet: creatorAddress.toLowerCase(),
+                cid,
+                gatewayUrl: pinataUrl || ipfsUrl || `${pinataGatewayUrl}/ipfs/${cid}`,
+                mimeType: file.mimetype || "application/octet-stream",
+                fileName: originalName,
+                submittedAt: new Date(),
+            });
+            await progressReport.save();
+        } else {
+            console.log(`[milestoneController.uploadProgressEvidence] Report with CID ${cid} already exists, skipping creation.`);
+        }
 
         const submittedAt = new Date();
+        // 1. Luôn thêm vào evidenceCids (nếu chưa có)
         await Milestone.findByIdAndUpdate(milestone._id, {
-            $push: {
-                reportCids: { cid, submittedAt },
-                evidenceCids: cid,
-            },
+            $addToSet: { evidenceCids: cid },
         });
+
+        // 2. Chỉ push vào reportCids nếu CID này chưa từng xuất hiện
+        await Milestone.updateOne(
+            { _id: milestone._id, "reportCids.cid": { $ne: cid } },
+            { $push: { reportCids: { cid, submittedAt } } },
+        );
 
         const payload = {
             _id: progressReport._id,
@@ -869,7 +879,11 @@ const resubmitMilestone = async (req, res) => {
         }
 
         if (evidenceCid) {
-            milestone.evidenceCids.push(evidenceCid);
+            // Chỉ thêm nếu chưa có
+            if (!milestone.evidenceCids.includes(evidenceCid)) {
+                milestone.evidenceCids.push(evidenceCid);
+            }
+
             const lastIdx = milestone.rejectionHistory.length - 1;
             if (lastIdx >= 0) {
                 milestone.rejectionHistory[lastIdx].resubmittedAt = new Date();
