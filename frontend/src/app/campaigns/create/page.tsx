@@ -1,14 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { useRouter } from "next/navigation";
-import { decodeEventLog, parseEther } from "viem";
-import {
-    useAccount,
-    useChainId,
-    useReadContract,
-    useWaitForTransactionReceipt,
-} from "wagmi";
+import CreateCampaignForm from "@/components/campaign-create/CreateCampaignForm";
+import CreateCampaignGuardCard from "@/components/campaign-create/CreateCampaignGuardCard";
+import CreateCampaignHeader from "@/components/campaign-create/CreateCampaignHeader";
+import CreateCampaignSuccessCard from "@/components/campaign-create/CreateCampaignSuccessCard";
+import MilestoneBuilder from "@/components/campaign-create/MilestoneBuilder";
+import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 import {
     contractConfig,
     createTransaction,
@@ -24,16 +21,19 @@ import {
     getChainErrorMessage,
 } from "@/lib/errors/normalize";
 import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
-import CreateCampaignForm from "@/components/campaign-create/CreateCampaignForm";
-import CreateCampaignGuardCard from "@/components/campaign-create/CreateCampaignGuardCard";
-import CreateCampaignHeader from "@/components/campaign-create/CreateCampaignHeader";
-import CreateCampaignSuccessCard from "@/components/campaign-create/CreateCampaignSuccessCard";
-import MilestoneBuilder from "@/components/campaign-create/MilestoneBuilder";
-import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 import {
     uploadImageToCloud,
     validateImageFile,
 } from "@/lib/utils/uploadImage";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { decodeEventLog, parseEther } from "viem";
+import {
+    useAccount,
+    useChainId,
+    useReadContract,
+    useWaitForTransactionReceipt,
+} from "wagmi";
 
 const SEPOLIA_CHAIN_ID = 11155111;
 
@@ -59,6 +59,7 @@ export default function CreateCampaignPage() {
         description: "",
         goalEth: "1.0",
         deadline: "",
+        beneficiary: "",
         reviewerSafe: "",
     });
     const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -233,8 +234,15 @@ export default function CreateCampaignPage() {
         saveCampaignMetadataToCache(createdCampaignId, {
             title: formData.title,
             description: formData.description,
+            beneficiary: formData.beneficiary.trim().toLowerCase(),
         });
-    }, [createdCampaignId, formData.description, formData.title, isConfirmed]);
+    }, [
+        createdCampaignId,
+        formData.beneficiary,
+        formData.description,
+        formData.title,
+        isConfirmed,
+    ]);
 
     useEffect(() => {
         if (!isConfirmed || !createdCampaignId || metadataSynced || !token)
@@ -372,8 +380,8 @@ export default function CreateCampaignPage() {
         const errors: Record<string, string> = {};
         if (!formData.title.trim())
             errors.title = "Vui lòng nhập tên chiến dịch";
-        if (formData.title.length > 100)
-            errors.title = "Tên chiến dịch tối đa 100 ký tự";
+        if (formData.title.length > 200)
+            errors.title = "Tên chiến dịch tối đa 200 ký tự";
         if (!formData.description.trim())
             errors.description = "Vui lòng nhập mô tả";
         if (formData.description.length > 1000)
@@ -394,6 +402,13 @@ export default function CreateCampaignPage() {
             if (deadline <= now) errors.deadline = "Thời hạn phải ở tương lai";
             if (deadline > now + 365 * 24 * 60 * 60 * 1000)
                 errors.deadline = "Thời hạn không vượt quá 1 năm";
+        }
+
+        const beneficiary = formData.beneficiary.trim().toLowerCase();
+        if (!beneficiary) {
+            errors.beneficiary = "Vui lòng nhập địa chỉ ví người nhận tiền (beneficiary)";
+        } else if (!/^0x[a-f0-9]{40}$/.test(beneficiary)) {
+            errors.beneficiary = "Địa chỉ beneficiary không hợp lệ (0x + 40 ký tự hex)";
         }
 
         const reviewerSafe = formData.reviewerSafe.trim().toLowerCase();
@@ -683,6 +698,14 @@ export default function CreateCampaignPage() {
                                         );
                                     }
 
+                                    const beneficiaryNorm = formData.beneficiary
+                                        .trim()
+                                        .toLowerCase();
+                                    if (!/^0x[a-f0-9]{40}$/.test(beneficiaryNorm)) {
+                                        throw new Error(
+                                            "Địa chỉ beneficiary không hợp lệ.",
+                                        );
+                                    }
                                     // DEBUG LOG
                                     console.log("🚀 [CreateCampaign] Gửi contract:", {
                                         goalWei: parseEther(formData.goalEth).toString(),
@@ -690,6 +713,7 @@ export default function CreateCampaignPage() {
                                         deadlines: milestoneDeadlines,
                                         fundingDeadline: campaignFundingDeadline,
                                         reviewerSafe,
+                                        beneficiary: beneficiaryNorm,
                                         now: Math.floor(Date.now() / 1000)
                                     });
 
@@ -738,6 +762,7 @@ export default function CreateCampaignPage() {
                     ) : (
                         <CreateCampaignForm
                             formData={formData}
+                            connectedWallet={address}
                             reviewerOptions={reviewerOptions}
                             formErrors={formErrors}
                             isBusy={isFormBusy}

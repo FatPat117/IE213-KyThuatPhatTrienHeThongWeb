@@ -743,6 +743,7 @@ export default function CampaignDetailPage() {
                                             : cachedMetadata?.description
                                     }
                                     reviewerSafe={backendCampaign.data?.reviewerSafe}
+                                    declaredBeneficiary={cachedMetadata?.beneficiary}
                                     progress={progress}
                                     thumbnailUrl={backendCampaign.data?.thumbnailUrl ?? null}
                                 />

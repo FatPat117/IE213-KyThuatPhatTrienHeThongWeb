@@ -339,14 +339,14 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
 
         if (campaign.totalRaised >= campaign.goal) {
             campaign.status = CampaignStatus.InProgress;
-            
+
             // Kích hoạt mốc đầu tiên để chờ nộp minh chứng và duyệt
             milestones[campaignId][0].status = MilestoneStatus.PendingVerification;
             campaign.currentMilestoneId = 0;
-            
+
             // Tự động giải ngân ứng trước cho mốc đầu tiên để bắt đầu thực hiện
             _disburseMilestone(campaignId, 0);
-            
+
             emit FundingComplete(campaignId, campaign.totalRaised);
         }
     }
@@ -357,13 +357,13 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
     function _disburseMilestone(uint256 campaignId, uint256 milestoneId) internal {
         Campaign storage campaign = campaigns[campaignId];
         Milestone storage milestone = milestones[campaignId][milestoneId];
-        
+
         // Đã giải ngân rồi thì không giải ngân lại
         if (milestone.disbursedAt > 0) return;
 
         uint256 amount = getMilestoneAmount(campaignId, milestoneId);
         campaign.totalDisbursed += amount;
-        
+
         (bool success, ) = payable(campaign.beneficiary).call{value: amount}("");
         require(success, "Transfer failed");
 
@@ -450,10 +450,10 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
         if (nextMilestoneId < campaign.milestoneCount) {
             campaign.currentMilestoneId = nextMilestoneId;
             milestones[campaignId][nextMilestoneId].status = MilestoneStatus.PendingVerification;
-            
+
             // Giải ngân ứng trước cho mốc tiếp theo
             _disburseMilestone(campaignId, nextMilestoneId);
-            
+
             emit MilestoneUnlocked(campaignId, nextMilestoneId);
         } else {
             // Nếu là mốc cuối cùng, đánh dấu chiến dịch hoàn thành

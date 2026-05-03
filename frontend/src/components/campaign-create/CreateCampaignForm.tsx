@@ -10,8 +10,10 @@ interface CreateCampaignFormProps {
     description: string;
     goalEth: string;
     deadline: string;
+    beneficiary: string;
     reviewerSafe: string;
   };
+  connectedWallet: string | undefined;
   reviewerOptions: Array<{ value: string; label: string }>;
   formErrors: Record<string, string>;
   isBusy: boolean;
@@ -35,6 +37,7 @@ interface CreateCampaignFormProps {
  */
 export default function CreateCampaignForm({
   formData,
+  connectedWallet,
   reviewerOptions,
   formErrors,
   isBusy,
@@ -78,10 +81,10 @@ export default function CreateCampaignForm({
             formErrors.title ? 'border-red-500 focus:ring-red-100 focus:border-red-500' : 'border-slate-200'
           }`}
           placeholder="Ví dụ: Quỹ cộng đồng cho trường học"
-          maxLength={100}
+          maxLength={200}
         />
         {formErrors.title && <p className="mt-2 text-sm text-red-600">❌ {formErrors.title}</p>}
-        <p className="mt-2 text-xs text-slate-500">{formData.title.length}/100 ký tự</p>
+        <p className="mt-2 text-xs text-slate-500">{formData.title.length}/200 ký tự</p>
       </div>
 
       <div>
@@ -104,6 +107,45 @@ export default function CreateCampaignForm({
         />
         {formErrors.description && <p className="mt-2 text-sm text-red-600">❌ {formErrors.description}</p>}
         <p className="mt-2 text-xs text-slate-500">{formData.description.length}/1000 ký tự</p>
+      </div>
+
+      <div>
+        <label
+          htmlFor="create-campaign-beneficiary"
+          className="block text-sm font-semibold text-slate-900 mb-2"
+        >
+          Ví người nhận tiền (beneficiary) <span className="text-red-500">*</span>
+        </label>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+          <input
+            id="create-campaign-beneficiary"
+            type="text"
+            name="beneficiary"
+            value={formData.beneficiary}
+            onChange={(event) => onFieldChange('beneficiary', event.target.value)}
+            disabled={isBusy}
+            autoComplete="off"
+            spellCheck={false}
+            className={`w-full px-4 py-3 border-2 rounded-xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition disabled:bg-slate-100 text-slate-900 font-mono text-sm placeholder-slate-400 ${
+              formErrors.beneficiary ? 'border-red-500 focus:ring-red-100 focus:border-red-500' : 'border-slate-200'
+            }`}
+            placeholder="0x..."
+          />
+          {connectedWallet && (
+            <button
+              type="button"
+              disabled={isBusy}
+              onClick={() => onFieldChange('beneficiary', connectedWallet)}
+              className="shrink-0 rounded-xl border-2 border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-100 disabled:opacity-50"
+            >
+              Điền ví đang kết nối
+            </button>
+          )}
+        </div>
+        {formErrors.beneficiary && <p className="mt-2 text-sm text-red-600">❌ {formErrors.beneficiary}</p>}
+        <p className="mt-2 text-xs text-slate-500">
+          Đây là ví sẽ nhận tiền giải ngân theo ý bạn (không nhất thiết trùng ví đang ký giao dịch). Phiên bản contract hiện tại chưa truyền beneficiary riêng on-chain — địa chỉ bạn nhập được lưu cục bộ trên trình duyệt để tham khảo; khi nâng cấp hợp đồng/backend sẽ đồng bộ đầy đủ.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">

@@ -77,6 +77,7 @@ function CampaignsPageContent() {
                         ? campaign.description
                         : (cached?.description || ""),
                     creator: campaign.creator,
+                    beneficiary: campaign.beneficiary,
                     goal: BigInt(campaign.goal || "0"),
                     raised: BigInt(campaign.raised || "0"),
                     status: campaign.status,
@@ -96,6 +97,7 @@ function CampaignsPageContent() {
                 title: string;
                 description: string;
                 creator: string;
+                beneficiary?: string;
                 goal: bigint;
                 raised: bigint;
                 status?: string;
@@ -114,6 +116,9 @@ function CampaignsPageContent() {
                 campaignMap.set(campaign.id, {
                     ...existing,
                     creator: campaign.creator || existing.creator,
+                    beneficiary:
+                        existing.beneficiary ||
+                        (campaign.beneficiary as string | undefined),
                     goal: campaign.goal,
                     raised: campaign.raised,
                     status: campaign.statusLabel,
@@ -126,6 +131,7 @@ function CampaignsPageContent() {
                     title: cached?.title || `Chiến dịch #${campaign.id}`,
                     description: cached?.description || "Dữ liệu chiến dịch hiện chỉ có on-chain, chưa có metadata off-chain.",
                     creator: campaign.creator,
+                    beneficiary: campaign.beneficiary as string | undefined,
                     goal: campaign.goal,
                     raised: campaign.raised,
                     status: campaign.statusLabel,
@@ -151,10 +157,14 @@ function CampaignsPageContent() {
         // Apply search
         if (searchQuery.trim()) {
             const query = searchQuery.toLowerCase();
-            result = result.filter(c =>
-                c.title.toLowerCase().includes(query) ||
-                c.description.toLowerCase().includes(query)
-            );
+            result = result.filter((c) => {
+                const ben = (c.beneficiary || "").toLowerCase();
+                return (
+                    c.title.toLowerCase().includes(query) ||
+                    c.description.toLowerCase().includes(query) ||
+                    (ben && ben.includes(query))
+                );
+            });
         }
 
         // Apply sorting
@@ -438,6 +448,15 @@ function CampaignsPageContent() {
                                                 <p className="min-w-0 truncate text-xs text-slate-500">
                                                     bởi {campaign.creator.slice(0, 6)}...{campaign.creator.slice(-4)}
                                                 </p>
+                                                {campaign.beneficiary &&
+                                                    /^0x[a-f0-9]{40}$/i.test(campaign.beneficiary) &&
+                                                    campaign.beneficiary.toLowerCase() !==
+                                                        campaign.creator.toLowerCase() && (
+                                                        <p className="mt-0.5 truncate text-[11px] text-emerald-700/90">
+                                                            Nhận tiền: {campaign.beneficiary.slice(0, 6)}...
+                                                            {campaign.beneficiary.slice(-4)}
+                                                        </p>
+                                                    )}
                                             </div>
                                         </div>
                                         <div className="mt-2 flex items-center gap-2">

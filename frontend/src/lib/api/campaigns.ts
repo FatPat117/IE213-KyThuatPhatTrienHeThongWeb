@@ -8,6 +8,7 @@ export interface PublicCampaignItem {
     title: string;
     description: string;
     creator: string;
+    beneficiary?: string;
     reviewerSafe: string;
     goalWei: string;
     totalRaisedWei: string;
@@ -38,6 +39,22 @@ export interface ReviewerAggregate {
     campaignCount: number;
     totalDisbursedWei: string;
     campaignIds: number[];
+}
+
+export interface ReviewerProfile {
+    reviewerCode: string;
+    walletAddress: string;
+    isActive: boolean;
+    organizationName: string;
+    region: string;
+    walletHistory: Array<{
+        oldWallet?: string;
+        newWallet?: string;
+        changedAt?: string;
+        changedBy?: string;
+    }>;
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 export interface MilestoneApprovalStatus {
@@ -506,4 +523,38 @@ export async function getReviewerAggregates(): Promise<ReviewerAggregate[]> {
     return Array.from(aggregates.values()).sort(
         (a, b) => b.campaignCount - a.campaignCount,
     );
+}
+
+const REVIEWER_PROFILE_ENDPOINTS = [
+    "/reviewers",
+    "/campaigns/reviewers",
+    "/campaigns/public/reviewers",
+] as const;
+
+export async function getReviewerProfiles(
+    token?: string | null,
+): Promise<ReviewerProfile[]> {
+    for (const path of REVIEWER_PROFILE_ENDPOINTS) {
+        try {
+            const payload = await apiRequest<ReviewerProfile[]>(path, {
+                token: token || undefined,
+            });
+            if (Array.isArray(payload)) {
+                return payload;
+            }
+        } catch (error) {
+            const status =
+                typeof error === "object" &&
+                error !== null &&
+                "status" in error &&
+                typeof (error as { status?: unknown }).status === "number"
+                    ? (error as { status?: number }).status
+                    : undefined;
+            if (status === 404) {
+                continue;
+            }
+            throw error;
+        }
+    }
+    return [];
 }

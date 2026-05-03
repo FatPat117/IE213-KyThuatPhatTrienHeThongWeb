@@ -3,6 +3,8 @@
 type CachedCampaignMetadata = {
   title?: string;
   description?: string;
+  /** Địa chỉ người nhận tiền khai báo lúc tạo campaign (chỉ lưu trên trình duyệt; chưa gửi on-chain nếu contract chưa hỗ trợ). */
+  beneficiary?: string;
   updatedAt: number;
 };
 
@@ -27,15 +29,27 @@ function writeCache(next: Record<string, CachedCampaignMetadata>) {
 
 export function saveCampaignMetadataToCache(
   campaignId: number,
-  metadata: { title?: string; description?: string }
+  metadata: { title?: string; description?: string; beneficiary?: string },
 ) {
   if (!Number.isFinite(campaignId) || campaignId <= 0) return;
   const cache = readCache();
-  cache[String(campaignId)] = {
-    title: metadata.title?.trim() || undefined,
-    description: metadata.description?.trim() || undefined,
+  const key = String(campaignId);
+  const prev = cache[key];
+  const next: CachedCampaignMetadata = {
+    ...prev,
     updatedAt: Date.now(),
   };
+  if (metadata.title !== undefined) {
+    next.title = metadata.title?.trim() || undefined;
+  }
+  if (metadata.description !== undefined) {
+    next.description = metadata.description?.trim() || undefined;
+  }
+  if (metadata.beneficiary !== undefined) {
+    const b = metadata.beneficiary?.trim().toLowerCase();
+    next.beneficiary = b && /^0x[a-f0-9]{40}$/.test(b) ? b : undefined;
+  }
+  cache[key] = next;
   writeCache(cache);
 }
 

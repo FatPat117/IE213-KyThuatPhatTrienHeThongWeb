@@ -8,6 +8,7 @@ interface CampaignInfoPanelProps {
         title: string;
         description: string;
         creator: string;
+        beneficiary?: string;
         goal: bigint;
         raised: bigint;
         totalRaised?: bigint;
@@ -27,6 +28,8 @@ interface CampaignInfoPanelProps {
     backendDescription?: string;
     backendTitle?: string;
     reviewerSafe?: string;
+    /** Beneficiary nhập lúc tạo campaign, lưu localStorage (chưa có on-chain nếu contract chưa hỗ trợ). */
+    declaredBeneficiary?: string;
     progress: number;
     thumbnailUrl?: string | null;
 }
@@ -98,6 +101,7 @@ function getStatusBadge(
     backendDescription,
     backendTitle,
     reviewerSafe,
+    declaredBeneficiary,
     progress,
     thumbnailUrl,
     userDonatedWei = 0n,
@@ -174,6 +178,61 @@ function getStatusBadge(
                     </a>
                 </div>
             </div>
+
+            {declaredBeneficiary &&
+                /^0x[a-f0-9]{40}$/i.test(declaredBeneficiary) && (
+                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/90 p-4 mb-6">
+                        <p className="text-sm font-medium text-slate-700 mb-1">
+                            Người nhận tiền (bạn đã khai báo)
+                        </p>
+                        <p className="text-xs text-slate-500 mb-2">
+                            Lưu trên trình duyệt này khi tạo chiến dịch. Contract hiện tại có thể chưa ghi nhận địa chỉ này on-chain.
+                        </p>
+                        <div className="flex items-center gap-2">
+                            <code className="text-sm font-mono text-slate-900 break-all">
+                                {declaredBeneficiary.slice(0, 10)}...
+                                {declaredBeneficiary.slice(-8)}
+                            </code>
+                            <a
+                                href={`https://sepolia.etherscan.io/address/${declaredBeneficiary}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="ml-auto text-xs font-medium text-slate-600 hover:text-slate-800 whitespace-nowrap"
+                            >
+                                Explorer →
+                            </a>
+                        </div>
+                    </div>
+                )}
+
+            {campaign.beneficiary &&
+                /^0x[a-f0-9]{40}$/i.test(campaign.beneficiary) &&
+                campaign.beneficiary.toLowerCase() !==
+                    "0x0000000000000000000000000000000000000000" && (
+                    <div className="rounded-xl bg-emerald-50/80 border border-emerald-100 p-4 mb-6">
+                        <p className="text-sm font-medium text-emerald-800 mb-1">
+                            Người nhận tiền (beneficiary)
+                        </p>
+                        <p className="text-xs text-emerald-700/90 mb-2">
+                            Địa chỉ nhận giải ngân milestone theo hợp đồng.
+                        </p>
+                        <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600" />
+                            <code className="text-sm font-mono text-slate-900 break-all">
+                                {campaign.beneficiary.slice(0, 8)}...
+                                {campaign.beneficiary.slice(-6)}
+                            </code>
+                            <a
+                                href={`https://sepolia.etherscan.io/address/${campaign.beneficiary}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="ml-auto text-xs font-medium text-emerald-700 hover:text-emerald-800 whitespace-nowrap"
+                            >
+                                Xem ví →
+                            </a>
+                        </div>
+                    </div>
+                )}
 
             {/* Reviewer Safe */}
             {reviewerSafe && /^0x[a-f0-9]{40}$/i.test(reviewerSafe) && (

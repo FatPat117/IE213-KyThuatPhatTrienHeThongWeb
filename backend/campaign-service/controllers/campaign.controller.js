@@ -1,7 +1,7 @@
 const axios = require("axios");
 const { getAddress, ethers } = require("ethers");
 const campaignService = require("../services/campaign.service");
-const { Campaign, Milestone, Donation } = require("../models");
+const { Campaign, Milestone, Donation, Reviewer } = require("../models");
 const { successRes, errorRes } = require("../utils/response");
 
 // Approval status cache (for getMilestoneApprovalStatus)
@@ -642,6 +642,40 @@ async function getPublicCampaignMilestones(req, res, next) {
     }
 }
 
+/**
+ * Get reviewer profiles stored in campaign-service database.
+ * Returned payload is used by admin reviewer management UI.
+ */
+async function getReviewerProfiles(req, res, next) {
+    try {
+        const reviewers = await Reviewer.find({})
+            .sort({ createdAt: -1, reviewerCode: 1 })
+            .lean();
+
+        const items = reviewers.map((reviewer) => ({
+            reviewerCode: reviewer.reviewerCode || "",
+            walletAddress: (reviewer.walletAddress || "").toLowerCase(),
+            isActive: Boolean(reviewer.isActive),
+            organizationName: reviewer.organizationName || "",
+            region: reviewer.region || "",
+            walletHistory: Array.isArray(reviewer.walletHistory)
+                ? reviewer.walletHistory.map((history) => ({
+                      oldWallet: history?.oldWallet || "",
+                      newWallet: history?.newWallet || "",
+                      changedAt: history?.changedAt || null,
+                      changedBy: history?.changedBy || "",
+                  }))
+                : [],
+            createdAt: reviewer.createdAt || null,
+            updatedAt: reviewer.updatedAt || null,
+        }));
+
+        return successRes(res, items);
+    } catch (err) {
+        return next(err);
+    }
+}
+
 function extractParamValue(dataDecoded, paramName, fallbackIndex) {
     const parameters = Array.isArray(dataDecoded?.parameters)
         ? dataDecoded.parameters
@@ -976,5 +1010,6 @@ module.exports = {
     getPublicCampaignByOnChainId,
     getPublicCampaignMilestones,
     getMilestoneApprovalStatus,
+    getReviewerProfiles,
     invalidateApprovalCache,
 };

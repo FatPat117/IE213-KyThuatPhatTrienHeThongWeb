@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useAccount, useChainId } from "wagmi";
-import { getAddress } from "viem";
+import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 import { useAuth } from "@/lib";
+import { getReviewerProfiles, type ReviewerProfile } from "@/lib/api/campaigns";
 import {
     useAddReviewerSafe,
     useReadAllCampaigns,
@@ -12,9 +11,10 @@ import {
     useReadReviewerSafesOnChain,
     useRemoveReviewerSafe,
 } from "@/lib/contracts/hooks";
-import { useWaitForTransactionReceipt } from "wagmi";
-import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 import { showSuccessToast } from "@/lib/ui/toast";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { getAddress } from "viem";
+import { useAccount, useChainId, useWaitForTransactionReceipt } from "wagmi";
 
 const SEPOLIA_CHAIN_ID = 11155111;
 const SAFE_META_RETRY_AFTER_429_MS = 60_000;
@@ -62,6 +62,12 @@ export default function AdminReviewersPage() {
     const [safeMetaErrorByAddress, setSafeMetaErrorByAddress] = useState<
         Record<string, string>
     >({});
+    const [reviewerProfileByAddress, setReviewerProfileByAddress] = useState<
+        Record<string, ReviewerProfile>
+    >({});
+    const [reviewerProfileWarning, setReviewerProfileWarning] = useState<
+        string | null
+    >(null);
     const safeMetaCacheRef = useRef<
         Record<string, { threshold: number | null; ownerCount: number | null }>
     >({});
@@ -263,6 +269,45 @@ export default function AdminReviewersPage() {
     }, [newSafe]);
 
     useEffect(() => {
+        let cancelled = false;
+
+        const loadReviewerProfiles = async () => {
+            if (!token) return;
+            try {
+                const profiles = await getReviewerProfiles(token);
+                if (cancelled) return;
+                const nextMap: Record<string, ReviewerProfile> = {};
+                for (const profile of profiles) {
+                    const key = (profile.walletAddress || "")
+                        .trim()
+                        .toLowerCase();
+                    if (!/^0x[a-f0-9]{40}$/.test(key)) continue;
+                    nextMap[key] = profile;
+                }
+                setReviewerProfileByAddress(nextMap);
+                if (profiles.length === 0) {
+                    setReviewerProfileWarning(
+                        "Backend chưa expose endpoint danh sách reviewer profile nên chưa thể hiển thị reviewerCode/region/organizationName.",
+                    );
+                } else {
+                    setReviewerProfileWarning(null);
+                }
+            } catch {
+                if (cancelled) return;
+                setReviewerProfileByAddress({});
+                setReviewerProfileWarning(
+                    "Không tải được reviewer profile từ backend.",
+                );
+            }
+        };
+
+        loadReviewerProfiles();
+        return () => {
+            cancelled = true;
+        };
+    }, [token]);
+
+    useEffect(() => {
         if (!txHash || !pendingAction) return;
         if (isConfirming) return;
 
@@ -342,6 +387,11 @@ export default function AdminReviewersPage() {
                 {actionError && (
                     <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                         {actionError}
+                    </p>
+                )}
+                {reviewerProfileWarning && (
+                    <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                        {reviewerProfileWarning}
                     </p>
                 )}
                 <div className="mt-4 flex gap-2">
@@ -428,35 +478,83 @@ export default function AdminReviewersPage() {
                     </button>
                 </div>
                 <div className="mt-4 space-y-3">
-                    {reviewerSafes.map((safe) => (
-                        <div
-                            key={safe}
-                            className="rounded-xl border border-slate-200 p-4"
-                        >
+                    {reviewerSafes.map((safe) => {
+                        const normalizedSafe = safe.toLowerCase();
+                        const profile = reviewerProfileByAddress[normalizedSafe];
+                        return (
+                            <div
+                                key={safe}
+                                className="rounded-xl border border-slate-200 p-4"
+                            >
                             <p className="break-all text-sm font-semibold">
                                 {safe}
                             </p>
                             <p className="text-xs text-slate-600">
                                 Campaign đang đảm nhận:{" "}
-                                {assignedCountBySafe.get(safe.toLowerCase()) ||
+                                {assignedCountBySafe.get(normalizedSafe) ||
                                     0}
                             </p>
                             <p className="text-xs text-slate-500">
-                                Tỉnh/thành phụ trách: Chưa cập nhật
+                                Mã reviewer:{" "}
+                                {profile?.reviewerCode || "Chưa có từ backend"}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                                Wallet reviewer:{" "}
+                                {profile?.walletAddress || "Chưa có từ backend"}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                                Tỉnh/thành phụ trách:{" "}
+                                {profile?.region?.trim() ||
+                                    "Chưa có từ backend"}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                                Tổ chức:{" "}
+                                {profile?.organizationName?.trim() ||
+                                    "Chưa có từ backend"}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                                Trạng thái:{" "}
+                                {profile
+                                    ? profile.isActive
+                                        ? "Đang hoạt động"
+                                        : "Đã vô hiệu"
+                                    : "Chưa có từ backend"}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                                Số lần đổi ví:{" "}
+                                {profile
+                                    ? profile.walletHistory?.length || 0
+                                    : "Chưa có từ backend"}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                                Tạo lúc:{" "}
+                                {profile?.createdAt
+                                    ? new Date(profile.createdAt).toLocaleString(
+                                          "vi-VN",
+                                      )
+                                    : "Chưa có từ backend"}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                                Cập nhật lúc:{" "}
+                                {profile?.updatedAt
+                                    ? new Date(profile.updatedAt).toLocaleString(
+                                          "vi-VN",
+                                      )
+                                    : "Chưa có từ backend"}
                             </p>
                             <p className="text-xs text-slate-500">
                                 Ngưỡng ký (threshold):{" "}
-                                {safeMetaByAddress[safe]?.threshold ??
+                                {safeMetaByAddress[normalizedSafe]?.threshold ??
                                     "Không xác định"}
                             </p>
                             <p className="text-xs text-slate-500">
                                 Số owner Safe:{" "}
-                                {safeMetaByAddress[safe]?.ownerCount ??
+                                {safeMetaByAddress[normalizedSafe]?.ownerCount ??
                                     "Không xác định"}
                             </p>
-                            {safeMetaErrorByAddress[safe] && (
+                            {safeMetaErrorByAddress[normalizedSafe] && (
                                 <p className="mt-1 text-xs text-red-600">
-                                    {safeMetaErrorByAddress[safe]}
+                                    {safeMetaErrorByAddress[normalizedSafe]}
                                 </p>
                             )}
                             <button
@@ -485,8 +583,9 @@ export default function AdminReviewersPage() {
                             >
                                 Xóa
                             </button>
-                        </div>
-                    ))}
+                            </div>
+                        );
+                    })}
                 </div>
             </main>
         </div>
