@@ -455,10 +455,10 @@ export default function AdminCampaignApprovalsPage() {
                                                     metadataById.get(item.id)?.deadline || "",
                                                 ).toLocaleString("vi-VN")
                                                 : item.deadline > 0
-                                                  ? new Date(
+                                                    ? new Date(
                                                         Number(item.deadline) * 1000,
                                                     ).toLocaleString("vi-VN")
-                                                  : "-"}
+                                                    : "-"}
                                         </span>
                                     </p>
                                     <p className="col-span-2">
@@ -488,7 +488,7 @@ export default function AdminCampaignApprovalsPage() {
                                             // 1. Kiểm tra xem người dùng có muốn dùng Safe không, hoặc là admin trực tiếp
                                             // Nếu walletAddress có ADMIN_ROLE và KHÔNG phải là Safe (hoặc đơn giản là muốn duyệt nhanh)
                                             // Ở đây ta ưu tiên duyệt trực tiếp nếu có quyền.
-                                            
+
                                             if (isAdminOnChain) {
                                                 console.log("[AdminPage] Detected ADMIN_ROLE on-chain, attempting direct approval...");
                                                 const tx = await directApprove(item.id);
@@ -519,8 +519,8 @@ export default function AdminCampaignApprovalsPage() {
                                     {isProposing || txStatus === "proposed"
                                         ? "Đang xử lý..."
                                         : txStatus === "executed"
-                                        ? "Đã duyệt ✓"
-                                        : "Duyệt campaign"}
+                                            ? "Đã duyệt ✓"
+                                            : "Duyệt campaign"}
                                 </button>
                             </div>
                         ))}

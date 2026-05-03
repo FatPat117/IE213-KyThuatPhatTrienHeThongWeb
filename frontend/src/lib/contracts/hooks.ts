@@ -1480,12 +1480,12 @@ export function useProposeSafeTransaction() {
                 args: [BigInt(campaignId)],
             });
         } else {
-            // approveMilestone(uint256 campaignId, uint256 milestoneId, string ipfsCid)
+            // approveMilestone(uint256 campaignId, uint256 milestoneId)
             functionName = "approveMilestone";
             encodedData = encodeFunctionData({
                 abi: CROWDFUNDING_ABI,
                 functionName: "approveMilestone",
-                args: [BigInt(campaignId), BigInt(milestoneId), ""],
+                args: [BigInt(campaignId), BigInt(milestoneId)],
             });
         }
 
