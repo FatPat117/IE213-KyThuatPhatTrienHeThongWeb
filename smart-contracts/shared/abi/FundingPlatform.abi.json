@@ -1348,5 +1348,93 @@
             }
         ],
         "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "submitMilestoneProof",
+        "inputs": [
+            {
+                "name": "campaignId",
+                "type": "uint256",
+                "internalType": "uint256"
+            },
+            {
+                "name": "milestoneId",
+                "type": "uint256",
+                "internalType": "uint256"
+            },
+            {
+                "name": "ipfsCid",
+                "type": "string",
+                "internalType": "string"
+            }
+        ],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+    },
+    {
+        "type": "function",
+        "name": "approveMilestone",
+        "inputs": [
+            {
+                "name": "campaignId",
+                "type": "uint256",
+                "internalType": "uint256"
+            },
+            {
+                "name": "milestoneId",
+                "type": "uint256",
+                "internalType": "uint256"
+            },
+            {
+                "name": "ipfsCid",
+                "type": "string",
+                "internalType": "string"
+            }
+        ],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+    },
+    {
+        "type": "function",
+        "name": "markMilestoneFailed",
+        "inputs": [
+            {
+                "name": "campaignId",
+                "type": "uint256",
+                "internalType": "uint256"
+            },
+            {
+                "name": "milestoneId",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+    },
+    {
+        "type": "function",
+        "name": "getMilestoneAmount",
+        "inputs": [
+            {
+                "name": "campaignId",
+                "type": "uint256",
+                "internalType": "uint256"
+            },
+            {
+                "name": "milestoneId",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "stateMutability": "view"
     }
 ]

@@ -155,8 +155,10 @@ export default function MilestoneTimeline({
 
                     // Tính tổng % đã giải ngân trước mốc này
                     let accumulatedBps = 0;
-                    for (let j = 0; j < index; j++) {
-                        accumulatedBps += milestones[j].allocationBps || 0;
+                    for (let j = 0; j <= index; j++) {
+                        if (milestones[j].status !== "pending_funding") {
+                            accumulatedBps += milestones[j].allocationBps || 0;
+                        }
                     }
                     const remainingBps = 10000 - accumulatedBps;
 
