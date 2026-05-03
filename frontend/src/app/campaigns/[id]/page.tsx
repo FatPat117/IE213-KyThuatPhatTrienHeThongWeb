@@ -137,16 +137,16 @@ export default function CampaignDetailPage() {
     });
     useRegisterWalletTxOverlay(
         isPending ||
-            isConfirming ||
-            disbursePending ||
-            disburseConfirming ||
-            fundingRefundPending ||
-            milestoneRefundPending ||
-            refundConfirming ||
-            mintPending ||
-            mintConfirming ||
-            markAsFailedPending ||
-            markAsFailedConfirming,
+        isConfirming ||
+        disbursePending ||
+        disburseConfirming ||
+        fundingRefundPending ||
+        milestoneRefundPending ||
+        refundConfirming ||
+        mintPending ||
+        mintConfirming ||
+        markAsFailedPending ||
+        markAsFailedConfirming,
     );
 
     const { data: hasMintedCertificate } = useReadContract({
@@ -473,7 +473,7 @@ export default function CampaignDetailPage() {
             const friendly = getFriendlyError(err as { message?: string });
             showErrorToast(
                 friendly ||
-                    "Không thể giải ngân milestone hiện tại. Vui lòng thử lại.",
+                "Không thể giải ngân milestone hiện tại. Vui lòng thử lại.",
             );
         }
     };
@@ -554,7 +554,7 @@ export default function CampaignDetailPage() {
             const friendly = getFriendlyError(err as { message?: string });
             showErrorToast(
                 friendly ||
-                    "Không thể cập nhật trạng thái thất bại. Vui lòng thử lại.",
+                "Không thể cập nhật trạng thái thất bại. Vui lòng thử lại.",
             );
         }
     };
@@ -930,8 +930,8 @@ export default function CampaignDetailPage() {
                                             {markAsFailedPending
                                                 ? "⏳ Đợi xác nhận từ ví..."
                                                 : markAsFailedConfirming
-                                                  ? "🔄 Đang xác nhận..."
-                                                  : "Cập nhật trạng thái thất bại"}
+                                                    ? "🔄 Đang xác nhận..."
+                                                    : "Cập nhật trạng thái thất bại"}
                                         </button>
                                         {markAsFailedError && (
                                             <p className="mt-3 text-xs text-red-700">
@@ -990,13 +990,13 @@ export default function CampaignDetailPage() {
                                     isSepolia={isSepolia}
                                     campaignStatusLabel={
                                         campaignStatusLabel as
-                                            | "pending_approval"
-                                            | "active"
-                                            | "in_progress"
-                                            | "completed"
-                                            | "partial_failed"
-                                            | "failed"
-                                            | "cancelled"
+                                        | "pending_approval"
+                                        | "active"
+                                        | "in_progress"
+                                        | "completed"
+                                        | "partial_failed"
+                                        | "failed"
+                                        | "cancelled"
                                     }
                                     isPending={isPending}
                                     isConfirming={isConfirming}
