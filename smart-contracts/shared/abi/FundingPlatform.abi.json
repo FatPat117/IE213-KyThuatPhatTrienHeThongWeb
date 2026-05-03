@@ -160,6 +160,45 @@
   },
   {
     "type": "function",
+    "name": "createCampaignWithGoal",
+    "inputs": [
+      {
+        "name": "goalWei",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "allocationBps",
+        "type": "uint16[]",
+        "internalType": "uint16[]"
+      },
+      {
+        "name": "deadlines",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      },
+      {
+        "name": "fundingDeadline",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "reviewerSafe",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "createCampaign",
     "inputs": [
       {

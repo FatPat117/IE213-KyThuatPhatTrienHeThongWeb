@@ -151,7 +151,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
         address[] memory initialAdmins
     ) ERC721("SchoolCertificate", "SCERT") {
         require(multisig != address(0), "Invalid multisig");
-        
+
         // Grant super-admin role to multisig
         _grantRole(DEFAULT_ADMIN_ROLE, multisig);
         _grantRole(ADMIN_ROLE, multisig);
