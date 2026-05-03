@@ -340,28 +340,11 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
         if (campaign.totalRaised >= campaign.goal) {
             campaign.status = CampaignStatus.InProgress;
             emit FundingComplete(campaignId, campaign.totalRaised);
-            _autoDisburseFirstMilestone(campaignId);
+            
+            // Kích hoạt mốc đầu tiên để chờ nộp minh chứng và duyệt
+            milestones[campaignId][0].status = MilestoneStatus.PendingVerification;
+            campaign.currentMilestoneId = 0;
         }
-    }
-
-    function _autoDisburseFirstMilestone(uint256 campaignId) internal {
-        Campaign storage campaign = campaigns[campaignId];
-        if (campaign.milestoneCount == 0) return;
-
-        Milestone storage firstMilestone = milestones[campaignId][0];
-        if (firstMilestone.status != MilestoneStatus.PendingFunding) return;
-
-        uint256 amount = getMilestoneAmount(campaignId, 0);
-        firstMilestone.status = MilestoneStatus.PendingVerification;
-        firstMilestone.disbursedAt = block.timestamp;
-        campaign.totalDisbursed += amount;
-
-        (bool success, ) = payable(campaign.creator).call{value: amount}("");
-        require(success, "Initial disbursement transfer failed");
-
-        emit MilestoneDisbursed(campaignId, 0, campaign.creator, amount);
-
-        campaign.currentMilestoneId = 0;
     }
 
     function submitMilestoneProof(
@@ -424,49 +407,38 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
         );
         require(milestone.proofCids.length > 0, "No proof submitted yet");
 
-        milestone.status = MilestoneStatus.Approved;
+        // 1. Cập nhật trạng thái mốc hiện tại
+        milestone.status = MilestoneStatus.Disbursed;
         milestone.approvedBy = msg.sender;
         milestone.approvedAt = block.timestamp;
+        milestone.disbursedAt = block.timestamp;
 
-        uint256 currentAmount = getMilestoneAmount(campaignId, milestoneId);
+        // 2. Tính toán và giải ngân số tiền của CHÍNH MỐC NÀY
+        uint256 amount = getMilestoneAmount(campaignId, milestoneId);
+        campaign.totalDisbursed += amount;
+
+        (bool success, ) = payable(campaign.beneficiary).call{value: amount}("");
+        require(success, "Transfer failed");
+
         emit MilestoneApproved(
             campaignId,
             milestoneId,
             msg.sender,
             milestone.proofCids[milestone.proofCids.length - 1],
-            currentAmount
+            amount
         );
+        emit MilestoneDisbursed(campaignId, milestoneId, campaign.beneficiary, amount);
 
-        if (milestone.disbursedAt == 0) {
-            milestone.disbursedAt = block.timestamp;
-        }
-        milestone.status = MilestoneStatus.Disbursed;
-
-        uint256 nextMilestone = milestoneId + 1;
-        if (nextMilestone >= campaign.milestoneCount) {
-            campaign.currentMilestoneId = campaign.milestoneCount;
+        // 3. Kích hoạt mốc tiếp theo nếu có
+        uint256 nextMilestoneId = milestoneId + 1;
+        if (nextMilestoneId < campaign.milestoneCount) {
+            campaign.currentMilestoneId = nextMilestoneId;
+            milestones[campaignId][nextMilestoneId].status = MilestoneStatus.PendingVerification;
+            emit MilestoneUnlocked(campaignId, nextMilestoneId);
+        } else {
+            // Nếu là mốc cuối cùng, đánh dấu chiến dịch hoàn thành
             campaign.status = CampaignStatus.Completed;
-            return;
         }
-
-        uint256 nextAmount = getMilestoneAmount(campaignId, nextMilestone);
-        (bool success, ) = payable(campaign.creator).call{value: nextAmount}("");
-        require(success, "Transfer failed");
-
-        Milestone storage next = milestones[campaignId][nextMilestone];
-        next.status = MilestoneStatus.PendingVerification;
-        next.disbursedAt = block.timestamp;
-
-        campaign.totalDisbursed += nextAmount;
-        campaign.currentMilestoneId = nextMilestone;
-
-        emit MilestoneDisbursed(
-            campaignId,
-            nextMilestone,
-            campaign.creator,
-            nextAmount
-        );
-        emit MilestoneUnlocked(campaignId, nextMilestone);
     }
 
     function disburseMilestone(
