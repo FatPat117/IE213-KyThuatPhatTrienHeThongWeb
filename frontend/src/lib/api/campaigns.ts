@@ -31,6 +31,7 @@ export interface PublicCampaignMilestone {
     approvedAt: string | null;
     approvedBy: string;
     disbursedAt: string | null;
+    lastRejectionReason?: string;
 }
 
 export interface ReviewerAggregate {
@@ -92,6 +93,7 @@ interface CampaignMilestoneRecord {
     approvedAt?: string | null;
     approvedBy?: string;
     disbursedAt?: string | null;
+    lastRejectionReason?: string;
 }
 
 interface MilestoneServiceResponse {
