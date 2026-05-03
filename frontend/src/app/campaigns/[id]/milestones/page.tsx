@@ -22,7 +22,7 @@ import {
     MilestoneTimeline,
 } from "@/components/campaign-milestones";
 import BackButton from "@/components/navigation/BackButton";
-import { useAccount } from "wagmi";
+import { useAccount, useReadContract } from "wagmi";
 
 export default function CampaignMilestonesPage() {
     const params = useParams();
@@ -42,7 +42,7 @@ export default function CampaignMilestonesPage() {
     );
     const { data: userDonatedWei } = useReadContract({
         ...contractConfig,
-        functionName: "donatedAmount",
+        functionName: "getDonation",
         args:
             id > 0 && address
                 ? [BigInt(id), address]

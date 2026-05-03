@@ -26,6 +26,7 @@ export {
     useReadCampaignCount,
     useReadContractOwner,
     useReadFilteredCampaigns,
+    useReadMilestonesOnChain,
     useReadReviewerSafes,
     useReadReviewerSafesOnChain,
     useReadTotalRaised,

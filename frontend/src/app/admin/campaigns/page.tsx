@@ -13,7 +13,7 @@ import {
 } from "@/lib/contracts/hooks";
 import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 import { useOwnerSafes } from "@/lib/hooks/use-owner-safes";
-import { useProposeSafeTransaction } from "@/lib/contracts/hooks";
+import { useProposeSafeTransaction, useAdminApprove } from "@/lib/contracts/hooks";
 import { CROWDFUNDING_CONTRACT_ADDRESS, contractConfig } from "@/lib/contracts/config";
 
 function formatEthFromWei(wei: bigint | number | string) {
@@ -54,9 +54,10 @@ export default function AdminCampaignApprovalsPage() {
     const publicClient = usePublicClient();
 
     // Hooks
-    const { owner } = useReadContractOwner();
+    const { isAdminOnChain } = useReadContractOwner();
     const { safes: ownerSafes, isLoading: isLoadingOwnerSafes } = useOwnerSafes();
     const { propose: proposeAdminViaSafe } = useProposeSafeTransaction();
+    const { adminApprove: directApprove } = useAdminApprove();
 
     const [isProposing, setIsProposing] = useState(false);
 
@@ -68,7 +69,7 @@ export default function AdminCampaignApprovalsPage() {
     const [mounted, setMounted] = useState(false);
     const [actionError, setActionError] = useState<string | null>(null);
     const [actionMessage, setActionMessage] = useState<string | null>(null);
-    const [lastProposedTx, setLastProposedTx] = useState<{ safeTxHash: string; safeUiUrl: string; campaignId: number } | null>(null);
+    const [lastProposedTx, setLastProposedTx] = useState<{ safeTxHash: string; safeUiUrl: string; campaignId: number; safeAddress: string } | null>(null);
     const [txStatus, setTxStatus] = useState<"idle" | "proposed" | "executed" | "failed">("idle");
 
     // Polling reference để cleanup
@@ -76,27 +77,7 @@ export default function AdminCampaignApprovalsPage() {
 
     useEffect(() => { setMounted(true); }, []);
 
-    const normalizedWallet = (address || "").toLowerCase();
-    const adminWallets = (process.env.NEXT_PUBLIC_ADMIN_WALLETS || "")
-        .split(",")
-        .map((item) => item.trim().toLowerCase())
-        .filter((item) => /^0x[a-f0-9]{40}$/.test(item));
-
-    const isAdminByOwner = Boolean(normalizedWallet) && normalizedWallet === owner?.toLowerCase();
-    const isAdminByRole = (user?.role || "").toLowerCase() === "admin";
-    const isAdminByConfig = Boolean(normalizedWallet) && adminWallets.includes(normalizedWallet);
-
-    // Kiểm tra user có phải owner của Safe (owner của contract)
-    const isAdminBySafeOwner = useMemo(() => {
-        if (!owner || ownerSafes.length === 0) return false;
-        const normalizedOwner = owner.toLowerCase();
-        return ownerSafes.includes(normalizedOwner);
-    }, [owner, ownerSafes]);
-
-    const isAdmin = Boolean(
-        token &&
-        (isAdminByOwner || isAdminByRole || isAdminByConfig || isAdminBySafeOwner)
-    );
+    const isAdmin = Boolean(token && isAdminOnChain);
 
     // Lấy metadata từ backend
     const metadataById = useMemo(() => {
@@ -150,7 +131,7 @@ export default function AdminCampaignApprovalsPage() {
 
     // Polling Safe API để check transaction status via queue
     useEffect(() => {
-        if (!lastProposedTx?.safeTxHash || !owner) return;
+        if (!lastProposedTx?.safeTxHash || !lastProposedTx?.safeAddress) return;
 
         let mounted = true;
         let attempts = 0;
@@ -161,7 +142,7 @@ export default function AdminCampaignApprovalsPage() {
 
             attempts++;
             try {
-                const safeAddress = getAddress(owner as string);
+                const safeAddress = getAddress(lastProposedTx.safeAddress);
                 const safeTxHash = lastProposedTx.safeTxHash;
                 // Query all transactions and filter by safeTxHash
                 const url = `https://api.safe.global/tx-service/sep/api/v1/safes/${safeAddress}/multisig-transactions/`;
@@ -248,7 +229,7 @@ export default function AdminCampaignApprovalsPage() {
                 clearTimeout(pollingRef.current);
             }
         };
-    }, [lastProposedTx?.safeTxHash, owner, refetch, backendRefetch]);
+    }, [lastProposedTx?.safeTxHash, lastProposedTx?.safeAddress, refetch, backendRefetch]);
 
     // Cleanup khi unmount
     useEffect(() => {
@@ -280,12 +261,9 @@ export default function AdminCampaignApprovalsPage() {
                     <p className="mt-2">
                         Tài khoản hiện tại không có quyền truy cập trang quản trị campaign.
                     </p>
-                    <div className="mt-4 space-y-1 text-xs">
-                        <p>Wallet của bạn: {address ? `${address.slice(0, 10)}...` : "Chưa connect"}</p>
-                        <p>Contract owner: {owner ? `${owner.slice(0, 10)}...` : "Loading..."}</p>
-                        <p>Bạn là owner của Safe này? {isAdminBySafeOwner ? "✅ Có" : "❌ Không"}</p>
-                        <p>Quyền từ role: {isAdminByRole ? "✅ Admin" : "❌ Không"}</p>
-                        <p>Quyền từ config: {isAdminByConfig ? "✅ Có" : "❌ Không"}</p>
+                    <div className="mt-4 space-y-1 text-xs text-slate-500">
+                        <p>Wallet: {address ? `${address.slice(0, 10)}...` : "Chưa connect"}</p>
+                        <p>On-chain Admin: {isAdminOnChain ? "✅ Đã xác thực" : "❌ Chưa có quyền"}</p>
                     </div>
                 </main>
             </div>
@@ -298,11 +276,6 @@ export default function AdminCampaignApprovalsPage() {
                 <h1 className="text-2xl font-bold text-slate-900">Duyệt campaign</h1>
                 <p className="mt-1 text-sm text-slate-600">
                     Danh sách campaign đang ở trạng thái chờ duyệt.
-                    {isAdminBySafeOwner && (
-                        <span className="ml-2 text-indigo-600 font-medium">
-                            (Đang dùng Safe multisig làm owner)
-                        </span>
-                    )}
                 </p>
 
                 {isLoadingOwnerSafes && (
@@ -482,10 +455,10 @@ export default function AdminCampaignApprovalsPage() {
                                                     metadataById.get(item.id)?.deadline || "",
                                                 ).toLocaleString("vi-VN")
                                                 : item.deadline > 0
-                                                  ? new Date(
+                                                    ? new Date(
                                                         Number(item.deadline) * 1000,
                                                     ).toLocaleString("vi-VN")
-                                                  : "-"}
+                                                    : "-"}
                                         </span>
                                     </p>
                                     <p className="col-span-2">
@@ -512,31 +485,23 @@ export default function AdminCampaignApprovalsPage() {
                                             setTxStatus("proposed");
                                             setIsProposing(true);
 
-                                            if (!publicClient) {
-                                                throw new Error("Không thể kết nối RPC. Vui lòng thử lại.");
+                                            // 1. Kiểm tra xem người dùng có muốn dùng Safe không, hoặc là admin trực tiếp
+                                            // Nếu walletAddress có ADMIN_ROLE và KHÔNG phải là Safe (hoặc đơn giản là muốn duyệt nhanh)
+                                            // Ở đây ta ưu tiên duyệt trực tiếp nếu có quyền.
+
+                                            if (isAdminOnChain) {
+                                                console.log("[AdminPage] Detected ADMIN_ROLE on-chain, attempting direct approval...");
+                                                const tx = await directApprove(item.id);
+                                                setActionMessage("✅ Đã gửi lệnh duyệt trực tiếp! Đang chờ confirm...");
+                                                setTxStatus("executed"); // Hoặc "idle" tùy bạn muốn xử lý hash
+                                                refetch();
+                                                backendRefetch();
+                                            } else {
+                                                // Fallback: Propose qua Safe nếu không có quyền admin trực tiếp nhưng có thể là owner của Safe admin
+                                                // TODO: Cần biết address của Safe admin. Hiện tại lấy từ config hoặc input?
+                                                // Giả sử có một cơ chế chọn Safe.
+                                                throw new Error("Ví của bạn không có quyền ADMIN_ROLE trực tiếp. Vui lòng sử dụng ví Admin hoặc Safe Admin.");
                                             }
-
-                                            // Lấy owner address từ contract
-                                            const ownerAddr = await publicClient.readContract({
-                                                address: CROWDFUNDING_CONTRACT_ADDRESS as `0x${string}`,
-                                                abi: contractConfig.abi,
-                                                functionName: "owner",
-                                            }) as `0x${string}`;
-
-                                            // Propose adminApprove qua Safe
-                                            const result = await proposeAdminViaSafe(
-                                                item.id,
-                                                null, // milestoneId = null → adminApprove
-                                                ownerAddr
-                                            );
-
-                                            setLastProposedTx({
-                                                safeTxHash: result.safeTxHash,
-                                                safeUiUrl: result.safeUiUrl,
-                                                campaignId: item.id,
-                                            });
-
-                                            // Polling sẽ xử lý còn lại
                                         } catch (error) {
                                             console.error("Admin approve error:", error);
                                             setTxStatus("failed");
@@ -554,8 +519,8 @@ export default function AdminCampaignApprovalsPage() {
                                     {isProposing || txStatus === "proposed"
                                         ? "Đang xử lý..."
                                         : txStatus === "executed"
-                                        ? "Đã duyệt ✓"
-                                        : "Duyệt campaign"}
+                                            ? "Đã duyệt ✓"
+                                            : "Duyệt campaign"}
                                 </button>
                             </div>
                         ))}

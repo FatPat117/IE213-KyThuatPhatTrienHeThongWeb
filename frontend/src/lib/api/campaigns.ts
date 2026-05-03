@@ -162,18 +162,21 @@ function mapMilestoneRecord(
         ).toString(),
         deadline: item.deadline || "",
         status: item.status || "pending_funding",
-        reportCids: Array.isArray(item.reportCids)
-            ? item.reportCids
-                  .filter(
-                      (entry) =>
-                          typeof entry?.cid === "string" &&
-                          entry.cid.trim().length > 0,
-                  )
-                  .map((entry) => ({
-                      cid: (entry.cid || "").trim(),
-                      submittedAt: entry.submittedAt || "",
-                  }))
-            : [],
+        reportCids: (() => {
+            if (!Array.isArray(item.reportCids)) return [];
+            const seenCids = new Set<string>();
+            return item.reportCids
+                .filter((entry) => {
+                    const cid = (entry?.cid || "").trim();
+                    if (!cid || seenCids.has(cid)) return false;
+                    seenCids.add(cid);
+                    return true;
+                })
+                .map((entry) => ({
+                    cid: (entry.cid || "").trim(),
+                    submittedAt: entry.submittedAt || "",
+                }));
+        })(),
         approvedAt: item.approvedAt || null,
         approvedBy: item.approvedBy || "",
         disbursedAt: item.disbursedAt || null,
@@ -370,9 +373,11 @@ export async function getMilestoneApprovalStatus(
     onChainId: number,
     milestoneId: number,
     token: string,
+    refresh = false,
 ) {
+    const query = refresh ? "?refresh=true" : "";
     return apiRequest<MilestoneApprovalStatus>(
-        `/campaigns/${onChainId}/milestones/${milestoneId}/approval-status`,
+        `/campaigns/${onChainId}/milestones/${milestoneId}/approval-status${query}`,
         { token },
     );
 }

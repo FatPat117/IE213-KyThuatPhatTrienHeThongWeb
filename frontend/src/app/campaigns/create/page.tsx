@@ -49,7 +49,7 @@ export default function CreateCampaignPage() {
     const chainId = useChainId();
     const isSepoliaNetwork = chainId === SEPOLIA_CHAIN_ID;
     const isClient = useSyncExternalStore(
-        () => () => {},
+        () => () => { },
         () => true,
         () => false,
     );
@@ -169,16 +169,16 @@ export default function CreateCampaignPage() {
         | "confirming"
         | "success"
         | "error" = transactionError
-        ? "error"
-        : isTxReverted
-          ? "error"
-          : isConfirmed
-            ? "success"
-            : isConfirming
-              ? "confirming"
-              : isPending
-                ? "pending"
-                : "idle";
+            ? "error"
+            : isTxReverted
+                ? "error"
+                : isConfirmed
+                    ? "success"
+                    : isConfirming
+                        ? "confirming"
+                        : isPending
+                            ? "pending"
+                            : "idle";
     const isFormBusy = isPending || isConfirming;
 
     useEffect(() => {
@@ -574,7 +574,7 @@ export default function CreateCampaignPage() {
 
                                     const campaignFundingDeadline = Math.floor(
                                         new Date(formData.deadline).getTime() /
-                                            1000,
+                                        1000,
                                     );
                                     const milestoneDeadlines =
                                         nextMilestones.map((milestone) =>
@@ -634,7 +634,7 @@ export default function CreateCampaignPage() {
                                             return Math.round(
                                                 (milestone.goal /
                                                     totalGoalEth) *
-                                                    10_000,
+                                                10_000,
                                             );
                                         },
                                     );
@@ -683,6 +683,16 @@ export default function CreateCampaignPage() {
                                         );
                                     }
 
+                                    // DEBUG LOG
+                                    console.log("🚀 [CreateCampaign] Gửi contract:", {
+                                        goalWei: parseEther(formData.goalEth).toString(),
+                                        allocationBps,
+                                        deadlines: milestoneDeadlines,
+                                        fundingDeadline: campaignFundingDeadline,
+                                        reviewerSafe,
+                                        now: Math.floor(Date.now() / 1000)
+                                    });
+
                                     const txHash = await createCampaign({
                                         goalWei: parseEther(formData.goalEth),
                                         allocationBps,
@@ -697,9 +707,10 @@ export default function CreateCampaignPage() {
                                         `Đã gửi giao dịch ${shortenHash(txHash)}. Đang chờ xác nhận trên blockchain...`,
                                     );
                                 } catch (err) {
+                                    console.error("❌ [CreateCampaign] Lỗi:", err);
                                     const message = getChainErrorMessage(err, {
                                         fallback:
-                                            "Không thể gửi giao dịch. Vui lòng thử lại.",
+                                            "Không thể gửi giao dịch. Hãy xem Console (F12) để biết lý do chi tiết.",
                                     });
                                     setManualError(message);
                                     showErrorToast(message);

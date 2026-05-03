@@ -96,21 +96,36 @@ async function startMilestoneReportSubmittedConsumer() {
             const cid = (payload.cid || payload.ipfsCid || "").toString();
             const submittedAt = new Date();
 
-            const update = {
+            // 1. Luôn cập nhật status và thêm vào evidenceCids (nếu chưa có)
+            const baseUpdate = {
                 $set: {
                     status: "pending_verification",
                 },
             };
-
             if (cid) {
-                update.$push = { reportCids: { cid, submittedAt } };
-                update.$addToSet = { evidenceCids: cid };
+                baseUpdate.$addToSet = { evidenceCids: cid };
             }
 
             await Milestone.updateOne(
                 { campaignOnChainId, milestoneId },
-                update,
+                baseUpdate,
             );
+
+            // 2. Chỉ push vào reportCids nếu CID này chưa từng xuất hiện (tránh double minh chứng)
+            if (cid) {
+                await Milestone.updateOne(
+                    {
+                        campaignOnChainId,
+                        milestoneId,
+                        "reportCids.cid": { $ne: cid },
+                    },
+                    {
+                        $push: {
+                            reportCids: { cid, submittedAt },
+                        },
+                    },
+                );
+            }
             const campaign = await Campaign.findOne({ onChainId: campaignOnChainId });
             let reviewerSafe = normalizeWallet(campaign?.reviewerSafe);
             if (!reviewerSafe) {

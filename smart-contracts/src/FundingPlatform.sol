@@ -2,10 +2,11 @@
 pragma solidity ^0.8.20;
 
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
+contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
+    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     uint256 public constant BPS_DENOMINATOR = 10_000;
     uint256 public constant DEFAULT_GOAL_WEI = 1 ether;
 
@@ -145,7 +146,29 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
     event ReviewerSafeAdded(address indexed safe);
     event ReviewerSafeRemoved(address indexed safe);
 
-    constructor() ERC721("SchoolCertificate", "SCERT") Ownable(msg.sender) {}
+    constructor(
+        address multisig,
+        address[] memory initialAdmins
+    ) ERC721("SchoolCertificate", "SCERT") {
+        require(multisig != address(0), "Invalid multisig");
+
+        // Grant super-admin role to multisig
+        _grantRole(DEFAULT_ADMIN_ROLE, multisig);
+        _grantRole(ADMIN_ROLE, multisig);
+
+        // Grant admin role to initial admin list
+        for (uint256 i = 0; i < initialAdmins.length; i++) {
+            _grantRole(ADMIN_ROLE, initialAdmins[i]);
+        }
+    }
+
+    function addAdmin(address account) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        grantRole(ADMIN_ROLE, account);
+    }
+
+    function removeAdmin(address account) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        revokeRole(ADMIN_ROLE, account);
+    }
 
     modifier campaignExists(uint256 campaignId) {
         require(
@@ -272,7 +295,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         );
     }
 
-    function addReviewerSafe(address safe) external onlyOwner {
+    function addReviewerSafe(address safe) external onlyRole(ADMIN_ROLE) {
         require(safe != address(0), "Invalid reviewer");
         require(!reviewerSafes[safe], "Reviewer already approved");
 
@@ -281,7 +304,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         emit ReviewerSafeAdded(safe);
     }
 
-    function removeReviewerSafe(address safe) external onlyOwner {
+    function removeReviewerSafe(address safe) external onlyRole(ADMIN_ROLE) {
         require(reviewerSafes[safe], "Reviewer not approved");
 
         reviewerSafes[safe] = false;
@@ -316,29 +339,36 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
 
         if (campaign.totalRaised >= campaign.goal) {
             campaign.status = CampaignStatus.InProgress;
+            
+            // Kích hoạt mốc đầu tiên để chờ nộp minh chứng và duyệt
+            milestones[campaignId][0].status = MilestoneStatus.PendingVerification;
+            campaign.currentMilestoneId = 0;
+            
+            // Tự động giải ngân ứng trước cho mốc đầu tiên để bắt đầu thực hiện
+            _disburseMilestone(campaignId, 0);
+            
             emit FundingComplete(campaignId, campaign.totalRaised);
-            _autoDisburseFirstMilestone(campaignId);
         }
     }
 
-    function _autoDisburseFirstMilestone(uint256 campaignId) internal {
+    /**
+     * @dev Giải ngân tiền cho một mốc cụ thể (ứng trước)
+     */
+    function _disburseMilestone(uint256 campaignId, uint256 milestoneId) internal {
         Campaign storage campaign = campaigns[campaignId];
-        if (campaign.milestoneCount == 0) return;
+        Milestone storage milestone = milestones[campaignId][milestoneId];
+        
+        // Đã giải ngân rồi thì không giải ngân lại
+        if (milestone.disbursedAt > 0) return;
 
-        Milestone storage firstMilestone = milestones[campaignId][0];
-        if (firstMilestone.status != MilestoneStatus.PendingFunding) return;
-
-        uint256 amount = getMilestoneAmount(campaignId, 0);
-        firstMilestone.status = MilestoneStatus.PendingVerification;
-        firstMilestone.disbursedAt = block.timestamp;
+        uint256 amount = getMilestoneAmount(campaignId, milestoneId);
         campaign.totalDisbursed += amount;
+        
+        (bool success, ) = payable(campaign.beneficiary).call{value: amount}("");
+        require(success, "Transfer failed");
 
-        (bool success, ) = payable(campaign.creator).call{value: amount}("");
-        require(success, "Initial disbursement transfer failed");
-
-        emit MilestoneDisbursed(campaignId, 0, campaign.creator, amount);
-
-        campaign.currentMilestoneId = 0;
+        milestone.disbursedAt = block.timestamp;
+        emit MilestoneDisbursed(campaignId, milestoneId, campaign.beneficiary, amount);
     }
 
     function submitMilestoneProof(
@@ -401,49 +431,34 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         );
         require(milestone.proofCids.length > 0, "No proof submitted yet");
 
-        milestone.status = MilestoneStatus.Approved;
+        // 1. Phê duyệt mốc hiện tại (đã thực hiện xong và có minh chứng)
+        milestone.status = MilestoneStatus.Disbursed;
         milestone.approvedBy = msg.sender;
         milestone.approvedAt = block.timestamp;
 
-        uint256 currentAmount = getMilestoneAmount(campaignId, milestoneId);
+        uint256 amountApproved = getMilestoneAmount(campaignId, milestoneId);
         emit MilestoneApproved(
             campaignId,
             milestoneId,
             msg.sender,
             milestone.proofCids[milestone.proofCids.length - 1],
-            currentAmount
+            amountApproved
         );
 
-        if (milestone.disbursedAt == 0) {
-            milestone.disbursedAt = block.timestamp;
-        }
-        milestone.status = MilestoneStatus.Disbursed;
-
-        uint256 nextMilestone = milestoneId + 1;
-        if (nextMilestone >= campaign.milestoneCount) {
-            campaign.currentMilestoneId = campaign.milestoneCount;
+        // 2. Nếu còn mốc tiếp theo, giải ngân ỨNG TRƯỚC cho mốc đó
+        uint256 nextMilestoneId = milestoneId + 1;
+        if (nextMilestoneId < campaign.milestoneCount) {
+            campaign.currentMilestoneId = nextMilestoneId;
+            milestones[campaignId][nextMilestoneId].status = MilestoneStatus.PendingVerification;
+            
+            // Giải ngân ứng trước cho mốc tiếp theo
+            _disburseMilestone(campaignId, nextMilestoneId);
+            
+            emit MilestoneUnlocked(campaignId, nextMilestoneId);
+        } else {
+            // Nếu là mốc cuối cùng, đánh dấu chiến dịch hoàn thành
             campaign.status = CampaignStatus.Completed;
-            return;
         }
-
-        uint256 nextAmount = getMilestoneAmount(campaignId, nextMilestone);
-        (bool success, ) = payable(campaign.creator).call{value: nextAmount}("");
-        require(success, "Transfer failed");
-
-        Milestone storage next = milestones[campaignId][nextMilestone];
-        next.status = MilestoneStatus.PendingVerification;
-        next.disbursedAt = block.timestamp;
-
-        campaign.totalDisbursed += nextAmount;
-        campaign.currentMilestoneId = nextMilestone;
-
-        emit MilestoneDisbursed(
-            campaignId,
-            nextMilestone,
-            campaign.creator,
-            nextAmount
-        );
-        emit MilestoneUnlocked(campaignId, nextMilestone);
     }
 
     function disburseMilestone(
@@ -498,7 +513,7 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
 
     function adminApprove(
         uint256 campaignId
-    ) external onlyOwner campaignExists(campaignId) {
+    ) external onlyRole(ADMIN_ROLE) campaignExists(campaignId) {
         Campaign storage campaign = campaigns[campaignId];
         require(
             campaign.status == CampaignStatus.PendingApproval,
@@ -635,5 +650,9 @@ contract FundingPlatform is ERC721, ReentrancyGuard, Ownable {
         Campaign storage campaign = campaigns[campaignId];
         Milestone storage milestone = milestones[campaignId][milestoneId];
         return (campaign.totalRaised * milestone.allocationBps) / BPS_DENOMINATOR;
+    }
+
+    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721, AccessControl) returns (bool) {
+        return super.supportsInterface(interfaceId);
     }
 }

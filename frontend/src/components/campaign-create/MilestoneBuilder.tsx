@@ -139,29 +139,29 @@ export default function MilestoneBuilder({
         totalAllocated > totalGoal
             ? "over"
             : totalMatches
-              ? "complete"
-              : "under";
+                ? "complete"
+                : "under";
 
     const progressColor =
         allocationStatus === "complete"
             ? "bg-emerald-500"
             : allocationStatus === "over"
-              ? "bg-rose-500"
-              : "bg-amber-400";
+                ? "bg-rose-500"
+                : "bg-amber-400";
 
     const progressTextColor =
         allocationStatus === "complete"
             ? "text-emerald-700"
             : allocationStatus === "over"
-              ? "text-rose-700"
-              : "text-amber-700";
+                ? "text-rose-700"
+                : "text-amber-700";
 
     const progressBorderColor =
         allocationStatus === "complete"
             ? "border-emerald-200"
             : allocationStatus === "over"
-              ? "border-rose-200"
-              : "border-amber-200";
+                ? "border-rose-200"
+                : "border-amber-200";
     const [nowTs] = useState(() => Date.now());
 
     const validateField = (
@@ -703,15 +703,15 @@ export default function MilestoneBuilder({
                                         allocationStatus === "complete"
                                             ? "bg-emerald-100 text-emerald-700"
                                             : allocationStatus === "over"
-                                              ? "bg-rose-100 text-rose-700"
-                                              : "bg-amber-100 text-amber-700",
+                                                ? "bg-rose-100 text-rose-700"
+                                                : "bg-amber-100 text-amber-700",
                                     )}
                                 >
                                     {allocationStatus === "complete"
                                         ? "Đạt 100%"
                                         : allocationStatus === "over"
-                                          ? "Vượt mức"
-                                          : "Chưa đủ"}
+                                            ? "Vượt mức"
+                                            : "Chưa đủ"}
                                 </span>
                             </div>
                             <Progress

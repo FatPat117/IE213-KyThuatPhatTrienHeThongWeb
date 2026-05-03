@@ -12,20 +12,27 @@ contract DeployFundingPlatform is Script {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(deployerPrivateKey);
 
+        address multisig = vm.envAddress("MULTISIG_ADDRESS");
+        // For simplicity, we read one admin address. You can expand this if needed.
+        address admin = vm.envAddress("ADMIN_WALLETS"); 
+
+        address[] memory admins = new address[](1);
+        admins[0] = admin;
+
         console.log("FundingPlatform Deployment");
         console.log("Deployer  :", deployer);
-        console.log("Balance   :", deployer.balance);
+        console.log("Multisig  :", multisig);
+        console.log("Admin     :", admin);
         console.log("Chain ID  :", block.chainid);
 
         vm.startBroadcast(deployerPrivateKey);
-        FundingPlatform platform = new FundingPlatform();
+        FundingPlatform platform = new FundingPlatform(multisig, admins);
         vm.stopBroadcast();
 
         console.log("==========================================");
         console.log("Contract  :", address(platform));
         console.log("NFT Name  :", platform.name());
         console.log("NFT Symbol:", platform.symbol());
-        console.log("Owner     :", platform.owner());
 
         return platform;
     }

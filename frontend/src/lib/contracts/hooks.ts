@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { Address, encodeFunctionData, encodePacked, formatEther, getAddress, hashTypedData, keccak256, parseEther, recoverAddress } from "viem";
+import { Address, encodeFunctionData, encodePacked, formatEther, getAddress, hashTypedData, keccak256, parseEther, recoverAddress, toBytes } from "viem";
+
 import {
     useAccount,
     usePublicClient,
@@ -18,6 +19,9 @@ console.log(
     CROWDFUNDING_CONTRACT_ADDRESS,
 );
 console.log("[hooks] contractConfig =", contractConfig);
+
+// ── ADMIN_ROLE: keccak256("ADMIN_ROLE") – matches Solidity constant ──
+const ADMIN_ROLE = keccak256(toBytes("ADMIN_ROLE")) as `0x${string}`;
 
 type CampaignTuple = {
     id: bigint;
@@ -757,21 +761,35 @@ export function useReadReviewerSafesOnChain() {
     };
 }
 
-export function useReadContractOwner() {
-    const { data, isLoading, isError, error, refetch } = useReadContract({
+export function useIsAdminOnChain() {
+    const { address } = useAccount();
+    const { data: isAdmin, isLoading, isError, error, refetch } = useReadContract({
         ...contractConfig,
-        functionName: "owner",
+        functionName: "hasRole",
+        args: address ? [ADMIN_ROLE, address] : undefined,
         query: {
-            staleTime: 30_000,
-            refetchOnWindowFocus: true,
+            enabled: !!address,
         },
     });
 
     return {
-        owner: ((data as string) || "").toLowerCase(),
+        isAdmin: !!isAdmin,
         isLoading,
         isError,
-        error: error?.message || null,
+        error,
+        refetch,
+    };
+}
+
+export function useReadContractOwner() {
+    const { isAdmin, isLoading, isError, error, refetch } = useIsAdminOnChain();
+
+    return {
+        owner: "", // Deprecated
+        isAdminOnChain: isAdmin,
+        isLoading,
+        isError,
+        error,
         refetch,
     };
 }
@@ -790,16 +808,18 @@ export function useAdminApproveCampaign() {
             throw new Error("Không tìm thấy địa chỉ ví để gửi giao dịch.");
         }
 
-        const owner = (await publicClient
+        // ✅ Kiểm tra quyền ADMIN_ROLE thay vì owner()
+        const isAdmin = (await publicClient
             .readContract({
                 address: CROWDFUNDING_CONTRACT_ADDRESS,
                 abi: contractConfig.abi,
-                functionName: "owner",
+                functionName: "hasRole",
+                args: [ADMIN_ROLE, address],
             })
-            .catch(() => null)) as Address | null;
-        if (owner && owner.toLowerCase() !== address.toLowerCase()) {
+            .catch(() => null)) as boolean | null;
+        if (isAdmin === false) {
             throw new Error(
-                `Ví hiện tại không phải owner của contract. Ví gửi: ${address}. Owner: ${owner}.`,
+                `Ví (${address}) không có quyền ADMIN_ROLE để thực hiện hành động này.`,
             );
         }
 
@@ -858,19 +878,18 @@ export function useAddReviewerSafe() {
             throw new Error("Không tìm thấy địa chỉ ví để gửi giao dịch.");
         }
         const normalizedSafe = safe.toLowerCase() as Address;
-        const contractOwner = (await publicClient
+        // ✅ Kiểm tra quyền ADMIN_ROLE thay vì owner()
+        const isAdmin = (await publicClient
             .readContract({
                 address: CROWDFUNDING_CONTRACT_ADDRESS,
                 abi: contractConfig.abi,
-                functionName: "owner",
+                functionName: "hasRole",
+                args: [ADMIN_ROLE, address],
             })
-            .catch(() => null)) as Address | null;
-        if (
-            contractOwner &&
-            contractOwner.toLowerCase() !== address.toLowerCase()
-        ) {
+            .catch(() => null)) as boolean | null;
+        if (isAdmin === false) {
             throw new Error(
-                `Ví hiện tại không phải owner của contract. Ví gửi: ${address}. Owner: ${contractOwner}.`,
+                `Ví (${address}) không có quyền ADMIN_ROLE để thêm reviewer.`,
             );
         }
 
@@ -908,15 +927,8 @@ export function useAddReviewerSafe() {
                 "raw" in ((error as { cause?: { raw?: unknown } }).cause || {})
                     ? (error as { cause?: { raw?: string } }).cause?.raw
                     : undefined;
-            const owner = (await publicClient
-                .readContract({
-                    address: CROWDFUNDING_CONTRACT_ADDRESS,
-                    abi: contractConfig.abi,
-                    functionName: "owner",
-                })
-                .catch(() => null)) as Address | null;
             if (
-                normalizedMessage.includes("ownableunauthorizedaccount") ||
+                normalizedMessage.includes("accesscontrolunauthorizedaccount") ||
                 normalizedMessage.includes("caller is not the owner") ||
                 normalizedMessage.includes("execution reverted")
             ) {
@@ -925,13 +937,8 @@ export function useAddReviewerSafe() {
                         "Contract đang revert không kèm reason (raw 0x). Khả năng cao ABI/address hiện tại không khớp phiên bản contract đã deploy, hoặc hàm addReviewerSafe không tồn tại ở địa chỉ này.",
                     );
                 }
-                if (owner && owner.toLowerCase() !== address.toLowerCase()) {
-                    throw new Error(
-                        `Contract từ chối giao dịch: chỉ owner mới được thêm reviewer. Ví gửi: ${address}. Owner: ${owner}.`,
-                    );
-                }
                 throw new Error(
-                    "Contract từ chối addReviewerSafe (execution reverted). Có thể do quyền onlyOwner hoặc rule nội bộ của contract.",
+                    "Contract từ chối addReviewerSafe. Ví không có quyền ADMIN_ROLE.",
                 );
             }
             if (normalizedMessage.includes("reviewer already approved")) {
@@ -967,19 +974,18 @@ export function useRemoveReviewerSafe() {
             throw new Error("Không tìm thấy địa chỉ ví để gửi giao dịch.");
         }
         const normalizedSafe = safe.toLowerCase() as Address;
-        const contractOwner = (await publicClient
+        // ✅ Kiểm tra quyền ADMIN_ROLE thay vì owner()
+        const isAdmin = (await publicClient
             .readContract({
                 address: CROWDFUNDING_CONTRACT_ADDRESS,
                 abi: contractConfig.abi,
-                functionName: "owner",
+                functionName: "hasRole",
+                args: [ADMIN_ROLE, address],
             })
-            .catch(() => null)) as Address | null;
-        if (
-            contractOwner &&
-            contractOwner.toLowerCase() !== address.toLowerCase()
-        ) {
+            .catch(() => null)) as boolean | null;
+        if (isAdmin === false) {
             throw new Error(
-                `Ví hiện tại không phải owner của contract. Ví gửi: ${address}. Owner: ${contractOwner}.`,
+                `Ví (${address}) không có quyền ADMIN_ROLE để xóa reviewer.`,
             );
         }
 
@@ -1008,25 +1014,13 @@ export function useRemoveReviewerSafe() {
         } catch (error) {
             const message = error instanceof Error ? error.message : "";
             const normalizedMessage = message.toLowerCase();
-            const owner = (await publicClient
-                .readContract({
-                    address: CROWDFUNDING_CONTRACT_ADDRESS,
-                    abi: contractConfig.abi,
-                    functionName: "owner",
-                })
-                .catch(() => null)) as Address | null;
             if (
-                normalizedMessage.includes("ownableunauthorizedaccount") ||
+                normalizedMessage.includes("accesscontrolunauthorizedaccount") ||
                 normalizedMessage.includes("caller is not the owner") ||
                 normalizedMessage.includes("execution reverted")
             ) {
-                if (owner && owner.toLowerCase() !== address.toLowerCase()) {
-                    throw new Error(
-                        `Contract từ chối giao dịch: chỉ owner mới được xóa reviewer. Ví gửi: ${address}. Owner: ${owner}.`,
-                    );
-                }
                 throw new Error(
-                    "Contract từ chối removeReviewerSafe (execution reverted). Có thể do quyền onlyOwner hoặc rule nội bộ của contract.",
+                    "Contract từ chối removeReviewerSafe. Ví không có quyền ADMIN_ROLE.",
                 );
             }
             if (normalizedMessage.includes("reviewer not approved")) {
@@ -1438,6 +1432,19 @@ export function useReadCampaignReviewersBatch(campaignCount: number) {
         error: error?.message || null,
         refetch,
     };
+}
+
+/** Direct adminApprove for wallets with ADMIN_ROLE */
+export function useAdminApprove() {
+    const { writeContractAsync, data, isPending, error } = useWriteContract();
+    const adminApprove = async (campaignId: number) => {
+        return writeContractAsync({
+            ...contractConfig,
+            functionName: "adminApprove",
+            args: [BigInt(campaignId)],
+        });
+    };
+    return { adminApprove, hash: data, isPending, error };
 }
 
 /**

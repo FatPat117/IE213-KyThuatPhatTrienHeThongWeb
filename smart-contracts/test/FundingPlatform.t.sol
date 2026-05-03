@@ -21,7 +21,9 @@ contract FundingPlatformTest is Test {
     string private constant CID_2 = "QmMilestoneProofHash2";
 
     function setUp() public {
-        platform = new FundingPlatform();
+        address[] memory initialAdmins = new address[](1);
+        initialAdmins[0] = address(this);
+        platform = new FundingPlatform(address(this), initialAdmins);
         safe = new MockSafe();
         reviewerSafe = address(safe);
         platform.addReviewerSafe(reviewerSafe);

@@ -6,7 +6,7 @@ const { successRes, errorRes } = require("../utils/response");
 
 // Approval status cache (for getMilestoneApprovalStatus)
 const approvalStatusCache = new Map();
-const APPROVAL_STATUS_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
+const APPROVAL_STATUS_CACHE_TTL = 15 * 1000; // 15 seconds (reduced from 2 mins for better UI responsiveness)
 
 const CHAIN_READER_ABI = [
     {
@@ -745,10 +745,12 @@ async function getMilestoneApprovalStatus(req, res, next) {
 
         console.log(`[getMilestoneApprovalStatus] checksumSafe:`, checksumSafe);
 
-        // Check cache first (skip if milestone already approved in DB - that's handled below)
+        // Check cache (skip if refresh requested or milestone already approved in DB)
         const cacheKey = `${campaignOnChainId}-${milestoneId}`;
+        const shouldRefresh = req.query.refresh === "true";
         const cached = approvalStatusCache.get(cacheKey);
-        if (cached && Date.now() < cached.expiresAt) {
+        
+        if (cached && !shouldRefresh && Date.now() < cached.expiresAt) {
           console.log(`[getMilestoneApprovalStatus] Cache HIT for ${cacheKey}`);
           return successRes(res, cached.data);
         }
