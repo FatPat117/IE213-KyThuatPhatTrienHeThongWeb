@@ -275,13 +275,13 @@ async function startCampaignCreatedConsumer() {
                                     deadline: milestone.deadline,
                                     financialTargetWei:
                                         milestone.financialTargetWei || "0",
-                                },
-                                $setOnInsert: {
                                     status: "pending_funding",
-                                    title: "",
-                                    description: "",
                                     reportCids: [],
                                     evidenceCids: [],
+                                },
+                                $setOnInsert: {
+                                    title: "",
+                                    description: "",
                                 },
                             },
                             upsert: true,
