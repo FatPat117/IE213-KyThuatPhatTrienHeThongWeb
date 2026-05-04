@@ -30,9 +30,9 @@ function shouldMarkMilestoneFailed(campaign, milestone, nowSec) {
     );
 }
 
-async function isMilestoneExtendedInBackend(campaignOnChainId, milestoneId) {
-    const baseUrl = process.env.CAMPAIGN_SERVICE_URL;
-    if (!baseUrl) return false;
+async function checkBackendMilestoneStatus(campaignOnChainId, milestoneId) {
+    const baseUrl = process.env.CAMPAIGN_SERVICE_URL || "http://campaign-service:3001";
+    if (!baseUrl) return { shouldSkip: false };
 
     try {
         const response = await axios.get(
@@ -40,29 +40,33 @@ async function isMilestoneExtendedInBackend(campaignOnChainId, milestoneId) {
             { timeout: 5000 },
         );
         const milestone = response.data?.data;
-        if (!milestone) return false;
+        if (!milestone) return { shouldSkip: false };
 
-        // Nếu trạng thái là resubmittable, coi như chưa fail on-chain
-        if (milestone.status === "resubmittable") {
-            return true;
+        // 1. Nếu đã thất bại ở backend (do quá số lần từ chối), PHẢI fail on-chain ngay
+        if (milestone.status === "failed") {
+            return { shouldSkip: false, forceFail: true };
         }
 
-        // Nếu deadline ở backend lớn hơn hiện tại, coi như đã được gia hạn
+        // 2. Nếu trạng thái là resubmittable, coi như chưa fail on-chain
+        if (milestone.status === "resubmittable") {
+            return { shouldSkip: true };
+        }
+
+        // 3. Nếu deadline ở backend lớn hơn hiện tại, coi như đã được gia hạn
         if (milestone.deadline) {
             const backendDeadline = new Date(milestone.deadline).getTime() / 1000;
             const now = Date.now() / 1000;
             if (backendDeadline > now) {
-                return true;
+                return { shouldSkip: true };
             }
         }
 
-        return false;
+        return { shouldSkip: false };
     } catch (error) {
         console.warn(
             `[listener-service] Failed to check backend for milestone ${milestoneId}: ${error.message}`,
         );
-        // Mặc định là false để an toàn (theo dữ liệu on-chain)
-        return false;
+        return { shouldSkip: false };
     }
 }
 
@@ -160,14 +164,14 @@ async function runMarkFailedSweep() {
                     continue;
                 }
 
-                if (!shouldMarkMilestoneFailed(campaign, milestone, nowSec)) {
-                    continue;
-                }
+                // Kiểm tra trạng thái Backend
+                const backend = await checkBackendMilestoneStatus(campaignId, milestoneId);
+                
+                // Nếu backend bảo "fail ngay" (do quá số lần từ chối) hoặc (quá hạn on-chain và không được skip)
+                const isDeadlineExceededOnChain = shouldMarkMilestoneFailed(campaign, milestone, nowSec);
+                const shouldFailOnChain = backend.forceFail || (isDeadlineExceededOnChain && !backend.shouldSkip);
 
-                // Kiểm tra Backend xem có gia hạn không
-                const isExtended = await isMilestoneExtendedInBackend(campaignId, milestoneId);
-                if (isExtended) {
-                    console.log(`[listener-service] Milestone #${milestoneId} of Campaign #${campaignId} is extended in backend. Skipping on-chain failure.`);
+                if (!shouldFailOnChain) {
                     continue;
                 }
 
