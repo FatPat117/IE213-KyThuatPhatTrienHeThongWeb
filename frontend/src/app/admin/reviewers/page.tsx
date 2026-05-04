@@ -10,6 +10,7 @@ import {
     useAuth,
     type ReviewerProfileAdminRecord,
 } from "@/lib";
+import { getWalletErrorMessage } from "@/lib/errors/normalize";
 import {
     useAddReviewerSafe,
     useReadAllCampaigns,
@@ -47,7 +48,8 @@ function formatAdminDate(iso: string | null | undefined) {
 export default function AdminReviewersPage() {
     const { token } = useAuth();
     const chainId = useChainId();
-    const { isAdminOnChain } = useReadContractOwner();
+    const { isAdminOnChain, isLoading: isCheckingAdminPermission } =
+        useReadContractOwner();
     const isSepolia = chainId === SEPOLIA_CHAIN_ID;
     const [newSafe, setNewSafe] = useState("");
     const [newSafeValidation, setNewSafeValidation] = useState<{
@@ -63,6 +65,7 @@ export default function AdminReviewersPage() {
         safe: string;
     } | null>(null);
     const [actionError, setActionError] = useState<string | null>(null);
+    const [isCancelMessage, setIsCancelMessage] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
     const { reviewerSafes, refetch } = useReadReviewerSafesOnChain();
     const { campaigns } = useReadAllCampaigns();
@@ -361,6 +364,7 @@ export default function AdminReviewersPage() {
         if (isConfirming) return;
 
         if (isTxSuccess) {
+            setIsCancelMessage(false);
             refetch();
             if (token) {
                 getAdminReviewerProfiles(token)
@@ -382,11 +386,13 @@ export default function AdminReviewersPage() {
         }
 
         if (isTxError) {
-            setActionError(
-                txError instanceof Error
-                    ? txError.message
-                    : "Giao dịch thất bại hoặc bị từ chối.",
+            const normalized = getWalletErrorMessage(txError, {
+                fallback: "Giao dịch thất bại hoặc bị từ chối.",
+            });
+            setIsCancelMessage(
+                normalized === "Bạn đã hủy thao tác trong MetaMask.",
             );
+            setActionError(normalized);
             setPendingAction(null);
             setTxHash(undefined);
         }
@@ -401,7 +407,9 @@ export default function AdminReviewersPage() {
         token,
     ]);
 
-    if (!isMounted) {
+    const isAccessChecking = !isMounted || isCheckingAdminPermission;
+
+    if (isAccessChecking) {
         return (
             <div className="min-h-screen bg-slate-50 px-6 py-10">
                 <main className="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
@@ -440,7 +448,13 @@ export default function AdminReviewersPage() {
                     </p>
                 )}
                 {actionError && (
-                    <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    <p
+                        className={`mt-3 rounded-lg border px-3 py-2 text-sm ${
+                            isCancelMessage
+                                ? "border-amber-200 bg-amber-50 text-amber-800"
+                                : "border-red-200 bg-red-50 text-red-700"
+                        }`}
+                    >
                         {actionError}
                     </p>
                 )}
@@ -498,6 +512,7 @@ export default function AdminReviewersPage() {
                         className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={async () => {
                             try {
+                                setIsCancelMessage(false);
                                 setActionError(null);
                                 const normalized = newSafe.trim().toLowerCase();
                                 if (!/^0x[a-f0-9]{40}$/.test(normalized)) {
@@ -516,11 +531,14 @@ export default function AdminReviewersPage() {
                                 setNewSafe("");
                                 setNewSafeValidation({ status: "idle" });
                             } catch (error) {
-                                setActionError(
-                                    error instanceof Error
-                                        ? error.message
-                                        : "Không thể thêm reviewer safe.",
+                                const normalized = getWalletErrorMessage(error, {
+                                    fallback: "Không thể thêm reviewer safe.",
+                                });
+                                setIsCancelMessage(
+                                    normalized ===
+                                        "Bạn đã hủy thao tác trong MetaMask.",
                                 );
+                                setActionError(normalized);
                             }
                         }}
                     >
@@ -825,6 +843,7 @@ export default function AdminReviewersPage() {
                                 className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
                                 onClick={async () => {
                                     try {
+                                        setIsCancelMessage(false);
                                         setActionError(null);
                                         const hash = await removeReviewerSafe(
                                             safe as `0x${string}`,
@@ -835,11 +854,18 @@ export default function AdminReviewersPage() {
                                             safe,
                                         });
                                     } catch (error) {
-                                        setActionError(
-                                            error instanceof Error
-                                                ? error.message
-                                                : "Không thể xóa reviewer safe.",
+                                        const normalized = getWalletErrorMessage(
+                                            error,
+                                            {
+                                                fallback:
+                                                    "Không thể xóa reviewer safe.",
+                                            },
                                         );
+                                        setIsCancelMessage(
+                                            normalized ===
+                                                "Bạn đã hủy thao tác trong MetaMask.",
+                                        );
+                                        setActionError(normalized);
                                     }
                                 }}
                             >

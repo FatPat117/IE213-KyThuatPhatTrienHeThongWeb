@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { formatEther, getAddress } from "viem";
+import { formatEther } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
-import { updateCampaignStatus, useAuth, useBackendCampaigns } from "@/lib";
-import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
+import { useAuth, useBackendCampaigns } from "@/lib";
+import { getWalletErrorMessage } from "@/lib/errors/normalize";
 import {
     useReadAllCampaigns,
     useReadCampaignReviewersBatch,
@@ -13,8 +13,7 @@ import {
 } from "@/lib/contracts/hooks";
 import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 import { useOwnerSafes } from "@/lib/hooks/use-owner-safes";
-import { useProposeSafeTransaction, useAdminApprove } from "@/lib/contracts/hooks";
-import { CROWDFUNDING_CONTRACT_ADDRESS, contractConfig } from "@/lib/contracts/config";
+import { useAdminApprove } from "@/lib/contracts/hooks";
 
 function formatEthFromWei(wei: bigint | number | string) {
     try {
@@ -49,17 +48,15 @@ function getRemainingDays(
 }
 
 export default function AdminCampaignApprovalsPage() {
-    const { user, token } = useAuth();
+    const { token } = useAuth();
     const { address } = useAccount();
     const publicClient = usePublicClient();
 
     // Hooks
-    const { isAdminOnChain } = useReadContractOwner();
-    const { safes: ownerSafes, isLoading: isLoadingOwnerSafes } = useOwnerSafes();
-    const { propose: proposeAdminViaSafe } = useProposeSafeTransaction();
+    const { isAdminOnChain, isLoading: isCheckingAdminPermission } =
+        useReadContractOwner();
+    const { isLoading: isLoadingOwnerSafes } = useOwnerSafes();
     const { adminApprove: directApprove } = useAdminApprove();
-
-    const [isProposing, setIsProposing] = useState(false);
 
     const { campaigns, isLoading: isLoadingCampaigns, refetch } = useReadAllCampaigns();
     const backendCampaigns = useBackendCampaigns();
@@ -69,15 +66,15 @@ export default function AdminCampaignApprovalsPage() {
     const [mounted, setMounted] = useState(false);
     const [actionError, setActionError] = useState<string | null>(null);
     const [actionMessage, setActionMessage] = useState<string | null>(null);
-    const [lastProposedTx, setLastProposedTx] = useState<{ safeTxHash: string; safeUiUrl: string; campaignId: number; safeAddress: string } | null>(null);
-    const [txStatus, setTxStatus] = useState<"idle" | "proposed" | "executed" | "failed">("idle");
-
-    // Polling reference để cleanup
-    const pollingRef = useRef<NodeJS.Timeout | null>(null);
+    const [isCancelMessage, setIsCancelMessage] = useState(false);
+    const [activeCampaignId, setActiveCampaignId] = useState<number | null>(null);
+    const [lastApprovedCampaignId, setLastApprovedCampaignId] = useState<number | null>(null);
 
     useEffect(() => { setMounted(true); }, []);
 
     const isAdmin = Boolean(token && isAdminOnChain);
+    const isAccessChecking =
+        !mounted || isCheckingAdminPermission || isLoadingOwnerSafes;
 
     // Lấy metadata từ backend
     const metadataById = useMemo(() => {
@@ -129,118 +126,21 @@ export default function AdminCampaignApprovalsPage() {
         [campaigns, metadataById],
     );
 
-    // Polling Safe API để check transaction status via queue
     useEffect(() => {
-        if (!lastProposedTx?.safeTxHash || !lastProposedTx?.safeAddress) return;
-
-        let mounted = true;
-        let attempts = 0;
-        const MAX_ATTEMPTS = 30; // 30 lần * 2s = 60s max
-
-        const checkStatus = async () => {
-            if (!mounted) return;
-
-            attempts++;
-            try {
-                const safeAddress = getAddress(lastProposedTx.safeAddress);
-                const safeTxHash = lastProposedTx.safeTxHash;
-                // Query all transactions and filter by safeTxHash
-                const url = `https://api.safe.global/tx-service/sep/api/v1/safes/${safeAddress}/multisig-transactions/`;
-
-                const response = await fetch(url);
-                if (!response.ok) {
-                    throw new Error(`Safe API error: ${response.status}`);
-                }
-
-                const data = await response.json();
-
-                if (!mounted) return;
-
-                console.log('[AdminPage] Safe queue response:', data);
-
-                // Safe API returns { results: [...] } or direct array
-                const transactions = Array.isArray(data) ? data : (data.results || []);
-
-                // Find our transaction by safeTxHash
-                const ourTx = transactions.find((tx: any) =>
-                    tx.safeTxHash === safeTxHash ||
-                    tx.contractTransactionHash === safeTxHash
-                );
-
-                if (ourTx) {
-                    console.log('[AdminPage] Found transaction in queue:', ourTx);
-
-                    if (ourTx.executionDate || ourTx.executed) {
-                        // Transaction executed (executionDate indicates it's been executed)
-                        setTxStatus("executed");
-                        setActionMessage("✅ Duyệt campaign thành công!");
-                        refetch();
-                        backendRefetch();
-
-                        // Clear sau 3s
-                        setTimeout(() => {
-                            if (mounted) {
-                                setLastProposedTx(null);
-                                setTxStatus("idle");
-                            }
-                        }, 3000);
-                    } else if (ourTx.failed) {
-                        setTxStatus("failed");
-                        setActionError("Giao dịch thất bại trên Safe.");
-                        setLastProposedTx(null);
-                    } else {
-                        // Still pending (needs more confirmations or execution)
-                        if (mounted && attempts < MAX_ATTEMPTS) {
-                            pollingRef.current = setTimeout(checkStatus, 2000);
-                        } else if (mounted) {
-                            setTxStatus("failed");
-                            setActionError("Quá thời gian chờ. Vui lòng kiểm tra trên Safe UI.");
-                            setLastProposedTx(null);
-                        }
-                    }
-                } else {
-                    // Transaction not found in queue yet? Continue polling
-                    if (mounted && attempts < MAX_ATTEMPTS) {
-                        pollingRef.current = setTimeout(checkStatus, 2000);
-                    } else if (mounted) {
-                        setTxStatus("failed");
-                        setActionError("Không tìm thấy giao dịch trong queue. Vui lòng kiểm tra trên Safe UI.");
-                        setLastProposedTx(null);
-                    }
-                }
-            } catch (error) {
-                console.error('[AdminPage] Error polling Safe transaction:', error);
-                if (mounted && attempts < MAX_ATTEMPTS) {
-                    pollingRef.current = setTimeout(checkStatus, 5000);
-                } else if (mounted) {
-                    setTxStatus("failed");
-                    setActionError("Không thể kiểm tra trạng thái giao dịch.");
-                    setLastProposedTx(null);
-                }
-            }
+        if (!activeCampaignId) {
+            return;
+        }
+        const onBeforeUnload = (event: BeforeUnloadEvent) => {
+            event.preventDefault();
+            event.returnValue = "";
         };
-
-        // Bắt đầu poll ngay lập tức
-        checkStatus();
-
+        window.addEventListener("beforeunload", onBeforeUnload);
         return () => {
-            mounted = false;
-            if (pollingRef.current) {
-                clearTimeout(pollingRef.current);
-            }
+            window.removeEventListener("beforeunload", onBeforeUnload);
         };
-    }, [lastProposedTx?.safeTxHash, lastProposedTx?.safeAddress, refetch, backendRefetch]);
+    }, [activeCampaignId]);
 
-    // Cleanup khi unmount
-    useEffect(() => {
-        return () => {
-            if (pollingRef.current) {
-                clearTimeout(pollingRef.current);
-            }
-        };
-    }, []);
-
-    if (!mounted) {
+    if (isAccessChecking) {
         return (
             <div className="min-h-screen bg-slate-50 px-6 py-10">
                 <main className="mx-auto max-w-6xl rounded-2xl border border-slate-200 bg-white p-6">
@@ -284,37 +184,25 @@ export default function AdminCampaignApprovalsPage() {
                     </p>
                 )}
 
-                {actionMessage && txStatus === "executed" && (
+                {actionMessage && !isCancelMessage && (
                     <div className="mt-4 rounded-lg bg-emerald-50 border border-emerald-200 p-4 text-emerald-800">
                         {actionMessage}
-                        {lastProposedTx && (
-                            <div className="mt-3 flex flex-wrap items-center gap-3">
-                                <a
-                                    href={lastProposedTx.safeUiUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                    </svg>
-                                    Xem trên Safe UI
-                                </a>
-                                <span className="text-xs opacity-75 font-mono">
-                                    Tx: {lastProposedTx.safeTxHash.slice(0, 12)}...{lastProposedTx.safeTxHash.slice(-6)}
-                                </span>
-                            </div>
-                        )}
                     </div>
                 )}
 
                 {actionError && (
-                    <div className="mt-4 rounded-lg bg-red-50 border border-red-200 p-4 text-red-700">
+                    <div
+                        className={`mt-4 rounded-lg border p-4 ${
+                            isCancelMessage
+                                ? "border-amber-200 bg-amber-50 text-amber-800"
+                                : "border-red-200 bg-red-50 text-red-700"
+                        }`}
+                    >
                         {actionError}
                     </div>
                 )}
 
-                {txStatus === "proposed" && (
+                {activeCampaignId !== null && (
                     <div className="mt-4 rounded-lg bg-blue-50 border border-blue-200 p-4 text-blue-800">
                         <div className="flex items-center gap-2">
                             <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -322,21 +210,9 @@ export default function AdminCampaignApprovalsPage() {
                                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                             </svg>
                             <span>
-                                Đã gửi đề xuất đến Safe. Threshold = 1 nên sẽ tự động execute sau khi đủ chữ ký...
+                                Đã gửi giao dịch duyệt lên blockchain. Vui lòng chờ MetaMask xác nhận xong trước khi tải lại trang.
                             </span>
                         </div>
-                        {lastProposedTx && (
-                            <div className="mt-2">
-                                <a
-                                    href={lastProposedTx.safeUiUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-sm underline"
-                                >
-                                    Xem transaction trên Safe UI
-                                </a>
-                            </div>
-                        )}
                     </div>
                 )}
 
@@ -475,50 +351,54 @@ export default function AdminCampaignApprovalsPage() {
 
                                 <button
                                     type="button"
-                                    disabled={isProposing || txStatus === "proposed" || txStatus === "executed"}
+                                    disabled={
+                                        activeCampaignId === item.id
+                                    }
                                     className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                     onClick={async () => {
                                         try {
+                                            setIsCancelMessage(false);
                                             setActionError(null);
                                             setActionMessage(null);
-                                            setLastProposedTx(null);
-                                            setTxStatus("proposed");
-                                            setIsProposing(true);
-
-                                            // 1. Kiểm tra xem người dùng có muốn dùng Safe không, hoặc là admin trực tiếp
-                                            // Nếu walletAddress có ADMIN_ROLE và KHÔNG phải là Safe (hoặc đơn giản là muốn duyệt nhanh)
-                                            // Ở đây ta ưu tiên duyệt trực tiếp nếu có quyền.
+                                            setActiveCampaignId(item.id);
+                                            setLastApprovedCampaignId(null);
 
                                             if (isAdminOnChain) {
-                                                console.log("[AdminPage] Detected ADMIN_ROLE on-chain, attempting direct approval...");
-                                                const tx = await directApprove(item.id);
-                                                setActionMessage("✅ Đã gửi lệnh duyệt trực tiếp! Đang chờ confirm...");
-                                                setTxStatus("executed"); // Hoặc "idle" tùy bạn muốn xử lý hash
-                                                refetch();
-                                                backendRefetch();
+                                                const txHash = await directApprove(item.id);
+                                                setActionMessage("Đã gửi giao dịch duyệt. Đang chờ xác nhận on-chain...");
+                                                if (publicClient) {
+                                                    await publicClient.waitForTransactionReceipt({
+                                                        hash: txHash,
+                                                        confirmations: 1,
+                                                    });
+                                                }
+                                                await Promise.all([
+                                                    refetch(),
+                                                    backendRefetch(),
+                                                ]);
+                                                setLastApprovedCampaignId(item.id);
+                                                setActionMessage(`✅ Duyệt campaign #${item.id} thành công!`);
                                             } else {
-                                                // Fallback: Propose qua Safe nếu không có quyền admin trực tiếp nhưng có thể là owner của Safe admin
-                                                // TODO: Cần biết address của Safe admin. Hiện tại lấy từ config hoặc input?
-                                                // Giả sử có một cơ chế chọn Safe.
                                                 throw new Error("Ví của bạn không có quyền ADMIN_ROLE trực tiếp. Vui lòng sử dụng ví Admin hoặc Safe Admin.");
                                             }
                                         } catch (error) {
                                             console.error("Admin approve error:", error);
-                                            setTxStatus("failed");
-                                            setActionError(
-                                                error instanceof Error
-                                                    ? error.message
-                                                    : "Không thể duyệt campaign"
+                                            const normalizedMessage = getWalletErrorMessage(
+                                                error,
+                                                { fallback: "Không thể duyệt campaign." },
                                             );
-                                            setLastProposedTx(null);
+                                            const isCancelledByUser =
+                                                normalizedMessage === "Bạn đã hủy thao tác trong MetaMask.";
+                                            setIsCancelMessage(isCancelledByUser);
+                                            setActionError(normalizedMessage);
                                         } finally {
-                                            setIsProposing(false);
+                                            setActiveCampaignId(null);
                                         }
                                     }}
                                 >
-                                    {isProposing || txStatus === "proposed"
+                                    {activeCampaignId === item.id
                                         ? "Đang xử lý..."
-                                        : txStatus === "executed"
+                                        : lastApprovedCampaignId === item.id
                                             ? "Đã duyệt ✓"
                                             : "Duyệt campaign"}
                                 </button>
