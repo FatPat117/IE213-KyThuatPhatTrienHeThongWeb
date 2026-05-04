@@ -62,8 +62,14 @@ function getStatusMeta(status: string) {
                 dotClass: "bg-blue-500 ring-blue-100",
                 cardClass: "border-blue-100",
             };
-        case "submitted":
         case "resubmittable":
+            return {
+                label: "Bị từ chối / Cần nộp lại",
+                badgeClass: "bg-orange-100 text-orange-700 border-orange-200",
+                dotClass: "bg-orange-500 ring-orange-100",
+                cardClass: "border-orange-100",
+            };
+        case "submitted":
         case "review_timeout":
         case "approved":
             return {
@@ -283,6 +289,9 @@ export default function MilestoneTimeline({
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                                         </svg>
                                         <span className="font-bold">Cần nộp lại minh chứng</span>
+                                        <span className="ml-auto rounded-full bg-orange-200 px-2 py-0.5 text-[10px] font-bold text-orange-800">
+                                            Lần từ chối: {milestone.rejectionCount || 0}/{milestone.maxRetries || 3}
+                                        </span>
                                     </div>
                                     <p className="text-sm text-orange-700 leading-relaxed mb-3">
                                         <strong>Lý do từ chối:</strong> {milestone.lastRejectionReason || "Reviewer yêu cầu bổ sung thông tin."}
