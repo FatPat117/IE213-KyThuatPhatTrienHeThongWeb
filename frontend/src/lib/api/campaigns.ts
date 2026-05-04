@@ -31,6 +31,9 @@ export interface PublicCampaignMilestone {
     approvedAt: string | null;
     approvedBy: string;
     disbursedAt: string | null;
+    lastRejectionReason?: string;
+    rejectionCount?: number;
+    maxRetries?: number;
 }
 
 export interface ReviewerAggregate {
@@ -63,6 +66,13 @@ export interface PublicStatsResponse {
     updatedAt: string;
 }
 
+export interface RefundStatusResponse {
+    status: "none" | "eligible" | "prepared" | "refunded";
+    refundedWei: string;
+    eligibleRefundWei: string;
+    refundedAt: string | null;
+}
+
 interface PublicCampaignsResponse {
     items: PublicCampaignItem[];
     pagination: {
@@ -92,6 +102,7 @@ interface CampaignMilestoneRecord {
     approvedAt?: string | null;
     approvedBy?: string;
     disbursedAt?: string | null;
+    lastRejectionReason?: string;
 }
 
 interface MilestoneServiceResponse {
@@ -506,4 +517,19 @@ export async function getReviewerAggregates(): Promise<ReviewerAggregate[]> {
     return Array.from(aggregates.values()).sort(
         (a, b) => b.campaignCount - a.campaignCount,
     );
+}
+
+export async function getRefundStatus(
+    onChainId: number,
+    address: string,
+): Promise<RefundStatusResponse> {
+    const url = `${API_BASE_URL}/public/campaigns/${onChainId}/refund-status?address=${address}`;
+    const response = await apiRequest<{
+        success: boolean;
+        data: RefundStatusResponse;
+    }>(url);
+    if (!response.success || !response.data) {
+        throw new Error("Không thể lấy trạng thái hoàn tiền.");
+    }
+    return response.data;
 }

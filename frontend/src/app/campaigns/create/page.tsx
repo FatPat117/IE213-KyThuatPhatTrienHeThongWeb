@@ -684,7 +684,7 @@ export default function CreateCampaignPage() {
                                     }
 
                                     // DEBUG LOG
-                                    console.log("🚀 [CreateCampaign] Gửi contract:", {
+                                    console.log("[CreateCampaign] Gửi contract:", {
                                         goalWei: parseEther(formData.goalEth).toString(),
                                         allocationBps,
                                         deadlines: milestoneDeadlines,

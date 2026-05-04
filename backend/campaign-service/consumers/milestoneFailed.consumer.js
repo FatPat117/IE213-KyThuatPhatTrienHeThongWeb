@@ -5,7 +5,7 @@ const { recordTransaction } = require("../utils/recordTransaction");
 const QUEUE =
     process.env.RABBITMQ_QUEUE_MILESTONE_FAILED || "milestone.failed.queue";
 const ROUTING_KEY =
-    process.env.RABBITMQ_RKEY_MILESTONE_FAILED || "milestone.failed";
+    process.env.RABBITMQ_RKEY_MILESTONE_FAILED || "blockchain.milestone.failed";
 
 async function startMilestoneFailedConsumer() {
     const channel = getChannel();
@@ -49,6 +49,10 @@ async function startMilestoneFailedConsumer() {
                     },
                 },
             );
+
+            // Call handleCampaignCascadeFailure to ensure campaign also fails and refunds are created
+            const { handleCampaignCascadeFailure } = require("../services/refundService");
+            await handleCampaignCascadeFailure(campaignOnChainId);
 
             await recordTransaction({
                 txHash: payload.txHash,

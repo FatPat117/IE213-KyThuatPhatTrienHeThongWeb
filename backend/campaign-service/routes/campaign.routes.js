@@ -12,6 +12,7 @@ const {
     getPublicCampaignByOnChainId,
     getPublicCampaignMilestones,
     getMilestoneApprovalStatus,
+    getRefundStatus,
 } = require("../controllers/campaign.controller");
 const {
     getReviewerProfile,
@@ -52,6 +53,11 @@ router.get(
     "/public/campaigns/:onChainId",
     publicRateLimit,
     getPublicCampaignByOnChainId,
+);
+router.get(
+    "/public/campaigns/:onChainId/refund-status",
+    publicRateLimit,
+    getRefundStatus,
 );
 
 router.get("/:onChainId/status", getCampaignIndexStatus);

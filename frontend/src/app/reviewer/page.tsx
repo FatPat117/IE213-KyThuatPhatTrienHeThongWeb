@@ -226,14 +226,20 @@ function ReviewerMilestoneActions({
         CLEARLY_PENDING_STATUSES.has(milestone.status) ||
         (milestone.status === "disbursed" && !milestone.approvedAt);
 
+    const isActionable = isPendingMilestone && milestone.status !== "resubmittable";
+
     const canWalletApproveMilestone =
-        isPendingMilestone &&
+        isActionable &&
         hasOnChainProof &&
         !hasSigned &&
         myReviewerSafes.includes(campaignReviewerSafe);
 
+    const canWalletRejectMilestone =
+        isActionable &&
+        myReviewerSafes.includes(campaignReviewerSafe);
+
     const canExecute =
-        isPendingMilestone &&
+        isActionable &&
         hasOnChainProof &&
         myReviewerSafes.includes(campaignReviewerSafe) &&
         approvalStatus.confirmed >= approvalStatus.required &&
@@ -248,34 +254,40 @@ function ReviewerMilestoneActions({
             {/* Evidence List (On-chain) */}
             {hasOnChainProof ? (
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {onChainProofs.map((cid, index) => (
-                        <div
-                            key={`${milestone.milestoneId}-onchain-${index}-${cid}`}
-                            className="rounded-xl border border-blue-100 bg-white p-3 shadow-sm ring-1 ring-blue-50/50"
-                        >
-                            <div className="flex items-center justify-between gap-2 mb-1.5">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
-                                    Minh chứng #{index + 1}
-                                </span>
-                                <span className="text-[10px] text-slate-400 font-medium">On-chain</span>
-                            </div>
-                            <p className="text-xs font-semibold text-slate-600">CID</p>
-                            <p className="mt-1 break-all text-[11px] font-mono text-slate-700 leading-relaxed bg-slate-50 p-1.5 rounded-lg border border-slate-100">
-                                {cid}
-                            </p>
-                            <a
-                                href={`https://ipfs.io/ipfs/${cid}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="mt-2.5 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 hover:border-slate-300"
+                    {(() => {
+                        const uniqueProofs = Array.from(new Set(onChainProofs.map(c => (c || "").trim().toLowerCase())))
+                            .map(k => onChainProofs.find(c => (c || "").trim().toLowerCase() === k))
+                            .filter(Boolean) as string[];
+                        
+                        return uniqueProofs.map((cid, index) => (
+                            <div
+                                key={`${milestone.milestoneId}-onchain-${index}-${cid}`}
+                                className="rounded-xl border border-blue-100 bg-white p-3 shadow-sm ring-1 ring-blue-50/50"
                             >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                </svg>
-                                Mở IPFS
-                            </a>
-                        </div>
-                    ))}
+                                <div className="flex items-center justify-between gap-2 mb-1.5">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                                        Minh chứng #{index + 1}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 font-medium">On-chain</span>
+                                </div>
+                                <p className="text-xs font-semibold text-slate-600">CID</p>
+                                <p className="mt-1 break-all text-[11px] font-mono text-slate-700 leading-relaxed bg-slate-50 p-1.5 rounded-lg border border-slate-100">
+                                    {cid}
+                                </p>
+                                <a
+                                    href={`https://ipfs.io/ipfs/${cid}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="mt-2.5 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 hover:border-slate-300"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                    </svg>
+                                    Mở IPFS
+                                </a>
+                            </div>
+                        ));
+                    })()}
                 </div>
             ) : isLoadingOnChain ? (
                 <div className="flex items-center gap-2 py-2 text-xs text-slate-400 italic">
@@ -298,47 +310,73 @@ function ReviewerMilestoneActions({
                 </div>
             )}
 
-            {isPendingMilestone && (
+            {isActionable && (
                 <div className="flex flex-wrap items-center gap-3 pt-1">
-                    {hasSigned ? (
-                        <span className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-100 px-5 py-2.5 text-sm font-bold text-emerald-700 ring-1 ring-emerald-200">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                            Đã phê duyệt
-                        </span>
-                    ) : (
-                        <>
-                            <button
-                                onClick={() => handleApprove(campaignId, milestone.milestoneId)}
-                                disabled={
-                                    isApproving ||
-                                    isRejecting ||
-                                    !hasOnChainProof ||
-                                    !canWalletApproveMilestone ||
-                                    isLoadingOnChain
-                                }
-                                title={
-                                    isLoadingOnChain 
-                                        ? "Đang kiểm tra dữ liệu on-chain..." 
-                                        : !hasOnChainProof 
-                                            ? "Chưa có minh chứng trên Smart Contract" 
-                                            : !canWalletApproveMilestone 
-                                                ? "Ví không trùng reviewerSafe" 
-                                                : undefined
-                                }
-                                className="flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 hover:shadow-emerald-700/30 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
-                            >
-                                {isApproving ? (
-                                    <>
-                                        <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                                        Đang xử lý...
-                                    </>
-                                ) : (
-                                    "Phê duyệt mốc"
-                                )}
-                            </button>
+                    <div className="flex flex-wrap items-center gap-3">
+                        {hasSigned ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-100 px-5 py-2.5 text-sm font-bold text-emerald-700 ring-1 ring-emerald-200">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                Bạn đã ký duyệt
+                            </span>
+                        ) : (
+                            <>
+                                <button
+                                    onClick={() => handleApprove(campaignId, milestone.milestoneId)}
+                                    disabled={
+                                        isApproving ||
+                                        isRejecting ||
+                                        !hasOnChainProof ||
+                                        !canWalletApproveMilestone ||
+                                        isLoadingOnChain
+                                    }
+                                    title={
+                                        isLoadingOnChain 
+                                            ? "Đang kiểm tra dữ liệu on-chain..." 
+                                            : !hasOnChainProof 
+                                                ? "Chưa có minh chứng trên Smart Contract" 
+                                                : !canWalletApproveMilestone 
+                                                    ? "Ví không trùng reviewerSafe" 
+                                                    : undefined
+                                    }
+                                    className="flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 hover:shadow-emerald-700/30 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
+                                >
+                                    {isApproving ? (
+                                        <>
+                                            <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                                            Đang xử lý...
+                                        </>
+                                    ) : (
+                                        "Phê duyệt mốc"
+                                    )}
+                                </button>
 
+                                <button
+                                    onClick={() => handleReject(campaignId, milestone.milestoneId)}
+                                    disabled={
+                                        isApproving ||
+                                        isRejecting ||
+                                        !canWalletRejectMilestone
+                                    }
+                                    title={
+                                        !myReviewerSafes.includes(campaignReviewerSafe) 
+                                            ? "Ví không nằm trong danh sách reviewer của campaign" 
+                                            : milestone.status === "resubmittable"
+                                                ? "Đã từ chối, đang chờ Creator nộp lại minh chứng"
+                                            : !isPendingMilestone
+                                                ? "Mốc không ở trạng thái chờ duyệt"
+                                                : undefined
+                                    }
+                                    className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-6 py-2.5 text-sm font-bold text-rose-700 transition hover:bg-rose-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {isRejecting ? "Đang xử lý..." : "Từ chối mốc"}
+                                </button>
+                            </>
+                        )}
+
+                        {/* Nút Thực thi luôn hiện nếu có thể thực thi, bất kể đã ký hay chưa */}
+                        {(canExecute || Boolean(approvalStatus.pendingTxHash)) && (
                             <button
                                 onClick={() => handleExecute(campaignId, milestone.milestoneId)}
                                 disabled={
@@ -380,21 +418,8 @@ function ReviewerMilestoneActions({
                                     </>
                                 )}
                             </button>
-
-                            <button
-                                onClick={() => handleReject(campaignId, milestone.milestoneId)}
-                                disabled={
-                                    isApproving ||
-                                    isRejecting ||
-                                    !canWalletApproveMilestone
-                                }
-                                title={!canWalletApproveMilestone ? "Ví không trùng reviewerSafe" : undefined}
-                                className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-6 py-2.5 text-sm font-bold text-rose-700 transition hover:bg-rose-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                                {isRejecting ? "Đang xử lý..." : "Từ chối mốc"}
-                            </button>
-                        </>
-                    )}
+                        )}
+                    </div>
                 </div>
             )}
         </div>
@@ -428,6 +453,7 @@ export default function ReviewerWorkspacePage() {
     const [actionIsSuccess, setActionIsSuccess] = useState(false);
     const [rejectModalTarget, setRejectModalTarget] = useState<{ campaignId: number; milestoneId: number } | null>(null);
     const [rejectReason, setRejectReason] = useState("");
+    const [rejectError, setRejectError] = useState<string | null>(null);
     const [txHash, setTxHash] = useState<`0x${string}` | undefined>(undefined);
     const {
         isLoading: isConfirming,
@@ -735,23 +761,25 @@ export default function ReviewerWorkspacePage() {
 
     const handleRejectConfirm = useCallback(
         async (reason: string) => {
-            if (!rejectModalTarget || !token) return;
+            if (!rejectModalTarget || !token) return false;
             const { campaignId, milestoneId } = rejectModalTarget;
             const key = toApprovalKey(campaignId, milestoneId);
             setRejectingKey(key);
             setActionMessage(null);
+            setRejectError(null);
             try {
                 await rejectMilestone(campaignId, milestoneId, token, reason);
-                setRejectModalTarget(null);
                 setActionIsSuccess(true);
-                setActionMessage("✅ Đã ghi nhận từ chối milestone. Creator có thể nộp lại minh chứng.");
+                setActionMessage("✅ Đã ghi nhận từ chối milestone. Creator đã được thông báo.");
                 await refresh();
                 await refreshApprovalStatuses();
+                return true;
             } catch (error) {
+                const msg = error instanceof Error ? error.message : "Không thể từ chối milestone";
+                setRejectError(msg);
                 setActionIsSuccess(false);
-                setActionMessage(
-                    error instanceof Error ? error.message : "Không thể từ chối milestone",
-                );
+                setActionMessage(msg);
+                return false;
             } finally {
                 setRejectingKey(null);
             }
@@ -1158,6 +1186,7 @@ export default function ReviewerWorkspacePage() {
                             if (!rejectingKey) {
                                 setRejectModalTarget(null);
                                 setRejectReason("");
+                                setRejectError(null);
                             }
                         }}
                     />
@@ -1178,8 +1207,13 @@ export default function ReviewerWorkspacePage() {
                             disabled={Boolean(rejectingKey)}
                             rows={4}
                             placeholder="Ví dụ: Bằng chứng chưa đủ rõ ràng, cần bổ sung hình ảnh hoàn công và tài liệu kiểm tra..."
-                            className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60"
+                            className={`w-full resize-none rounded-xl border bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60 ${rejectError ? "border-rose-400 focus:border-rose-500" : "border-slate-200 focus:border-indigo-400"}`}
                         />
+                        {rejectError && (
+                            <p className="mt-2 text-xs font-bold text-rose-600">
+                                ⚠️ {rejectError}
+                            </p>
+                        )}
                         <p className={`mt-1 text-right text-xs ${rejectReason.trim().length < 10 ? "text-rose-500" : "text-emerald-600"}`}>
                             {rejectReason.trim().length}/10 ký tự tối thiểu
                         </p>
@@ -1200,9 +1234,12 @@ export default function ReviewerWorkspacePage() {
                                     if (!rejectModalTarget) return;
                                     const reason = rejectReason.trim();
                                     if (reason.length < 10) return;
-                                    await handleRejectConfirm(reason);
-                                    setRejectModalTarget(null);
-                                    setRejectReason("");
+                                    const success = await handleRejectConfirm(reason);
+                                    if (success) {
+                                        setRejectModalTarget(null);
+                                        setRejectReason("");
+                                        setRejectError(null);
+                                    }
                                 }}
                                 disabled={Boolean(rejectingKey) || rejectReason.trim().length < 10}
                                 className="rounded-xl bg-rose-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"

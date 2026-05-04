@@ -62,8 +62,14 @@ function getStatusMeta(status: string) {
                 dotClass: "bg-blue-500 ring-blue-100",
                 cardClass: "border-blue-100",
             };
-        case "submitted":
         case "resubmittable":
+            return {
+                label: "Bị từ chối / Cần nộp lại",
+                badgeClass: "bg-orange-100 text-orange-700 border-orange-200",
+                dotClass: "bg-orange-500 ring-orange-100",
+                cardClass: "border-orange-100",
+            };
+        case "submitted":
         case "review_timeout":
         case "approved":
             return {
@@ -105,7 +111,9 @@ function getStatusMeta(status: string) {
 }
 
 function chainIndexForMilestone(milestoneId: number) {
-    return milestoneId >= 1 ? milestoneId - 1 : milestoneId;
+    // Backend và Contract đều dùng 0-indexed cho ID/Index.
+    // Nếu ID nhận được là 0, 1, 2... thì dùng trực tiếp.
+    return milestoneId;
 }
 
 export default function MilestoneTimeline({
@@ -274,6 +282,31 @@ export default function MilestoneTimeline({
                                 </div>
                             </div>
 
+                            {milestone.status === "resubmittable" && (
+                                <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 p-4 shadow-sm animate-pulse">
+                                    <div className="flex items-center gap-2 mb-2 text-orange-800">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                        </svg>
+                                        <span className="font-bold">Cần nộp lại minh chứng</span>
+                                        <span className="ml-auto rounded-full bg-orange-200 px-2 py-0.5 text-[10px] font-bold text-orange-800">
+                                            Lần từ chối: {milestone.rejectionCount || 0}/{milestone.maxRetries || 3}
+                                        </span>
+                                    </div>
+                                    <p className="text-sm text-orange-700 leading-relaxed mb-3">
+                                        <strong>Lý do từ chối:</strong> {milestone.lastRejectionReason || "Reviewer yêu cầu bổ sung thông tin."}
+                                    </p>
+                                    {canUploadEvidence && (
+                                        <Link
+                                            href={`/campaigns/${campaignId}/milestones/upload?milestone=${milestone.milestoneId}`}
+                                            className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-xs font-bold text-white hover:bg-orange-700 transition shadow-md shadow-orange-200"
+                                        >
+                                            Cập nhật báo cáo ngay →
+                                        </Link>
+                                    )}
+                                </div>
+                            )}
+
                             <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
                                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
                                     Đường dẫn bằng chứng
@@ -300,25 +333,28 @@ export default function MilestoneTimeline({
                                         Xem smart contract
                                     </a>
                                     {ipfsLinks.map((item) => (
-                                        <Link
-                                            key={`${milestone.milestoneId}-${item.cid}`}
-                                            href={`/campaigns/${campaignId}/milestones/upload?milestone=${milestone.milestoneId}&sourceCid=${encodeURIComponent(item.cid)}`}
-                                            className="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 font-medium text-emerald-700 hover:bg-emerald-100"
-                                        >
-                                            IPFS: {item.cid.slice(0, 16)}...
-                                            (cập nhật minh chứng)
-                                        </Link>
-                                    ))}
-                                    {ipfsLinks.map((item) => (
-                                        <a
-                                            key={`${milestone.milestoneId}-${item.cid}-view`}
-                                            href={item.url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="font-medium text-blue-600 hover:text-blue-700"
-                                        >
-                                            Xem CID {item.cid.slice(0, 10)}...
-                                        </a>
+                                        <div key={`${milestone.milestoneId}-${item.cid}`} className="flex items-center gap-2">
+                                            <a
+                                                href={item.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
+                                            >
+                                                <svg className="mr-1.5 h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                </svg>
+                                                IPFS: {item.cid.slice(0, 8)}...{item.cid.slice(-4)}
+                                            </a>
+                                            {canUploadEvidence && (
+                                                <Link
+                                                    href={`/campaigns/${campaignId}/milestones/upload?milestone=${milestone.milestoneId}&sourceCid=${encodeURIComponent(item.cid)}`}
+                                                    className="text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline"
+                                                >
+                                                    Cập nhật báo cáo
+                                                </Link>
+                                            )}
+                                        </div>
                                     ))}
                                 </div>
                             </div>
