@@ -283,13 +283,23 @@ async function getAllCampaigns(req, res, next) {
 async function getCampaignById(req, res, next) {
     try {
         const campaign = await campaignService.getCampaignById(
-            req.params.onChainId || req.params.id,
+            Number(req.params.id),
         );
         if (!campaign) {
             return errorRes(res, "Campaign not found", 404);
         }
 
-        return successRes(res, campaign);
+        // Fetch milestones for this campaign
+        const milestones = await Milestone.find({ 
+            campaignOnChainId: Number(req.params.id) 
+        }).sort({ milestoneId: 1 }).lean();
+
+        const responseData = {
+            ...normalizeCampaignItem(campaign),
+            milestones: milestones || []
+        };
+
+        return successRes(res, responseData);
     } catch (err) {
         return next(err);
     }
@@ -577,8 +587,14 @@ async function getPublicCampaignByOnChainId(req, res, next) {
         const remaining =
             totalRaised > totalDisbursed ? totalRaised - totalDisbursed : 0n;
 
+        // Fetch milestones for this campaign
+        const milestones = await Milestone.find({ 
+            campaignOnChainId: onChainId 
+        }).sort({ milestoneId: 1 }).lean();
+
         return successRes(res, {
             ...normalizeCampaignItem(campaign),
+            milestones: milestones || [],
             beneficiary: campaign.beneficiary,
             progress: {
                 raisedPercent: percentOf(totalRaised, goal),
