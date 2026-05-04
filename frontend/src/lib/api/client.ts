@@ -212,7 +212,7 @@ export interface ApiError {
 
 export type ApiResponse<T> = ApiSuccess<T> | ApiError;
 
-class ApiRequestError extends Error {
+export class ApiRequestError extends Error {
     status?: number;
     rawMessage?: string;
 

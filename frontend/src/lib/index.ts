@@ -116,3 +116,13 @@ export {
     toAuthUserProfile,
     updateUserProfile,
 } from "./api/users";
+export {
+    getReviewerProfile,
+    updateReviewerProfile,
+    type ReviewerProfile,
+} from "./api/reviewer-profile";
+export {
+    getAdminReviewerProfiles,
+    type ReviewerProfileAdminRecord,
+} from "./api/reviewer-admin";
+export { useIsReviewer } from "./hooks/use-is-reviewer";

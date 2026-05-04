@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useAccount, useChainId } from "wagmi";
+import { useChainId } from "wagmi";
 import { getAddress } from "viem";
-import { useAuth } from "@/lib";
 import {
+    getAdminReviewerProfiles,
+    useAuth,
+    type ReviewerProfileAdminRecord,
+} from "@/lib";
+  import {
     useAddReviewerSafe,
     useReadAllCampaigns,
     useReadCampaignReviewersBatch,
@@ -19,9 +23,27 @@ import { showSuccessToast } from "@/lib/ui/toast";
 const SEPOLIA_CHAIN_ID = 11155111;
 const SAFE_META_RETRY_AFTER_429_MS = 60_000;
 
+type SafeMetaEntry = {
+    threshold: number | null;
+    ownerCount: number | null;
+    owners: string[];
+};
+
+function formatAdminDate(iso: string | null | undefined) {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleString("vi-VN", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+    });
+}
+
 export default function AdminReviewersPage() {
-    const { token, user } = useAuth();
-    const { address } = useAccount();
+    const { token } = useAuth();
     const chainId = useChainId();
     const { isAdminOnChain } = useReadContractOwner();
     const isSepolia = chainId === SEPOLIA_CHAIN_ID;
@@ -57,14 +79,12 @@ export default function AdminReviewersPage() {
     });
     useRegisterWalletTxOverlay(isConfirming);
     const [safeMetaByAddress, setSafeMetaByAddress] = useState<
-        Record<string, { threshold: number | null; ownerCount: number | null }>
+        Record<string, SafeMetaEntry>
     >({});
     const [safeMetaErrorByAddress, setSafeMetaErrorByAddress] = useState<
         Record<string, string>
     >({});
-    const safeMetaCacheRef = useRef<
-        Record<string, { threshold: number | null; ownerCount: number | null }>
-    >({});
+    const safeMetaCacheRef = useRef<Record<string, SafeMetaEntry>>({});
     const safeMetaRetryAfterRef = useRef<Record<string, number>>({});
     const normalizedReviewerSafes = useMemo(
         () =>
@@ -88,13 +108,54 @@ export default function AdminReviewersPage() {
         return map;
     }, [reviewersByCampaignId]);
 
-    const normalizedWallet = (address || "").toLowerCase();
+    const [reviewerDbProfiles, setReviewerDbProfiles] = useState<
+        ReviewerProfileAdminRecord[]
+    >([]);
+    const [reviewerDbLoading, setReviewerDbLoading] = useState(false);
+    const [reviewerDbError, setReviewerDbError] = useState<string | null>(null);
+
+    const profileByWallet = useMemo(() => {
+        const m = new Map<string, ReviewerProfileAdminRecord>();
+        for (const row of reviewerDbProfiles) {
+            m.set(row.walletAddress.toLowerCase().trim(), row);
+        }
+        return m;
+    }, [reviewerDbProfiles]);
+
     const isAdmin = Boolean(token && isAdminOnChain);
     const shouldShowOwnerMismatchWarning = false;
 
     useEffect(() => {
         setIsMounted(true);
     }, []);
+
+    useEffect(() => {
+        if (!isAdmin || !token) {
+            setReviewerDbProfiles([]);
+            return;
+        }
+        let cancelled = false;
+        setReviewerDbLoading(true);
+        setReviewerDbError(null);
+        getAdminReviewerProfiles(token)
+            .then((rows) => {
+                if (!cancelled) setReviewerDbProfiles(rows);
+            })
+            .catch((err) => {
+                if (!cancelled)
+                    setReviewerDbError(
+                        err instanceof Error
+                            ? err.message
+                            : "Không tải được hồ sơ reviewer.",
+                    );
+            })
+            .finally(() => {
+                if (!cancelled) setReviewerDbLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [isAdmin, token]);
 
     useEffect(() => {
         let cancelled = false;
@@ -106,22 +167,19 @@ export default function AdminReviewersPage() {
                     (safeMetaRetryAfterRef.current[safe] ?? 0) <= now,
             );
             if (pending.length === 0) return;
-            const entries: Array<
-                readonly [
-                    string,
-                    { threshold: number | null; ownerCount: number | null },
-                ]
-            > = [];
+            const entries: Array<readonly [string, SafeMetaEntry]> = [];
             const errorEntries: Array<readonly [string, string]> = [];
+            const emptyMeta: SafeMetaEntry = {
+                threshold: null,
+                ownerCount: null,
+                owners: [],
+            };
             for (const normalized of pending) {
                 let checksumSafe = "";
                 try {
                     checksumSafe = getAddress(normalized);
                 } catch {
-                    entries.push([
-                        normalized,
-                        { threshold: null, ownerCount: null },
-                    ]);
+                    entries.push([normalized, { ...emptyMeta }]);
                     errorEntries.push([
                         normalized,
                         "Invalid Safe address checksum.",
@@ -139,10 +197,7 @@ export default function AdminReviewersPage() {
                         continue;
                     }
                     if (!res.ok) {
-                        entries.push([
-                            normalized,
-                            { threshold: null, ownerCount: null },
-                        ]);
+                        entries.push([normalized, { ...emptyMeta }]);
                         errorEntries.push([
                             normalized,
                             `Safe API error (${res.status}).`,
@@ -153,6 +208,11 @@ export default function AdminReviewersPage() {
                         threshold?: number;
                         owners?: string[];
                     };
+                    const owners = Array.isArray(payload.owners)
+                        ? payload.owners.map((a) =>
+                              String(a).toLowerCase().trim(),
+                          )
+                        : [];
                     entries.push([
                         normalized,
                         {
@@ -160,17 +220,13 @@ export default function AdminReviewersPage() {
                                 typeof payload.threshold === "number"
                                     ? payload.threshold
                                     : null,
-                            ownerCount: Array.isArray(payload.owners)
-                                ? payload.owners.length
-                                : null,
+                            ownerCount: owners.length,
+                            owners,
                         },
                     ]);
                     errorEntries.push([normalized, ""]);
                 } catch {
-                    entries.push([
-                        normalized,
-                        { threshold: null, ownerCount: null },
-                    ]);
+                    entries.push([normalized, { ...emptyMeta }]);
                     errorEntries.push([
                         normalized,
                         "Unable to load Safe metadata.",
@@ -268,6 +324,11 @@ export default function AdminReviewersPage() {
 
         if (isTxSuccess) {
             refetch();
+            if (token) {
+                getAdminReviewerProfiles(token)
+                    .then(setReviewerDbProfiles)
+                    .catch(() => {});
+            }
             if (pendingAction.type === "add") {
                 showSuccessToast(
                     `Thêm reviewer thành công: ${pendingAction.safe.slice(0, 8)}...${pendingAction.safe.slice(-4)}`,
@@ -299,6 +360,7 @@ export default function AdminReviewersPage() {
         refetch,
         txError,
         txHash,
+        token,
     ]);
 
     if (!isMounted) {
@@ -427,8 +489,83 @@ export default function AdminReviewersPage() {
                         Thêm reviewer
                     </button>
                 </div>
-                <div className="mt-4 space-y-3">
-                    {reviewerSafes.map((safe) => (
+
+                <div className="mt-8 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4">
+                    <h2 className="text-sm font-bold text-indigo-900">
+                        Hồ sơ reviewer (đã lưu trên hệ thống)
+                    </h2>
+                    <p className="mt-1 text-xs text-indigo-800/90">
+                        Dữ liệu từ Settings của reviewer (tổ chức, tỉnh/thành). Ghép với từng Safe qua địa chỉ owner.
+                    </p>
+                    {reviewerDbLoading && (
+                        <p className="mt-2 text-sm text-slate-600">Đang tải...</p>
+                    )}
+                    {reviewerDbError && (
+                        <p className="mt-2 text-sm text-red-600">{reviewerDbError}</p>
+                    )}
+                    {!reviewerDbLoading &&
+                        !reviewerDbError &&
+                        reviewerDbProfiles.length === 0 && (
+                            <p className="mt-2 text-sm text-slate-600">
+                                Chưa có reviewer nào gửi hồ sơ.
+                            </p>
+                        )}
+                    {!reviewerDbLoading && reviewerDbProfiles.length > 0 && (
+                        <div className="mt-3 overflow-x-auto rounded-lg border border-indigo-100 bg-white">
+                            <table className="min-w-full text-left text-sm">
+                                <thead>
+                                    <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase text-slate-600">
+                                        <th className="px-3 py-2">Ví (EOA)</th>
+                                        <th className="px-3 py-2">Mã reviewer</th>
+                                        <th className="px-3 py-2">Tổ chức</th>
+                                        <th className="px-3 py-2">Tỉnh / thành</th>
+                                        <th className="px-3 py-2">Hoạt động</th>
+                                        <th className="px-3 py-2">Cập nhật</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {reviewerDbProfiles.map((row) => (
+                                        <tr
+                                            key={row.walletAddress}
+                                            className="border-b border-slate-100 last:border-0"
+                                        >
+                                            <td className="max-w-[220px] px-3 py-2 font-mono text-[11px] text-slate-800 break-all">
+                                                {row.walletAddress}
+                                            </td>
+                                            <td className="px-3 py-2 text-xs">
+                                                {row.reviewerCode || "—"}
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                {row.organizationName || "—"}
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                {row.region || "—"}
+                                            </td>
+                                            <td className="px-3 py-2 text-xs">
+                                                {row.isActive !== false
+                                                    ? "Có"
+                                                    : "Tắt"}
+                                            </td>
+                                            <td className="px-3 py-2 text-xs text-slate-500">
+                                                {formatAdminDate(row.updatedAt)}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+
+                <div className="mt-6 space-y-3">
+                    <h2 className="text-sm font-semibold text-slate-800">
+                        Reviewer Safe trên contract
+                    </h2>
+                    {reviewerSafes.map((safe) => {
+                        const safeKey = safe.toLowerCase();
+                        const meta = safeMetaByAddress[safeKey];
+                        const owners = meta?.owners ?? [];
+                        return (
                         <div
                             key={safe}
                             className="rounded-xl border border-slate-200 p-4"
@@ -438,25 +575,80 @@ export default function AdminReviewersPage() {
                             </p>
                             <p className="text-xs text-slate-600">
                                 Campaign đang đảm nhận:{" "}
-                                {assignedCountBySafe.get(safe.toLowerCase()) ||
-                                    0}
+                                {assignedCountBySafe.get(safeKey) || 0}
                             </p>
-                            <p className="text-xs text-slate-500">
-                                Tỉnh/thành phụ trách: Chưa cập nhật
+                            <p className="mt-2 text-xs font-medium text-slate-700">
+                                Safe (threshold / owners):{" "}
+                                {meta?.threshold ?? "—"} /{" "}
+                                {meta?.ownerCount ?? "—"}
                             </p>
-                            <p className="text-xs text-slate-500">
-                                Ngưỡng ký (threshold):{" "}
-                                {safeMetaByAddress[safe]?.threshold ??
-                                    "Không xác định"}
-                            </p>
-                            <p className="text-xs text-slate-500">
-                                Số owner Safe:{" "}
-                                {safeMetaByAddress[safe]?.ownerCount ??
-                                    "Không xác định"}
-                            </p>
-                            {safeMetaErrorByAddress[safe] && (
+                            <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 p-3">
+                                <p className="text-xs font-semibold text-slate-700">
+                                    Owner Safe &amp; hồ sơ đăng ký
+                                </p>
+                                <ul className="mt-2 space-y-2">
+                                    {owners.length === 0 ? (
+                                        <li className="text-xs text-slate-500">
+                                            {safeMetaErrorByAddress[safeKey]
+                                                ? "Không tải được danh sách owner."
+                                                : "Chưa có metadata Safe (đang tải hoặc chưa có owner)."}
+                                        </li>
+                                    ) : (
+                                        owners.map((owner) => {
+                                            const p = profileByWallet.get(owner);
+                                            return (
+                                                <li
+                                                    key={`${safe}-${owner}`}
+                                                    className="rounded-md border border-white bg-white px-2 py-2 text-xs shadow-sm"
+                                                >
+                                                    <p className="font-mono text-[11px] text-slate-800 break-all">
+                                                        {owner}
+                                                    </p>
+                                                    {p ? (
+                                                        <div className="mt-1.5 space-y-0.5 text-slate-700">
+                                                            <p>
+                                                                <span className="text-slate-500">
+                                                                    Mã:
+                                                                </span>{" "}
+                                                                {p.reviewerCode ||
+                                                                    "—"}
+                                                            </p>
+                                                            <p>
+                                                                <span className="text-slate-500">
+                                                                    Tổ chức:
+                                                                </span>{" "}
+                                                                {p.organizationName ||
+                                                                    "—"}
+                                                            </p>
+                                                            <p>
+                                                                <span className="text-slate-500">
+                                                                    Tỉnh/TP:
+                                                                </span>{" "}
+                                                                {p.region || "—"}
+                                                            </p>
+                                                            <p className="text-[11px] text-slate-400">
+                                                                Cập nhật hồ sơ:{" "}
+                                                                {formatAdminDate(
+                                                                    p.updatedAt,
+                                                                )}
+                                                            </p>
+                                                        </div>
+                                                    ) : (
+                                                        <p className="mt-1 text-amber-800">
+                                                            Chưa có hồ sơ trên hệ
+                                                            thống (trang Settings
+                                                            reviewer).
+                                                        </p>
+                                                    )}
+                                                </li>
+                                            );
+                                        })
+                                    )}
+                                </ul>
+                            </div>
+                            {safeMetaErrorByAddress[safeKey] && (
                                 <p className="mt-1 text-xs text-red-600">
-                                    {safeMetaErrorByAddress[safe]}
+                                    {safeMetaErrorByAddress[safeKey]}
                                 </p>
                             )}
                             <button
@@ -486,7 +678,8 @@ export default function AdminReviewersPage() {
                                 Xóa
                             </button>
                         </div>
-                    ))}
+                        );
+                    })}
                 </div>
             </main>
         </div>
