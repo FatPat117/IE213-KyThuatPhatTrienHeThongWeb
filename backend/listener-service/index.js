@@ -209,6 +209,10 @@ async function reconcileCampaignsFromChain(contract) {
 async function startListener() {
     await connectRabbitMQ();
     startMarkFailedDailyJob();
+    
+    // Start consumer for manual sync requests from backend
+    const { startSyncBlockchainFailureConsumer } = require("./consumers/syncBlockchainFailure.consumer");
+    await startSyncBlockchainFailureConsumer();
 
     const result = createContractInstance();
 
