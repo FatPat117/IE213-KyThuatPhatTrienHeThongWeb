@@ -1,9 +1,11 @@
 const { ethers } = require("ethers");
 const cron = require("node-cron");
 const { CONTRACT_ABI, resolveContractConfig } = require("../config/contract");
+const axios = require("axios");
 
-const CAMPAIGN_STATUS_ACTIVE = 0;
-const CAMPAIGN_STATUS_IN_PROGRESS = 1;
+const CAMPAIGN_STATUS_PENDING = 0;
+const CAMPAIGN_STATUS_ACTIVE = 1;
+const CAMPAIGN_STATUS_IN_PROGRESS = 2;
 const MILESTONE_STATUS_PENDING_VERIFICATION = 1;
 const MILESTONE_STATUS_FAILED = 4;
 
@@ -26,6 +28,42 @@ function shouldMarkMilestoneFailed(campaign, milestone, nowSec) {
         Number(milestone.status) === MILESTONE_STATUS_PENDING_VERIFICATION &&
         Number(milestone.deadline) < nowSec
     );
+}
+
+async function isMilestoneExtendedInBackend(campaignOnChainId, milestoneId) {
+    const baseUrl = process.env.CAMPAIGN_SERVICE_URL;
+    if (!baseUrl) return false;
+
+    try {
+        const response = await axios.get(
+            `${baseUrl}/api/milestones/campaigns/${campaignOnChainId}/${milestoneId}`,
+            { timeout: 5000 },
+        );
+        const milestone = response.data?.data;
+        if (!milestone) return false;
+
+        // Nếu trạng thái là resubmittable, coi như chưa fail on-chain
+        if (milestone.status === "resubmittable") {
+            return true;
+        }
+
+        // Nếu deadline ở backend lớn hơn hiện tại, coi như đã được gia hạn
+        if (milestone.deadline) {
+            const backendDeadline = new Date(milestone.deadline).getTime() / 1000;
+            const now = Date.now() / 1000;
+            if (backendDeadline > now) {
+                return true;
+            }
+        }
+
+        return false;
+    } catch (error) {
+        console.warn(
+            `[listener-service] Failed to check backend for milestone ${milestoneId}: ${error.message}`,
+        );
+        // Mặc định là false để an toàn (theo dữ liệu on-chain)
+        return false;
+    }
 }
 
 async function runMarkFailedSweep() {
@@ -123,6 +161,13 @@ async function runMarkFailedSweep() {
                 }
 
                 if (!shouldMarkMilestoneFailed(campaign, milestone, nowSec)) {
+                    continue;
+                }
+
+                // Kiểm tra Backend xem có gia hạn không
+                const isExtended = await isMilestoneExtendedInBackend(campaignId, milestoneId);
+                if (isExtended) {
+                    console.log(`[listener-service] Milestone #${milestoneId} of Campaign #${campaignId} is extended in backend. Skipping on-chain failure.`);
                     continue;
                 }
 
