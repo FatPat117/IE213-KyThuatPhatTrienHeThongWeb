@@ -1090,16 +1090,19 @@ export default function CampaignDetailPage() {
                                 )}
                                 <RefundAndMintPanel
                                     showRefund={Boolean(
-                                         (isCampaignFailed ||
-                                             isCampaignPartialFailed) &&
-                                         effectiveUserDonatedAmount > 0n,
-                                     )}
+                                        (isCampaignFailed ||
+                                            isCampaignPartialFailed) &&
+                                        userDonatedAmount > 0n,
+                                    )}
                                     showMint={Boolean(
-                                         canMintCertificate &&
-                                         effectiveUserDonatedAmount > 0n &&
-                                         !hasMintedCertificate,
-                                     )}
-                                    hasRefunded={refundStatus?.status === 'refunded'}
+                                        canMintCertificate &&
+                                        effectiveUserDonatedAmount > 0n &&
+                                        !hasMintedCertificate,
+                                    )}
+                                    hasRefunded={
+                                        refundStatus?.status === 'refunded' || 
+                                        ((isCampaignFailed || isCampaignPartialFailed) && userDonatedAmount > 0n && donatedAmountOnChain === 0n)
+                                    }
                                     refundPending={
                                         isCampaignPartialFailed
                                             ? milestoneRefundPending

@@ -1007,13 +1007,27 @@ async function getRefundStatus(req, res, next) {
                 const result = createContractInstance();
                 if (result) {
                     const { contract } = result;
-                    // For Ethereum/EVM, we check if donation balance is zero in a failed campaign
+                    // Check on-chain balance
                     const onChainDonation = await contract.getDonation(BigInt(onChainId), walletAddress);
+                    
                     if (onChainDonation === 0n) {
-                        const campaignOnChain = await contract.getCampaign(BigInt(onChainId));
-                        // Status 5 = Failed, 4 = PartialFailed
-                        if (Number(campaignOnChain.status) >= 4) {
-                            finalStatus = "refunded";
+                        // If balance is 0, we need to know if they EVER donated to confirm it's a refund
+                        // and not just a non-donor.
+                        const { Donation } = require("../models");
+                        const everDonated = await Donation.exists({
+                            campaignOnChainId: onChainId,
+                            donor: walletAddress,
+                            status: "success"
+                        });
+
+                        if (everDonated) {
+                            const campaignOnChain = await contract.getCampaign(BigInt(onChainId));
+                            // Status 5 = Failed, 4 = PartialFailed
+                            // Also, if the campaign is still active but they donated and now balance is 0,
+                            // it's highly likely a refund happened or a state mismatch we should respect.
+                            if (Number(campaignOnChain.status) >= 4 || Number(campaignOnChain.status) === 2) {
+                                finalStatus = "refunded";
+                            }
                         }
                     }
                 }
