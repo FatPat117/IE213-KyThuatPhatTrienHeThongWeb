@@ -2,11 +2,10 @@
 
 import NotificationBell from "@/components/layout/NotificationBell";
 import WalletConnectButton from "@/components/wallet/WalletConnectButton";
-import { contractConfig, useAuth, useReadContractOwner, useReadReviewerSafesOnChain } from "@/lib";
-import { useOwnerSafes } from "@/lib/hooks/use-owner-safes";
+import { useAuth, useIsReviewer, useReadContractOwner } from "@/lib";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 function isLinkActive(href: string, pathname: string): boolean {
     if (href === "/campaigns") {
@@ -28,8 +27,7 @@ export default function Header() {
     const [isMounted, setIsMounted] = useState(false);
     const { token, user } = useAuth();
     const { isAdminOnChain } = useReadContractOwner();
-    const { safes: ownerSafes, isLoading: isLoadingOwnerSafes } = useOwnerSafes();
-    const { reviewerSafes: registeredSafes, isLoading: isLoadingRegisteredSafes } = useReadReviewerSafesOnChain();
+    const { isReviewer } = useIsReviewer();
 
     useEffect(() => {
         setIsMounted(true);
@@ -40,42 +38,6 @@ export default function Header() {
         : Boolean((window as Window & { ethereum?: unknown }).ethereum);
     const isSignedIn = isMounted ? Boolean(token && user?.wallet) : false;
     const walletAddress = (user?.wallet || "").trim().toLowerCase();
-
-    // Role from auth
-    const roleFromAuth = (user?.role || "").toString().trim().toLowerCase();
-    const isReviewerByRole = roleFromAuth === "reviewer";
-
-    // Optimistic reviewer state: keep previous value while loading
-    const prevIsReviewerRef = useRef<boolean>(false);
-    const isReviewer = useMemo(() => {
-        console.log('[Header Debug]', {
-            isSignedIn,
-            isReviewerByRole,
-            ownerSafes,
-            registeredSafes,
-            ownerSafesCount: ownerSafes.length,
-            registeredSafesCount: registeredSafes.length,
-            isLoadingOwnerSafes,
-            isLoadingRegisteredSafes,
-        });
-        if (!isSignedIn) return false;
-        if (isReviewerByRole) return true;
-
-        // While loading, keep previous state to avoid flicker
-        if (isLoadingOwnerSafes || isLoadingRegisteredSafes) {
-            return prevIsReviewerRef.current;
-        }
-
-        if (!ownerSafes.length || !registeredSafes.length) {
-            prevIsReviewerRef.current = false;
-            return false;
-        }
-
-        const hasIntersection = ownerSafes.some((safe) => registeredSafes.includes(safe));
-        console.log('[Header Debug] Intersection check:', hasIntersection);
-        prevIsReviewerRef.current = hasIntersection;
-        return hasIntersection;
-    }, [ownerSafes, registeredSafes, isSignedIn, isReviewerByRole, isLoadingOwnerSafes, isLoadingRegisteredSafes]);
 
     const isAdmin = Boolean(walletAddress) && isAdminOnChain;
 
@@ -106,14 +68,14 @@ export default function Header() {
         { href: "/my-campaigns", label: "Campaign của tôi" },
         { href: "/campaigns/create", label: "Tạo campaign mới" },
         { href: "/donations", label: "Quyên góp của tôi" },
-        { href: "/settings", label: "Cài đặt" },
+        { href: "/settings", label: "Hồ sơ & cài đặt" },
     ];
     const visibleAccountLinks = isAdmin
         ? [
               { href: "/admin/campaigns", label: "Duyệt campaign" },
               { href: "/admin/reviewers", label: "Quản lý Reviewer" },
               { href: "/donations", label: "Quyên góp của tôi" },
-              { href: "/settings", label: "Cài đặt" },
+              { href: "/settings", label: "Hồ sơ & cài đặt" },
           ]
         : isReviewer
           ? [...accountLinks, { href: "/reviewer", label: "Duyệt milestone (Reviewer)" }]
@@ -121,7 +83,7 @@ export default function Header() {
 
     return (
         <>
-            <header className="sticky top-0 z-50 bg-gradient-to-r from-white via-slate-50 to-white border-b border-slate-200/50 shadow-sm backdrop-blur-md bg-opacity-95">
+            <header className="sticky top-0 z-90 bg-gradient-to-r from-white via-slate-50 to-white border-b border-slate-200/50 shadow-sm backdrop-blur-md bg-opacity-95">
                 {/* Alert Banner - Only show if no MetaMask */}
                 {!hasProvider && (
                     <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border-b border-amber-200 px-4 sm:px-6 lg:px-8">

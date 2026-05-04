@@ -1,6 +1,7 @@
 'use client';
 
 import { useSystemStatus } from '@/lib';
+import { WalletBannerConnectButton } from './WalletBannerConnectButton';
 
 export function SystemStatusDisplay() {
   const { status, clearStatus } = useSystemStatus();
@@ -13,13 +14,16 @@ export function SystemStatusDisplay() {
     clearStatus();
   };
 
+  const isHighAttention =
+    status.type === 'wrong-network' || status.type === 'wallet-disconnected';
+
   // Banner styles based on status type
   const getBannerColors = () => {
     switch (status.type) {
       case 'wallet-disconnected':
-        return 'bg-yellow-50 border-yellow-200 text-yellow-900';
+        return 'bg-amber-100 border-amber-400 text-amber-950 shadow-[0_8px_30px_-6px_rgba(180,83,9,0.35)] ring-2 ring-amber-300/70';
       case 'wrong-network':
-        return 'bg-red-50 border-red-200 text-red-900';
+        return 'bg-red-100 border-red-600 text-red-950 shadow-[0_10px_40px_-8px_rgba(185,28,28,0.45)] ring-2 ring-red-500/60';
       case 'rpc-error':
         return 'bg-orange-50 border-orange-200 text-orange-900';
       case 'insufficient-gas':
@@ -52,7 +56,7 @@ export function SystemStatusDisplay() {
     switch (status.type) {
       case 'wallet-disconnected':
         return (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="h-7 w-7 sm:h-8 sm:w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -63,7 +67,7 @@ export function SystemStatusDisplay() {
         );
       case 'wrong-network':
         return (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="h-7 w-7 sm:h-8 sm:w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -121,50 +125,48 @@ export function SystemStatusDisplay() {
 
   return (
     <div
-      className={`fixed top-0 left-0 right-0 z-50 border-b transition-all duration-200 ${getBannerColors()}`}
+      className={`fixed top-0 left-0 right-0 z-100 border-b-2 transition-all duration-200 motion-safe:animate-[status-banner-in_0.4s_ease-out] ${getBannerColors()}`}
       role="alert"
+      aria-live="assertive"
     >
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-        <div className="flex items-start gap-4">
-          <div className={`flex-shrink-0 mt-0.5 ${getIconColor()}`}>
+      <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
+        <div className="flex items-start gap-3 sm:gap-4">
+          <div
+            className={`shrink-0 mt-0.5 ${getIconColor()} ${isHighAttention ? 'motion-safe:animate-pulse' : ''}`}
+          >
             {getIcon()}
           </div>
 
-          <div className="flex-1 min-w-0">
-            {status.title && (
-              <h3 className="text-sm font-semibold mb-1">
-                {status.title}
-              </h3>
-            )}
-            <p className="text-sm">
-              {status.message}
-            </p>
-            {status.action && (
-              <button
-                onClick={status.action.onClick}
-                className="mt-2 inline-flex items-center px-3 py-1 rounded text-xs font-semibold bg-white bg-opacity-20 hover:bg-opacity-30 transition-all duration-200"
+          <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-x-6">
+            <div className="min-w-0 pr-1">
+              {status.title && (
+                <h3
+                  className={`mb-1.5 font-bold tracking-tight ${isHighAttention ? 'text-base sm:text-lg' : 'text-sm font-semibold'}`}
+                >
+                  {status.title}
+                </h3>
+              )}
+              <p
+                className={`leading-snug ${isHighAttention ? 'text-sm sm:text-base font-medium' : 'text-sm'}`}
               >
-                {status.action.label}
-              </button>
+                {status.message}
+              </p>
+              {status.action && (
+                <button
+                  onClick={status.action.onClick}
+                  className="mt-2 inline-flex items-center px-3 py-1 rounded text-xs font-semibold bg-white bg-opacity-20 hover:bg-opacity-30 transition-all duration-200"
+                >
+                  {status.action.label}
+                </button>
+              )}
+            </div>
+
+            {status.type === 'wallet-disconnected' && (
+              <div className="pointer-events-auto relative z-10 flex w-full shrink-0 justify-stretch sm:w-auto sm:justify-end sm:pl-2">
+                <WalletBannerConnectButton className="relative w-full sm:-mt-1 sm:w-auto sm:shadow-2xl" />
+              </div>
             )}
           </div>
-
-          {status.dismissible && (
-            <button
-              onClick={handleDismiss}
-              className="flex-shrink-0 inline-flex text-gray-500 hover:text-gray-700 focus:outline-none transition-colors duration-200"
-              aria-label="Dismiss notification"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
-          )}
         </div>
       </div>
     </div>
