@@ -22,6 +22,8 @@ function formatDate(value: Date) {
         day: "2-digit",
         month: "2-digit",
         year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
     }).format(value);
 }
 
@@ -47,7 +49,7 @@ function normalizeIpfsUrl(value: string) {
 
 function getStatusMeta(status: string) {
     switch (status) {
-        case "disbursed":
+        case "in_progress":
             return {
                 label: "Đã giải ngân chờ xác nhận bằng chứng",
                 badgeClass:
@@ -144,14 +146,18 @@ export default function MilestoneTimeline({
                     if (milestoneTargetWei === 0n && goalWei > 0n && bps > 0) {
                         milestoneTargetWei = (goalWei * BigInt(bps)) / 10000n;
                     }
-                    const milestoneTargetEth = Number(formatEther(milestoneTargetWei));
+                    const milestoneTargetEth = Number(
+                        formatEther(milestoneTargetWei),
+                    );
 
                     // Số tiền đã thực tế quyên góp được phân bổ cho mốc này
                     const raisedAllocationWei =
                         raisedWei > 0n && bps > 0
                             ? (raisedWei * BigInt(bps)) / 10000n
                             : 0n;
-                    const raisedAllocationEth = Number(formatEther(raisedAllocationWei));
+                    const raisedAllocationEth = Number(
+                        formatEther(raisedAllocationWei),
+                    );
 
                     // Tính tổng % đã giải ngân trước mốc này
                     let accumulatedBps = 0;
@@ -266,11 +272,27 @@ export default function MilestoneTimeline({
                                             ? `${formatEthAmount(refundEth)} ETH`
                                             : "Chưa xác định"}
                                     </p>
-                                    {userDonatedWei && userDonatedWei > 0n && raisedWei && raisedWei > 0n && (
-                                        <div className="mt-1 pt-1 border-t border-amber-200">
-                                            <p className="text-[10px] text-amber-700">Của bạn: {formatEthAmount(Number(formatEther((userDonatedWei * milestoneTargetWei) / goalWei || 0n)))} ETH</p>
-                                        </div>
-                                    )}
+                                    {userDonatedWei &&
+                                        userDonatedWei > 0n &&
+                                        raisedWei &&
+                                        raisedWei > 0n && (
+                                            <div className="mt-1 pt-1 border-t border-amber-200">
+                                                <p className="text-[10px] text-amber-700">
+                                                    Của bạn:{" "}
+                                                    {formatEthAmount(
+                                                        Number(
+                                                            formatEther(
+                                                                (userDonatedWei *
+                                                                    milestoneTargetWei) /
+                                                                    goalWei ||
+                                                                    0n,
+                                                            ),
+                                                        ),
+                                                    )}{" "}
+                                                    ETH
+                                                </p>
+                                            </div>
+                                        )}
                                 </div>
                             </div>
 

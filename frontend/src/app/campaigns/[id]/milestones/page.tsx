@@ -21,8 +21,14 @@ import {
     MilestoneOverviewCard,
     MilestoneTimeline,
 } from "@/components/campaign-milestones";
+import { getChainErrorMessage } from "@/lib/errors/normalize";
 import BackButton from "@/components/navigation/BackButton";
-import { useAccount, useReadContract } from "wagmi";
+import {
+    useAccount,
+    useReadContract,
+    useWaitForTransactionReceipt,
+} from "wagmi";
+import { useMarkMilestoneFailed } from "@/lib/contracts/hooks";
 
 export default function CampaignMilestonesPage() {
     const params = useParams();
@@ -40,13 +46,72 @@ export default function CampaignMilestonesPage() {
     const [milestonesWarning, setMilestonesWarning] = useState<string | null>(
         null,
     );
+
+    // Kiểm tra milestone deadline - tương tự như campaign isPastDeadline
+    const milestonePastDeadlineInfo = useMemo(() => {
+        if (!campaign || !milestones.length) return null;
+
+        const currentMilestoneId = Number(campaign.currentMilestoneId || 0);
+        const currentMilestone = milestones.find(
+            (m) => Number(m.milestoneId) === currentMilestoneId,
+        );
+
+        if (!currentMilestone) return null;
+
+        const deadlineMs = new Date(currentMilestone.deadline).getTime();
+        const isPastDeadline = Date.now() > deadlineMs;
+        const isPendingVerification = [
+            "pending_verification",
+            "pending_funding",
+            "in_progress",
+        ].includes(currentMilestone.status);
+
+        if (isPastDeadline && isPendingVerification) {
+            return {
+                milestoneId: currentMilestoneId,
+                deadline: currentMilestone.deadline,
+                status: currentMilestone.status,
+            };
+        }
+
+        return null;
+    }, [campaign, milestones]);
+
+    // Poll refetch khi sắp đến hoặc đã qua deadline milestone
+    useEffect(() => {
+        if (!campaign || !milestonePastDeadlineInfo) return;
+
+        const checkAndRefetch = () => {
+            const nowSec = Math.floor(Date.now() / 1000);
+            const deadlineSec = Math.floor(
+                new Date(milestonePastDeadlineInfo.deadline).getTime() / 1000,
+            );
+            if (nowSec >= deadlineSec) {
+                refetch();
+                loadMilestones();
+            }
+        };
+
+        checkAndRefetch();
+
+        const timeToDeadline =
+            new Date(milestonePastDeadlineInfo.deadline).getTime() - Date.now();
+        let interval: ReturnType<typeof setInterval> | null = null;
+
+        if (timeToDeadline > 0 && timeToDeadline <= 5 * 60 * 1000) {
+            interval = setInterval(() => {
+                checkAndRefetch();
+            }, 30 * 1000);
+        }
+
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [campaign, milestonePastDeadlineInfo, refetch]);
     const { data: userDonatedWei } = useReadContract({
         ...contractConfig,
         functionName: "getDonation",
-        args:
-            id > 0 && address
-                ? [BigInt(id), address]
-                : undefined,
+        args: id > 0 && address ? [BigInt(id), address] : undefined,
         query: {
             enabled: id > 0 && !!address,
         },
@@ -58,6 +123,41 @@ export default function CampaignMilestonesPage() {
         const raisedEth = Number(formatEther(campaign.raised));
         return goalEth > 0 ? Math.min((raisedEth / goalEth) * 100, 100) : 0;
     }, [campaign]);
+
+    const {
+        markMilestoneFailed,
+        hash: markMilestoneFailedHash,
+        isPending: markMilestoneFailedPending,
+        error: markMilestoneFailedError,
+    } = useMarkMilestoneFailed();
+
+    const {
+        isLoading: markMilestoneFailedConfirming,
+        isSuccess: markMilestoneFailedConfirmed,
+    } = useWaitForTransactionReceipt({
+        hash: markMilestoneFailedHash,
+    });
+
+    const handleMarkMilestoneFailed = useCallback(() => {
+        if (!milestonePastDeadlineInfo || !id) return;
+        setMarkFailedSuccess(false);
+        markMilestoneFailed(id, milestonePastDeadlineInfo.milestoneId).catch(
+            (err: unknown) => {
+                console.error("Failed to mark milestone failed:", err);
+            },
+        );
+    }, [id, milestonePastDeadlineInfo, markMilestoneFailed]);
+
+    const [markFailedSuccess, setMarkFailedSuccess] = useState(false);
+
+    // Theo dõi trạng thái mark failed thành công
+    useEffect(() => {
+        if (markMilestoneFailedConfirmed && milestonePastDeadlineInfo) {
+            setMarkFailedSuccess(true);
+            refetch();
+            loadMilestones();
+        }
+    }, [markMilestoneFailedConfirmed, milestonePastDeadlineInfo]);
 
     const loadMilestones = useCallback(async () => {
         if (!Number.isFinite(id)) return;
@@ -176,6 +276,11 @@ export default function CampaignMilestonesPage() {
         Boolean(campaign?.creator) &&
         campaign?.creator.toLowerCase() === address?.toLowerCase();
 
+    console.log(
+        "Rendering milestones page with milestones:",
+        milestonesToRender,
+    );
+
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
             <main className="mx-auto w-full max-w-6xl px-6 py-12 md:px-10">
@@ -251,6 +356,45 @@ export default function CampaignMilestonesPage() {
                             {milestonesWarning && (
                                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                                     {milestonesWarning}
+                                </div>
+                            )}
+
+                            {milestonePastDeadlineInfo && (
+                                <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
+                                    <p className="text-sm font-semibold text-red-900 mb-2">
+                                        Milestone #
+                                        {milestonePastDeadlineInfo.milestoneId}{" "}
+                                        đã quá hạn
+                                    </p>
+                                    <p className="text-xs text-red-800 mb-4">
+                                        Bấm để ghi nhận milestone thất bại
+                                        on-chain. Sau đó nhà tài trợ có thể yêu
+                                        cầu hoàn tiền.
+                                    </p>
+                                    <button
+                                        onClick={handleMarkMilestoneFailed}
+                                        disabled={
+                                            markMilestoneFailedPending ||
+                                            markMilestoneFailedConfirming
+                                        }
+                                        className="w-full rounded-lg bg-red-600 px-4 py-3 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                        {markMilestoneFailedPending
+                                            ? "⏳ Đợi xác nhận từ ví..."
+                                            : markMilestoneFailedConfirming
+                                              ? "🔄 Đang xác nhận..."
+                                              : "Đánh dấu milestone thất bại"}
+                                    </button>
+                                    {markMilestoneFailedError && (
+                                        <p className="mt-3 text-xs text-red-700">
+                                            {getChainErrorMessage(markMilestoneFailedError)}
+                                        </p>
+                                    )}
+                                    {markFailedSuccess && (
+                                        <p className="mt-3 rounded-lg bg-green-500 px-4 py-2 text-xs font-medium text-white">
+                                            ✓ Đã đánh dấu milestone thất bại. Campaign đã chuyển sang trạng thái Partial Failed. Bạn có thể yêu cầu hoàn tiền.
+                                        </p>
+                                    )}
                                 </div>
                             )}
                             <MilestoneOverviewCard

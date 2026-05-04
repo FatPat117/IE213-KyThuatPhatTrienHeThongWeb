@@ -89,6 +89,10 @@ function MilestoneEvidenceUploadContent() {
     const [resultMessage, setResultMessage] = useState<string | null>(null);
     const [milestoneHistory, setMilestoneHistory] = useState<string[]>([]);
     const [milestoneStatus, setMilestoneStatus] = useState<string>("");
+    const [currentMilestoneData, setCurrentMilestoneData] = useState<{
+        deadline: string;
+        status: string;
+    } | null>(null);
 
     const apiBaseUrl = useMemo(
         () => normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_URL),
@@ -114,6 +118,11 @@ function MilestoneEvidenceUploadContent() {
                     );
                 });
                 setMilestoneStatus((milestone?.status || "").toLowerCase());
+                setCurrentMilestoneData(
+                    milestone
+                        ? { deadline: milestone.deadline, status: milestone.status }
+                        : null
+                );
                 const fromBackend = (milestone?.reportCids || []).map((x) => x.cid);
                 const fromChain = proofCidsByIndex.get(milestoneIndexOnChain) || [];
                 const seen = new Set<string>();
@@ -129,6 +138,7 @@ function MilestoneEvidenceUploadContent() {
                 const fromChain = proofCidsByIndex.get(milestoneIndexOnChain) || [];
                 setMilestoneHistory(fromChain);
                 setMilestoneStatus("");
+                setCurrentMilestoneData(null);
             }
         };
         loadHistory();
@@ -146,6 +156,13 @@ function MilestoneEvidenceUploadContent() {
             }
         }
     }, [isConfirmedOnChain, uploadedCids]);
+
+    // Kiểm tra deadline và hiển thị cảnh báo
+    const milestoneDeadlinePassed = useMemo(() => {
+        if (!currentMilestoneData?.deadline) return false;
+        const deadlineMs = new Date(currentMilestoneData.deadline).getTime();
+        return Date.now() > deadlineMs;
+    }, [currentMilestoneData?.deadline]);
 
     const uploadSingleEvidence = async (file: File) => {
         const formData = new FormData();
@@ -225,6 +242,17 @@ function MilestoneEvidenceUploadContent() {
                 "Chiến dịch chưa ở trạng thái In Progress nên chưa thể submit minh chứng on-chain.",
             );
         }
+
+        // Kiểm tra deadline milestone trước khi submit
+        if (currentMilestoneData?.deadline) {
+            const deadlineMs = new Date(currentMilestoneData.deadline).getTime();
+            if (Date.now() > deadlineMs) {
+                return setErrorMessage(
+                    `Mốc giải ngân đã quá hạn (${new Date(deadlineMs).toLocaleString("vi-VN")}). Không thể nộp minh chứng.`,
+                );
+            }
+        }
+
         setErrorMessage(null);
         setResultMessage(null);
         try {
@@ -235,11 +263,12 @@ function MilestoneEvidenceUploadContent() {
                 `Đã gửi ${uploadedCids.length} giao dịch submit minh chứng. Đang chờ xác nhận...`,
             );
         } catch (error) {
-            setErrorMessage(
-                error instanceof Error
-                    ? error.message
-                    : "Không thể submit minh chứng on-chain",
-            );
+            const chainError = error instanceof Error ? error.message : String(error);
+            // Sử dụng normalize để hiển thị thông báo thân thiện
+            const friendlyMessage = chainError.toLowerCase().includes("milestone deadline")
+                ? "Mốc giải ngân đã quá hạn. Không thể nộp minh chứng sau deadline."
+                : chainError;
+            setErrorMessage(friendlyMessage);
         }
     };
 
@@ -414,6 +443,12 @@ function MilestoneEvidenceUploadContent() {
                                 ))}
                             </ul>
                         </div>
+                    ) : null}
+
+                    {milestoneDeadlinePassed ? (
+                        <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                            ⚠️ Mốc giải ngân này đã quá hạn. Không thể nộp minh chứng on-chain.
+                        </p>
                     ) : null}
 
                     {resultMessage ? (

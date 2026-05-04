@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import { getChainErrorMessage } from '@/lib/errors/normalize';
 
 interface RefundAndMintPanelProps {
   showRefund: boolean;
@@ -72,7 +73,7 @@ export default function RefundAndMintPanel({
             </div>
           )}
           {refundError && (
-            <div className="rounded-lg bg-red-500 px-4 py-3 text-sm font-medium text-white">⚠️ {refundError}</div>
+            <div className="rounded-lg bg-red-500 px-4 py-3 text-sm font-medium text-white">⚠️ {getChainErrorMessage(refundError)}</div>
           )}
         </div>
       )}

@@ -98,6 +98,9 @@ function normalizeWalletOrChainMessage(rawMessage: string): string | null {
     if (message.includes("deadline not reached")) {
         return "Chưa tới hạn chiến dịch nên chưa thể thực hiện.";
     }
+    if (message.includes("milestone deadline has passed")) {
+        return "Mốc giải ngân đã quá hạn. Không thể nộp minh chứng sau deadline.";
+    }
     if (message.includes("has reached its goal")) {
         return "Chiến dịch đã đạt mục tiêu.";
     }
@@ -120,6 +123,9 @@ function normalizeWalletOrChainMessage(rawMessage: string): string | null {
         return "Lỗi mạng/RPC. Vui lòng kiểm tra kết nối và thử lại.";
     }
     if (message.includes("execution reverted")) {
+        if (message.includes("nothing to refund")) {
+            return "Không có số dư để hoàn lại. Chiến dịch hoặc milestone này đã được hoàn tiền hoặc không có tiền.";
+        }
         return "Giao dịch bị revert. Vui lòng kiểm tra điều kiện và thử lại.";
     }
     return null;

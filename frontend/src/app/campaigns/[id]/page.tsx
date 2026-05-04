@@ -156,7 +156,7 @@ export default function CampaignDetailPage() {
             Number.isFinite(id) && address ? [BigInt(id), address] : undefined,
         query: { enabled: Number.isFinite(id) && !!address },
     });
-    const { data: donatedAmountOnChain } = useReadContract({
+    const { data: donatedAmountOnChain, refetch: refetchDonatedAmount } = useReadContract({
         ...contractConfig,
         functionName: "getDonation",
         args:
@@ -354,12 +354,49 @@ export default function CampaignDetailPage() {
         isCampaignInProgress &&
         campaign.currentMilestoneId < campaign.milestoneCount,
     );
-    const shouldMarkAsFailed = Boolean(
+    const isPastDeadline = campaign && campaign.deadline > 0
+        ? Math.floor(Date.now() / 1000) >= campaign.deadline
+        : false;
+
+    // Polling refetch khi campaign đang active hoặc chờ duyệt mà sắp đến/đã qua deadline
+    useEffect(() => {
+        if (!campaign) return;
+        if (!isCampaignActive && campaignStatusLabel !== "pending_approval") return;
+
+        const checkAndRefetch = () => {
+            const nowSec = Math.floor(Date.now() / 1000);
+            if (nowSec >= campaign.deadline) {
+                refetch();
+            }
+        };
+
+        // Kiểm tra ngay lập tức
+        checkAndRefetch();
+
+        // Poll mỗi 30 giây khi sắp đến deadline (trong vòng 5 phút trước deadline) hoặc đã qua deadline
+        const timeToDeadline = campaign.deadline * 1000 - Date.now();
+        let interval: ReturnType<typeof setInterval> | null = null;
+
+        if (timeToDeadline <= 5 * 60 * 1000) {
+            interval = setInterval(() => {
+                checkAndRefetch();
+            }, 30 * 1000);
+        }
+
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [campaign, isCampaignActive, campaignStatusLabel, refetch]);
+
+    // Ẩn UI đánh dấu failed (theo cách 2: chỉ hiển thị thông báo)
+    const shouldMarkAsFailed = false;
+
+    const isCampaignDeadlineFailed = Boolean(
         campaign &&
-        isCampaignActive &&
         campaign.raised < campaign.goal &&
         campaign.deadline > 0 &&
-        Math.floor(Date.now() / 1000) >= campaign.deadline,
+        isPastDeadline &&
+        (isCampaignActive || campaignStatusLabel === "pending_approval")
     );
 
     // Compute total donated by current user in this campaign.
@@ -548,15 +585,13 @@ export default function CampaignDetailPage() {
     };
     const handleMarkAsFailed = () => {
         if (!Number.isFinite(id)) return;
-        try {
-            markAsFailed(id);
-        } catch (err) {
+        markAsFailed(id).catch((err: unknown) => {
             const friendly = getFriendlyError(err as { message?: string });
             showErrorToast(
                 friendly ||
                     "Không thể cập nhật trạng thái thất bại. Vui lòng thử lại.",
             );
-        }
+        });
     };
 
     useEffect(() => {
@@ -593,8 +628,13 @@ export default function CampaignDetailPage() {
             return;
         lastRefundSuccessTxRef.current = refundTxHash;
         refetch();
+        loadDonationHistory();
+        refetchDonatedAmount();
+        console.log("Refetching donatedAmountOnChain after refund");
+        // Clear local donation state so effectiveUserDonatedAmount becomes 0
+        setDonations([]);
         showSuccessToast("Hoàn tiền thành công.");
-    }, [fundingRefundHash, milestoneRefundHash, refundConfirmed, refetch]);
+    }, [fundingRefundHash, milestoneRefundHash, refundConfirmed, refetch, loadDonationHistory, refetchDonatedAmount]);
 
     useEffect(() => {
         const txHash = mintHash || hash;
@@ -621,7 +661,8 @@ export default function CampaignDetailPage() {
 
     const isSepolia = chain?.id === 11155111;
     const canDonate = Boolean(
-        isConnected && isSepolia && campaign && isCampaignActive,
+        isConnected && isSepolia && campaign && isCampaignActive &&
+        Math.floor(Date.now() / 1000) < campaign.deadline
     );
     const cachedMetadata = useMemo(
         () => (Number.isFinite(id) ? getCampaignMetadataFromCache(id) : null),
@@ -908,38 +949,19 @@ export default function CampaignDetailPage() {
 
                             {/* Right Column - Actions */}
                             <div className="lg:sticky lg:top-6 h-fit space-y-4">
-                                {shouldMarkAsFailed && (
-                                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-                                        <p className="text-sm font-semibold text-amber-900 mb-2">
-                                            Campaign đã quá deadline nhưng chưa
-                                            cập nhật thất bại
+                                {isCampaignDeadlineFailed && (
+                                    <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
+                                        <p className="text-sm font-semibold text-red-900 mb-2">
+                                            Chiến dịch đã thất bại
                                         </p>
-                                        <p className="text-xs text-amber-800 mb-4">
-                                            Bấm để ghi nhận trạng thái thất bại
-                                            on-chain, sau đó donor có thể
-                                            refund.
+                                        <p className="text-xs text-red-800 mb-4">
+                                            Campaign đã quá hạn gây quỹ mà không đạt được mục tiêu.
+                                            Chiến dịch này được xem là thất bại.
+                                            Donor có thể yêu cầu hoàn tiền sau khi campaign được đánh dấu thất bại on-chain.
                                         </p>
-                                        <button
-                                            onClick={handleMarkAsFailed}
-                                            disabled={
-                                                markAsFailedPending ||
-                                                markAsFailedConfirming
-                                            }
-                                            className="w-full rounded-lg bg-amber-600 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
-                                        >
-                                            {markAsFailedPending
-                                                ? "⏳ Đợi xác nhận từ ví..."
-                                                : markAsFailedConfirming
-                                                  ? "🔄 Đang xác nhận..."
-                                                  : "Cập nhật trạng thái thất bại"}
-                                        </button>
-                                        {markAsFailedError && (
-                                            <p className="mt-3 text-xs text-red-700">
-                                                {getFriendlyError(
-                                                    markAsFailedError,
-                                                )}
-                                            </p>
-                                        )}
+                                        <p className="text-xs text-red-700 bg-red-100 px-3 py-2 rounded">
+                                            💡 Lưu ý: Campaign cần được duyệt trước, sau đó hệ thống sẽ tự động đánh dấu thất bại sau khoảng 1 phút.
+                                        </p>
                                     </div>
                                 )}
                                 <RefundAndMintPanel
@@ -998,6 +1020,7 @@ export default function CampaignDetailPage() {
                                             | "failed"
                                             | "cancelled"
                                     }
+                                    isPastDeadline={isPastDeadline}
                                     isPending={isPending}
                                     isConfirming={isConfirming}
                                     isConfirmed={isConfirmed}

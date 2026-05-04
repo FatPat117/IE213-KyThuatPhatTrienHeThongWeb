@@ -1287,6 +1287,7 @@ export function useClaimMilestoneRefund() {
             ...contractConfig,
             functionName: "claimMilestoneRefund",
             args: [BigInt(campaignId), BigInt(milestoneId)],
+            gas: 200_000n, // Thêm gas limit để tránh lỗi gas estimation
         });
     };
 

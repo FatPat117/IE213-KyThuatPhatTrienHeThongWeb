@@ -18,6 +18,7 @@ interface DonatePanelProps {
     isConfirmed: boolean;
     txHash?: string;
     donateError?: string | null;
+    isPastDeadline?: boolean;
     onAmountChange: (value: string) => void;
     onDonate: () => void;
 }
@@ -36,6 +37,7 @@ export default function DonatePanel({
     isConfirmed,
     txHash,
     donateError,
+    isPastDeadline,
     onAmountChange,
     onDonate,
 }: DonatePanelProps) {
@@ -113,7 +115,9 @@ export default function DonatePanel({
                             ? "Kết nối ví để quyên góp"
                             : !isSepolia
                               ? "Sai mạng"
-                              : campaignStatusLabel &&
+                              : isPastDeadline
+                                ? "Chiến dịch đã quá hạn gây quỹ"
+                                : campaignStatusLabel &&
                                   campaignStatusLabel !== "active"
                                 ? campaignStatusLabel === "pending_approval"
                                     ? "Chiến dịch đang chờ duyệt"
