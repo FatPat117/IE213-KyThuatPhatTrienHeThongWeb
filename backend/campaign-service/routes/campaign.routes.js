@@ -13,8 +13,33 @@ const {
     getPublicCampaignMilestones,
     getMilestoneApprovalStatus,
 } = require("../controllers/campaign.controller");
+const {
+    getReviewerProfile,
+    patchReviewerProfile,
+    listReviewerProfilesForAdmin,
+    patchReviewerProfileForAdmin,
+    clearReviewerProfileForAdmin,
+} = require("../controllers/reviewerProfile.controller");
 
 const router = express.Router();
+
+router.get("/reviewers/profile", requireAuth, getReviewerProfile);
+router.patch("/reviewers/profile", requireAuth, patchReviewerProfile);
+router.get(
+    "/reviewers/admin/profiles",
+    requireAuth,
+    listReviewerProfilesForAdmin,
+);
+router.patch(
+    "/reviewers/admin/profiles/:walletAddress",
+    requireAuth,
+    patchReviewerProfileForAdmin,
+);
+router.delete(
+    "/reviewers/admin/profiles/:walletAddress",
+    requireAuth,
+    clearReviewerProfileForAdmin,
+);
 
 router.get("/public/stats", publicRateLimit, getPublicStats);
 router.get("/public/campaigns", publicRateLimit, getPublicCampaigns);

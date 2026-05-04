@@ -4,11 +4,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useChainId } from "wagmi";
 import { getAddress } from "viem";
 import {
+    clearAdminReviewerProfile,
     getAdminReviewerProfiles,
+    patchAdminReviewerProfile,
     useAuth,
     type ReviewerProfileAdminRecord,
 } from "@/lib";
-  import {
+import {
     useAddReviewerSafe,
     useReadAllCampaigns,
     useReadCampaignReviewersBatch,
@@ -18,7 +20,7 @@ import {
 } from "@/lib/contracts/hooks";
 import { useWaitForTransactionReceipt } from "wagmi";
 import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
-import { showSuccessToast } from "@/lib/ui/toast";
+import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
 
 const SEPOLIA_CHAIN_ID = 11155111;
 const SAFE_META_RETRY_AFTER_429_MS = 60_000;
@@ -113,6 +115,17 @@ export default function AdminReviewersPage() {
     >([]);
     const [reviewerDbLoading, setReviewerDbLoading] = useState(false);
     const [reviewerDbError, setReviewerDbError] = useState<string | null>(null);
+    const [profileEditor, setProfileEditor] = useState<{
+        walletAddress: string;
+        organizationName: string;
+        region: string;
+        isActive: boolean;
+    } | null>(null);
+    const [profileSaveError, setProfileSaveError] = useState<string | null>(
+        null,
+    );
+    const [profileSaving, setProfileSaving] = useState(false);
+    const [clearingWallet, setClearingWallet] = useState<string | null>(null);
 
     const profileByWallet = useMemo(() => {
         const m = new Map<string, ReviewerProfileAdminRecord>();
@@ -121,6 +134,31 @@ export default function AdminReviewersPage() {
         }
         return m;
     }, [reviewerDbProfiles]);
+
+    async function runClearReviewerProfile(walletAddress: string) {
+        if (!token) return;
+        const w = walletAddress.toLowerCase().trim();
+        const confirmed = window.confirm(
+            "Xóa nội dung hồ sơ (tổ chức, tỉnh/thành) của ví này? Địa chỉ ví và mã reviewer vẫn được giữ.",
+        );
+        if (!confirmed) return;
+        setClearingWallet(w);
+        try {
+            await clearAdminReviewerProfile(token, walletAddress);
+            const rows = await getAdminReviewerProfiles(token);
+            setReviewerDbProfiles(rows);
+            setProfileEditor((cur) =>
+                cur?.walletAddress.toLowerCase() === w ? null : cur,
+            );
+            showSuccessToast("Đã xóa nội dung hồ sơ.");
+        } catch (err) {
+            showErrorToast(
+                err instanceof Error ? err.message : "Không xóa được hồ sơ.",
+            );
+        } finally {
+            setClearingWallet(null);
+        }
+    }
 
     const isAdmin = Boolean(token && isAdminOnChain);
     const shouldShowOwnerMismatchWarning = false;
@@ -307,7 +345,7 @@ export default function AdminReviewersPage() {
                     ownerCount: payload.owners.length,
                     owners: payload.owners,
                 });
-            } catch (error) {
+            } catch {
                 setNewSafeValidation({
                     status: "invalid",
                     error: "Không thể kết nối đến Safe API",
@@ -495,7 +533,9 @@ export default function AdminReviewersPage() {
                         Hồ sơ reviewer (đã lưu trên hệ thống)
                     </h2>
                     <p className="mt-1 text-xs text-indigo-800/90">
-                        Dữ liệu từ Settings của reviewer (tổ chức, tỉnh/thành). Ghép với từng Safe qua địa chỉ owner.
+                        Reviewer dùng ví Safe thường không tự cập nhật qua trang Settings — admin có thể thêm/sửa
+                        tổ chức, tỉnh/thành và trạng thái hoạt động tại đây. Ghép với từng Safe qua địa chỉ owner
+                        (EOA).
                     </p>
                     {reviewerDbLoading && (
                         <p className="mt-2 text-sm text-slate-600">Đang tải...</p>
@@ -521,6 +561,7 @@ export default function AdminReviewersPage() {
                                         <th className="px-3 py-2">Tỉnh / thành</th>
                                         <th className="px-3 py-2">Hoạt động</th>
                                         <th className="px-3 py-2">Cập nhật</th>
+                                        <th className="px-3 py-2">Thao tác</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -548,6 +589,56 @@ export default function AdminReviewersPage() {
                                             </td>
                                             <td className="px-3 py-2 text-xs text-slate-500">
                                                 {formatAdminDate(row.updatedAt)}
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    <button
+                                                        type="button"
+                                                        className="rounded-md border border-indigo-200 bg-white px-2 py-1 text-xs font-semibold text-indigo-800 hover:bg-indigo-50 disabled:opacity-50"
+                                                        disabled={
+                                                            clearingWallet ===
+                                                            row.walletAddress.toLowerCase()
+                                                        }
+                                                        onClick={() => {
+                                                            setProfileSaveError(
+                                                                null,
+                                                            );
+                                                            setProfileEditor({
+                                                                walletAddress:
+                                                                    row.walletAddress,
+                                                                organizationName:
+                                                                    row.organizationName ||
+                                                                    "",
+                                                                region:
+                                                                    row.region ||
+                                                                    "",
+                                                                isActive:
+                                                                    row.isActive !==
+                                                                    false,
+                                                            });
+                                                        }}
+                                                    >
+                                                        Sửa
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-800 hover:bg-red-100 disabled:opacity-50"
+                                                        disabled={
+                                                            clearingWallet ===
+                                                            row.walletAddress.toLowerCase()
+                                                        }
+                                                        onClick={() =>
+                                                            runClearReviewerProfile(
+                                                                row.walletAddress,
+                                                            )
+                                                        }
+                                                    >
+                                                        {clearingWallet ===
+                                                        row.walletAddress.toLowerCase()
+                                                            ? "Đang xóa…"
+                                                            : "Xóa"}
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
@@ -632,13 +723,90 @@ export default function AdminReviewersPage() {
                                                                     p.updatedAt,
                                                                 )}
                                                             </p>
+                                                            <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                                                <button
+                                                                    type="button"
+                                                                    className="rounded-md border border-indigo-200 bg-indigo-50/80 px-2 py-1 text-[11px] font-semibold text-indigo-900 hover:bg-indigo-100 disabled:opacity-50"
+                                                                    disabled={
+                                                                        clearingWallet ===
+                                                                        owner.toLowerCase()
+                                                                    }
+                                                                    onClick={() => {
+                                                                        setProfileSaveError(
+                                                                            null,
+                                                                        );
+                                                                        setProfileEditor(
+                                                                            {
+                                                                                walletAddress:
+                                                                                    owner,
+                                                                                organizationName:
+                                                                                    p.organizationName ||
+                                                                                    "",
+                                                                                region:
+                                                                                    p.region ||
+                                                                                    "",
+                                                                                isActive:
+                                                                                    p.isActive !==
+                                                                                    false,
+                                                                            },
+                                                                        );
+                                                                    }}
+                                                                >
+                                                                    Sửa hồ sơ
+                                                                    (admin)
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-800 hover:bg-red-100 disabled:opacity-50"
+                                                                    disabled={
+                                                                        clearingWallet ===
+                                                                        owner.toLowerCase()
+                                                                    }
+                                                                    onClick={() =>
+                                                                        runClearReviewerProfile(
+                                                                            owner,
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    {clearingWallet ===
+                                                                    owner.toLowerCase()
+                                                                        ? "Đang xóa…"
+                                                                        : "Xóa hồ sơ"}
+                                                                </button>
+                                                            </div>
                                                         </div>
                                                     ) : (
-                                                        <p className="mt-1 text-amber-800">
-                                                            Chưa có hồ sơ trên hệ
-                                                            thống (trang Settings
-                                                            reviewer).
-                                                        </p>
+                                                        <div className="mt-1 space-y-1.5">
+                                                            <p className="text-amber-800">
+                                                                Chưa có hồ sơ — ví
+                                                                Safe không tự
+                                                                điền; admin có
+                                                                thể thêm.
+                                                            </p>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-900 hover:bg-amber-100"
+                                                                onClick={() => {
+                                                                    setProfileSaveError(
+                                                                        null,
+                                                                    );
+                                                                    setProfileEditor(
+                                                                        {
+                                                                            walletAddress:
+                                                                                owner,
+                                                                            organizationName:
+                                                                                "",
+                                                                            region:
+                                                                                "",
+                                                                            isActive:
+                                                                                true,
+                                                                        },
+                                                                    );
+                                                                }}
+                                                            >
+                                                                Thêm hồ sơ (admin)
+                                                            </button>
+                                                        </div>
                                                     )}
                                                 </li>
                                             );
@@ -682,6 +850,152 @@ export default function AdminReviewersPage() {
                     })}
                 </div>
             </main>
+
+            {profileEditor && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+                    role="presentation"
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget && !profileSaving) {
+                            setProfileEditor(null);
+                            setProfileSaveError(null);
+                        }
+                    }}
+                >
+                    <div
+                        className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-xl"
+                        role="dialog"
+                        aria-labelledby="profile-editor-title"
+                    >
+                        <h2
+                            id="profile-editor-title"
+                            className="text-lg font-bold text-slate-900"
+                        >
+                            Hồ sơ reviewer (admin)
+                        </h2>
+                        <p className="mt-1 break-all font-mono text-[11px] text-slate-600">
+                            {profileEditor.walletAddress}
+                        </p>
+                        <label className="mt-4 block text-xs font-semibold text-slate-700">
+                            Tổ chức
+                            <input
+                                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                                value={profileEditor.organizationName}
+                                onChange={(e) =>
+                                    setProfileEditor((prev) =>
+                                        prev
+                                            ? {
+                                                  ...prev,
+                                                  organizationName:
+                                                      e.target.value,
+                                              }
+                                            : prev,
+                                    )
+                                }
+                                disabled={profileSaving}
+                            />
+                        </label>
+                        <label className="mt-3 block text-xs font-semibold text-slate-700">
+                            Tỉnh / thành
+                            <input
+                                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                                value={profileEditor.region}
+                                onChange={(e) =>
+                                    setProfileEditor((prev) =>
+                                        prev
+                                            ? {
+                                                  ...prev,
+                                                  region: e.target.value,
+                                              }
+                                            : prev,
+                                    )
+                                }
+                                disabled={profileSaving}
+                            />
+                        </label>
+                        <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-slate-800">
+                            <input
+                                type="checkbox"
+                                checked={profileEditor.isActive}
+                                onChange={(e) =>
+                                    setProfileEditor((prev) =>
+                                        prev
+                                            ? {
+                                                  ...prev,
+                                                  isActive: e.target.checked,
+                                              }
+                                            : prev,
+                                    )
+                                }
+                                disabled={profileSaving}
+                            />
+                            Đang hoạt động
+                        </label>
+                        {profileSaveError && (
+                            <p className="mt-2 text-sm text-red-600">
+                                {profileSaveError}
+                            </p>
+                        )}
+                        <div className="mt-5 flex justify-end gap-2">
+                            <button
+                                type="button"
+                                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
+                                disabled={profileSaving}
+                                onClick={() => {
+                                    if (!profileSaving) {
+                                        setProfileEditor(null);
+                                        setProfileSaveError(null);
+                                    }
+                                }}
+                            >
+                                Hủy
+                            </button>
+                            <button
+                                type="button"
+                                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                disabled={profileSaving || !token}
+                                onClick={async () => {
+                                    if (!token || !profileEditor) return;
+                                    setProfileSaving(true);
+                                    setProfileSaveError(null);
+                                    try {
+                                        await patchAdminReviewerProfile(
+                                            token,
+                                            profileEditor.walletAddress,
+                                            {
+                                                organizationName:
+                                                    profileEditor.organizationName,
+                                                region: profileEditor.region,
+                                                isActive:
+                                                    profileEditor.isActive,
+                                            },
+                                        );
+                                        const rows =
+                                            await getAdminReviewerProfiles(
+                                                token,
+                                            );
+                                        setReviewerDbProfiles(rows);
+                                        showSuccessToast(
+                                            "Đã cập nhật hồ sơ reviewer.",
+                                        );
+                                        setProfileEditor(null);
+                                    } catch (err) {
+                                        setProfileSaveError(
+                                            err instanceof Error
+                                                ? err.message
+                                                : "Không lưu được hồ sơ.",
+                                        );
+                                    } finally {
+                                        setProfileSaving(false);
+                                    }
+                                }}
+                            >
+                                {profileSaving ? "Đang lưu…" : "Lưu"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
