@@ -98,6 +98,33 @@ const MilestoneSchema = new mongoose.Schema(
             type: String,
             default: "",
         },
+        rejectionCount: {
+            type: Number,
+            default: 0,
+        },
+        rejectionHistory: {
+            type: [
+                {
+                    timestamp: { type: Date, default: Date.now },
+                    reason: String,
+                    reviewerWallet: String,
+                    newDeadline: Date,
+                },
+            ],
+            default: [],
+        },
+        lastRejectionReason: {
+            type: String,
+            default: "",
+        },
+        lastRejectionTimestamp: {
+            type: Date,
+            default: null,
+        },
+        maxRetries: {
+            type: Number,
+            default: 3,
+        },
     },
     { timestamps: true },
 );
