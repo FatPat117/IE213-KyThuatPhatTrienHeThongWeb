@@ -113,18 +113,44 @@ async function startMilestoneReportSubmittedConsumer() {
 
             // 2. Chỉ push vào reportCids nếu CID này chưa từng xuất hiện (tránh double minh chứng)
             if (cid) {
-                await Milestone.updateOne(
-                    {
-                        campaignOnChainId,
-                        milestoneId,
-                        "reportCids.cid": { $ne: cid },
-                    },
-                    {
+                const existingMilestone = await Milestone.findOne({
+                    campaignOnChainId,
+                    milestoneId,
+                });
+
+                if (existingMilestone) {
+                    const isNewCid = !existingMilestone.reportCids?.some(r => r.cid === cid);
+                    const submissionCount = existingMilestone.reportCids?.length || 0;
+
+                    const updateData = {
                         $push: {
                             reportCids: { cid, submittedAt },
                         },
-                    },
-                );
+                    };
+
+                    // Logic gia hạn: Tối đa 3 lần nộp đầu tiên, mỗi lần cộng 3 ngày
+                    if (isNewCid && submissionCount < 3) {
+                        const currentDeadline = existingMilestone.deadline 
+                            ? new Date(existingMilestone.deadline) 
+                            : new Date();
+                        const newDeadline = new Date(currentDeadline.getTime() + (3 * 24 * 60 * 60 * 1000));
+                        
+                        updateData.$set = { 
+                            ...baseUpdate.$set,
+                            deadline: newDeadline 
+                        };
+                        console.log(`[campaign-service] Extended deadline for campaign ${campaignOnChainId} milestone ${milestoneId} by 3 days. New: ${newDeadline.toISOString()}`);
+                    }
+
+                    await Milestone.updateOne(
+                        {
+                            campaignOnChainId,
+                            milestoneId,
+                            "reportCids.cid": { $ne: cid },
+                        },
+                        updateData
+                    );
+                }
             }
             const campaign = await Campaign.findOne({ onChainId: campaignOnChainId });
             let reviewerSafe = normalizeWallet(campaign?.reviewerSafe);

@@ -1,5 +1,5 @@
 const { getChannel } = require("../config/rabbitmq");
-const { Campaign, CampaignDonorShare } = require("../models");
+const { Campaign, CampaignDonorShare, CampaignDonation } = require("../models");
 
 const QUEUE =
     process.env.RABBITMQ_QUEUE_CAMP_DONATED || "campaign.donation.queue";
@@ -126,12 +126,23 @@ async function startDonatedConsumer() {
             await campaign.save();
 
             if (donationAmount > 0n) {
+                // 1. Cập nhật phần chia của Donor
                 await upsertDonorShare({
                     campaign,
                     campaignOnChainId,
                     donorWallet,
                     donationAmountWei: donationAmount,
                     campaignTotalRaisedWei: nextRaised,
+                });
+
+                // 2. Lưu lịch sử quyên góp chi tiết (Để hiện trên UI)
+                await CampaignDonation.create({
+                    campaignId: campaign._id,
+                    campaignOnChainId,
+                    donorAddress: donorWallet,
+                    amountWei: donationAmount.toString(),
+                    txHash: payload.txHash || "",
+                    donatedAt: new Date(),
                 });
             }
 

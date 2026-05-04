@@ -42,11 +42,9 @@ async function startCampaignStoppedConsumer() {
                 onChainId: campaignOnChainId,
             });
             if (campaign) {
-                campaign.status = "partial_failed";
-                campaign.remainingWei = (
-                    payload.remainingWei || "0"
-                ).toString();
-                await campaign.save();
+                // Call handleCampaignCascadeFailure to update status and create refund records
+                const { handleCampaignCascadeFailure } = require("../services/refundService");
+                await handleCampaignCascadeFailure(campaignOnChainId);
 
                 await recordTransaction({
                     txHash: payload.txHash,

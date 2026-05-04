@@ -50,6 +50,10 @@ async function startMilestoneFailedConsumer() {
                 },
             );
 
+            // Call handleCampaignCascadeFailure to ensure campaign also fails and refunds are created
+            const { handleCampaignCascadeFailure } = require("../services/refundService");
+            await handleCampaignCascadeFailure(campaignOnChainId);
+
             await recordTransaction({
                 txHash: payload.txHash,
                 walletAddress: payload.markedBy,
