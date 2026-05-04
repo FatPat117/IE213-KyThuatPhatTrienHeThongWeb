@@ -85,7 +85,6 @@ const CampaignRefundSchema = new mongoose.Schema(
         // Prevents duplicate processing of same blockchain event
         refundEventId: {
             type: String,
-            default: null,
             index: { unique: true, sparse: true },
         },
         // Audit trail for refund preparation request
