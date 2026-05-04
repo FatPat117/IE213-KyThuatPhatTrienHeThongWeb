@@ -83,7 +83,7 @@ export default function Header() {
 
     return (
         <>
-            <header className="sticky top-0 z-50 bg-gradient-to-r from-white via-slate-50 to-white border-b border-slate-200/50 shadow-sm backdrop-blur-md bg-opacity-95">
+            <header className="sticky top-0 z-90 bg-gradient-to-r from-white via-slate-50 to-white border-b border-slate-200/50 shadow-sm backdrop-blur-md bg-opacity-95">
                 {/* Alert Banner - Only show if no MetaMask */}
                 {!hasProvider && (
                     <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border-b border-amber-200 px-4 sm:px-6 lg:px-8">
