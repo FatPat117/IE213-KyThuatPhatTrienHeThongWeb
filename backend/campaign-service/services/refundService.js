@@ -560,42 +560,50 @@ async function prepareCampaignRefundTx(
 }
 
 async function handleCampaignCascadeFailure(campaignOnChainId) {
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
     try {
+        console.log(`[refundService.handleCampaignCascadeFailure] Starting for campaignOnChainId=${campaignOnChainId}`);
         const campaign = await Campaign.findOne({
             onChainId: Number(campaignOnChainId),
-        }).session(session);
+        });
 
         if (!campaign) {
+            console.error(`[refundService.handleCampaignCascadeFailure] Campaign not found: onChainId=${campaignOnChainId}`);
             throw new Error(
                 `Campaign not found: onChainId=${campaignOnChainId}`,
             );
         }
 
-        if (campaign.status === "partial_failed") {
-            await session.abortTransaction();
+        console.log(`[refundService.handleCampaignCascadeFailure] Found campaign: ${campaign._id}, current status: ${campaign.status}`);
+
+        // If already in a terminal failed state, skip to avoid redundant processing
+        if (campaign.status === "failed" || campaign.status === "partial_failed") {
+            console.log(`[refundService.handleCampaignCascadeFailure] Campaign is already ${campaign.status}. Skipping.`);
             return {
                 campaignId: campaign._id,
                 campaignOnChainId: Number(campaignOnChainId),
                 totalDonors: 0,
                 refundsCreated: 0,
                 refundPoolWei: campaign.remainingWei || "0",
-                alreadyPartialFailed: true,
+                alreadyStopped: true,
             };
         }
 
         const milestones = await Milestone.find({
             campaignId: campaign._id,
-        }).session(session);
+        });
         const donorShares = await CampaignDonorShare.find({
             campaignId: campaign._id,
-        }).session(session);
+        });
+
+        console.log(`[refundService.handleCampaignCascadeFailure] Found ${milestones.length} milestones and ${donorShares.length} donor shares`);
 
         const totalRaisedWei = toBigInt(
             campaign.totalRaisedWei || campaign.raised,
         );
+        
+        // Determine failure type: Funding failure if status was 'active' and raised < goal
+        const isFundingFailure = campaign.status === "active" && totalRaisedWei < toBigInt(campaign.goalWei);
+
         const disbursedFromMilestones = sumWei(
             milestones
                 .filter((milestone) => milestone.status === "disbursed")
@@ -607,34 +615,20 @@ async function handleCampaignCascadeFailure(campaignOnChainId) {
                 : toBigInt(campaign.totalDisbursedWei);
 
         const remainingWei = toNonNegative(totalRaisedWei - totalDisbursedWei);
+        console.log(`[refundService.handleCampaignCascadeFailure] totalRaised=${totalRaisedWei}, totalDisbursed=${totalDisbursedWei}, remaining=${remainingWei}, isFundingFailure=${isFundingFailure}`);
 
-        const failedMilestone = milestones
-            .filter((milestone) =>
-                ["failed", "deadline_exceeded", "review_timeout"].includes(
-                    milestone.status,
-                ),
-            )
-            .sort(
-                (left, right) =>
-                    Number(right.milestoneId || 0) -
-                    Number(left.milestoneId || 0),
-            )[0];
-
-        const fallbackMilestoneId = failedMilestone
-            ? Number(failedMilestone.milestoneId)
-            : Number(campaign.currentMilestoneId || 0);
-
-        campaign.status = "partial_failed";
+        // Set correct status
+        campaign.status = isFundingFailure ? "failed" : "partial_failed";
         campaign.remainingWei = remainingWei.toString();
         campaign.updatedAt = new Date();
-        await campaign.save({ session });
+        await campaign.save();
+        console.log(`[refundService.handleCampaignCascadeFailure] Campaign status updated to ${campaign.status}.`);
 
         if (
             remainingWei === 0n ||
             totalRaisedWei === 0n ||
             donorShares.length === 0
         ) {
-            await session.commitTransaction();
             return {
                 campaignId: campaign._id,
                 campaignOnChainId: Number(campaignOnChainId),
@@ -642,6 +636,26 @@ async function handleCampaignCascadeFailure(campaignOnChainId) {
                 refundsCreated: 0,
                 refundPoolWei: remainingWei.toString(),
             };
+        }
+
+        // Determine which milestone ID to associate with the refund (null for funding failure)
+        let fallbackMilestoneId = null;
+        if (!isFundingFailure) {
+            const failedMilestone = milestones
+                .filter((milestone) =>
+                    ["failed", "deadline_exceeded", "review_timeout"].includes(
+                        milestone.status,
+                    ),
+                )
+                .sort(
+                    (left, right) =>
+                        Number(right.milestoneId || 0) -
+                        Number(left.milestoneId || 0),
+                )[0];
+
+            fallbackMilestoneId = failedMilestone
+                ? Number(failedMilestone.milestoneId)
+                : Number(campaign.currentMilestoneId || 0);
         }
 
         const operations = donorShares
@@ -661,7 +675,7 @@ async function handleCampaignCascadeFailure(campaignOnChainId) {
                         filter: {
                             campaignId: campaign._id,
                             donorAddress: share.donorAddress,
-                            status: { $ne: "refunded" },
+                            milestoneId: fallbackMilestoneId, // Include milestoneId in filter to match or create specific record
                         },
                         update: {
                             $set: {
@@ -687,12 +701,9 @@ async function handleCampaignCascadeFailure(campaignOnChainId) {
 
         if (operations.length > 0) {
             await CampaignRefund.bulkWrite(operations, {
-                session,
                 ordered: false,
             });
         }
-
-        await session.commitTransaction();
 
         return {
             campaignId: campaign._id,
@@ -702,13 +713,10 @@ async function handleCampaignCascadeFailure(campaignOnChainId) {
             refundPoolWei: remainingWei.toString(),
         };
     } catch (error) {
-        await session.abortTransaction();
         console.error(
             `[refundService.handleCampaignCascadeFailure] Error for campaignOnChainId=${campaignOnChainId}: ${error.message}`,
         );
         throw error;
-    } finally {
-        session.endSession();
     }
 }
 

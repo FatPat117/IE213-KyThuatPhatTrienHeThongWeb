@@ -1,5 +1,5 @@
 const DEFAULT_GRACE_PERIOD_DAYS = Number(
-    process.env.MILESTONE_GRACE_PERIOD_DAYS || 14,
+    process.env.MILESTONE_GRACE_PERIOD_DAYS || 0,
 );
 
 function calculateDeadline(

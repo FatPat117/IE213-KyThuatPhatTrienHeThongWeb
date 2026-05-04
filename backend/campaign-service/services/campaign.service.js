@@ -35,7 +35,87 @@ async function getAllCampaigns(filter = {}) {
 }
 
 async function getCampaignById(onChainId) {
-    return Campaign.findOne({ onChainId: Number(onChainId) });
+    let campaign = await Campaign.findOne({ onChainId: Number(onChainId) });
+    if (campaign && (campaign.status === "active" || campaign.status === "in_progress")) {
+        // Check if it's potentially expired
+        const now = new Date();
+        const isExpired = campaign.deadline < now;
+        
+        // If expired, we MUST await the update so the response is fresh
+        if (isExpired) {
+            console.log(`[campaign.service] Campaign #${onChainId} detected as expired during fetch. Awaiting auto-failure...`);
+            await checkAndTriggerAutoFailure(Number(onChainId));
+            // Re-fetch to get updated status
+            campaign = await Campaign.findOne({ onChainId: Number(onChainId) });
+        } else {
+            // Still run background check for milestones even if campaign deadline is not met
+            checkAndTriggerAutoFailure(Number(onChainId)).catch(err => 
+                console.error(`[campaign.service] Auto-failure background check failed for #${onChainId}:`, err.message)
+            );
+        }
+    }
+    return campaign;
+}
+
+/**
+ * Automates the failure of a campaign if a milestone deadline has passed.
+ * @param {number} onChainId 
+ */
+async function checkAndTriggerAutoFailure(onChainId) {
+    const campaign = await Campaign.findOne({ onChainId });
+    if (!campaign || (campaign.status !== "active" && campaign.status !== "in_progress")) {
+        return;
+    }
+
+    const milestones = await Milestone.find({ campaignOnChainId: onChainId });
+    const now = new Date();
+
+    // 1. Check for milestone deadlines
+    let failedMilestoneId = null;
+    for (const milestone of milestones) {
+        if (["pending_verification", "submitted", "resubmittable"].includes(milestone.status)) {
+            if (milestone.deadline && milestone.deadline < now) {
+                console.log(`[campaign.service] Milestone #${milestone.milestoneId} of Campaign #${onChainId} expired at ${milestone.deadline.toISOString()}`);
+                failedMilestoneId = milestone.milestoneId;
+                
+                milestone.status = "failed";
+                milestone.failureReason = "DEADLINE_EXCEEDED_AUTO";
+                milestone.failedAt = now;
+                await milestone.save();
+                break; // Only fail the first detected expired milestone
+            }
+        }
+    }
+
+    // 2. Check for funding deadline failure
+    let isFundingFailure = false;
+    if (failedMilestoneId === null && campaign.status === "active") {
+        if (campaign.deadline && campaign.deadline < now) {
+            const raised = toBigInt(campaign.totalRaisedWei || "0", "totalRaisedWei");
+            const goal = toBigInt(campaign.goalWei || "0", "goalWei");
+            
+            if (raised < goal) {
+                console.log(`[campaign.service] Campaign #${onChainId} funding deadline expired at ${campaign.deadline.toISOString()}`);
+                isFundingFailure = true;
+            }
+        }
+    }
+
+    if (failedMilestoneId !== null || isFundingFailure) {
+        console.log(`[campaign.service] Triggering cascade failure for Campaign #${onChainId} due to expiration...`);
+        const { handleCampaignCascadeFailure } = require("./refundService");
+        const { publishMilestoneFailed } = require("../utils/publishMilestoneFailed");
+
+        // Trigger cascade (status update + refunds)
+        await handleCampaignCascadeFailure(onChainId);
+
+        // Sync to blockchain
+        await publishMilestoneFailed({
+            campaignId: onChainId,
+            milestoneId: failedMilestoneId !== null ? failedMilestoneId : undefined,
+            reason: isFundingFailure ? "funding_deadline_not_reached_goal" : "AUTO_EXPIRATION_SYNC",
+        });
+    }
 }
 
 async function upsertCampaign(data) {
@@ -77,7 +157,6 @@ async function updateRaised(onChainId, raisedWei) {
         { new: true },
     );
 }
-
 async function updateMetadata(onChainId, updates = {}) {
     const payload = { ...updates };
 
