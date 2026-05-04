@@ -111,13 +111,16 @@ function CampaignsPageContent() {
         onChainCampaigns.forEach((campaign) => {
             const existing = campaignMap.get(campaign.id);
             if (existing) {
+                // Prioritize backend terminal statuses over on-chain status
+                const isBackendTerminal = TERMINAL_STATUSES.has(existing.status || "");
+                
                 campaignMap.set(campaign.id, {
                     ...existing,
                     creator: campaign.creator || existing.creator,
                     goal: campaign.goal,
                     raised: campaign.raised,
-                    status: campaign.statusLabel,
-                    completed: campaign.completed,
+                    status: isBackendTerminal ? existing.status : (campaign.statusLabel || existing.status),
+                    completed: isBackendTerminal ? true : campaign.completed,
                 });
             } else {
                 const cached = getCampaignMetadataFromCache(campaign.id);
@@ -446,11 +449,13 @@ function CampaignsPageContent() {
                                             >
                                                 {isPendingApproval
                                                     ? "⏳ Chờ duyệt"
-                                                    : isInProgress
-                                                      ? "🔵 Đang triển khai"
-                                                      : isActive
-                                                        ? "● Đang hoạt động"
-                                                        : "Đã kết thúc"}
+                                                    : normalizedStatus === "failed" || normalizedStatus === "partial_failed"
+                                                        ? "❌ Thất bại"
+                                                        : isInProgress
+                                                            ? "🔵 Đang triển khai"
+                                                            : isActive
+                                                                ? "● Đang hoạt động"
+                                                                : "Đã kết thúc"}
                                             </span>
                                         </div>
                                     </div>

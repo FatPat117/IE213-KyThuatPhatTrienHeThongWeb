@@ -20,27 +20,25 @@ async function startDonatedConsumer() {
     channel.consume(QUEUE, async (msg) => {
         if (!msg) return;
         try {
-            const payload = JSON.parse(msg.content.toString());
-            console.log("[donation-service] Nhận event donation.received:", payload);
+            const content = msg.content.toString();
+            const payload = JSON.parse(content);
+            console.log(`[donation-service] Received donation event: txHash=${payload.txHash}, campaign=${payload.campaignOnChainId}`);
 
-            /**
-             * Payload từ listener-service:
-             * { txHash, campaignOnChainId, donorWallet, amount (wei string), amountEth, message? }
-             */
             await donationService.createDonation({
                 txHash: payload.txHash,
-                campaignOnChainId: payload.campaignOnChainId,
-                donorWallet: payload.donorWallet,
-                amount: payload.amount,
-                amountEth: payload.amountEth,
+                campaignOnChainId: Number(payload.campaignOnChainId),
+                donorWallet: (payload.donorWallet || "").toLowerCase(),
+                amount: payload.amount?.toString() || "0",
+                amountEth: Number(payload.amountEth || 0),
                 message: payload.message || "",
-                donatedAt: new Date(),
+                donatedAt: payload.donatedAt ? new Date(payload.donatedAt) : new Date(),
             });
 
-            console.log(`[donation-service] Đã lưu donation txHash=${payload.txHash}`);
+            console.log(`[donation-service] Successfully recorded donation: txHash=${payload.txHash}`);
             channel.ack(msg);
         } catch (err) {
-            console.error("[donation-service] Consumer error:", err.message);
+            console.error("[donation-service] Error processing donation event:", err.message);
+            // Nack with requeue=false to avoid infinite loops if data is malformed
             channel.nack(msg, false, false);
         }
     });

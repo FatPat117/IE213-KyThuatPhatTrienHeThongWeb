@@ -283,13 +283,23 @@ async function getAllCampaigns(req, res, next) {
 async function getCampaignById(req, res, next) {
     try {
         const campaign = await campaignService.getCampaignById(
-            req.params.onChainId || req.params.id,
+            Number(req.params.id),
         );
         if (!campaign) {
             return errorRes(res, "Campaign not found", 404);
         }
 
-        return successRes(res, campaign);
+        // Fetch milestones for this campaign
+        const milestones = await Milestone.find({ 
+            campaignOnChainId: Number(req.params.id) 
+        }).sort({ milestoneId: 1 }).lean();
+
+        const responseData = {
+            ...normalizeCampaignItem(campaign),
+            milestones: milestones || []
+        };
+
+        return successRes(res, responseData);
     } catch (err) {
         return next(err);
     }
@@ -577,8 +587,14 @@ async function getPublicCampaignByOnChainId(req, res, next) {
         const remaining =
             totalRaised > totalDisbursed ? totalRaised - totalDisbursed : 0n;
 
+        // Fetch milestones for this campaign
+        const milestones = await Milestone.find({ 
+            campaignOnChainId: onChainId 
+        }).sort({ milestoneId: 1 }).lean();
+
         return successRes(res, {
             ...normalizeCampaignItem(campaign),
+            milestones: milestones || [],
             beneficiary: campaign.beneficiary,
             progress: {
                 raisedPercent: percentOf(totalRaised, goal),
@@ -964,6 +980,73 @@ function invalidateApprovalCache(campaignOnChainId, milestoneId) {
     console.log(`[campaign.controller] Invalidated approval cache for ${cacheKey}`);
 }
 
+async function getRefundStatus(req, res, next) {
+    try {
+        const onChainId = Number(req.params.onChainId);
+        const walletAddress = (req.query.address || "").toString().toLowerCase();
+
+        if (!Number.isFinite(onChainId) || !walletAddress) {
+            return errorRes(res, "Invalid campaign id or donor address", 400);
+        }
+
+        const { CampaignRefund } = require("../models");
+        
+        // Find any refunded record first, or fallback to the most recent record
+        const refunds = await CampaignRefund.find({
+            campaignOnChainId: onChainId,
+            donorAddress: walletAddress,
+        }).sort({ status: -1, updatedAt: -1 }).lean();
+
+        const refund = refunds.find(r => r.status === "refunded") || refunds[0];
+
+        // Fallback: If not marked as refunded in DB, check Blockchain directly
+        let finalStatus = refund?.status || "none";
+        if (finalStatus !== "refunded" && walletAddress) {
+            try {
+                const { createContractInstance } = require("../../listener-service/config/contract");
+                const result = createContractInstance();
+                if (result) {
+                    const { contract } = result;
+                    // Check on-chain balance
+                    const onChainDonation = await contract.getDonation(BigInt(onChainId), walletAddress);
+                    
+                    if (onChainDonation === 0n) {
+                        // If balance is 0, we need to know if they EVER donated to confirm it's a refund
+                        // and not just a non-donor.
+                        const { Donation } = require("../models");
+                        const everDonated = await Donation.exists({
+                            campaignOnChainId: onChainId,
+                            donor: walletAddress,
+                            status: "success"
+                        });
+
+                        if (everDonated) {
+                            const campaignOnChain = await contract.getCampaign(BigInt(onChainId));
+                            // Status 5 = Failed, 4 = PartialFailed
+                            // Also, if the campaign is still active but they donated and now balance is 0,
+                            // it's highly likely a refund happened or a state mismatch we should respect.
+                            if (Number(campaignOnChain.status) >= 4 || Number(campaignOnChain.status) === 2) {
+                                finalStatus = "refunded";
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.warn("[getRefundStatus] Blockchain fallback check failed:", err.message);
+            }
+        }
+
+        return successRes(res, {
+            status: finalStatus,
+            refundedWei: refund?.refundedWei || "0",
+            eligibleRefundWei: refund?.eligibleRefundWei || "0",
+            refundedAt: refund?.updatedAt || null,
+        });
+    } catch (err) {
+        return next(err);
+    }
+}
+
 module.exports = {
     getAllCampaigns,
     getCampaignById,
@@ -977,4 +1060,5 @@ module.exports = {
     getPublicCampaignMilestones,
     getMilestoneApprovalStatus,
     invalidateApprovalCache,
+    getRefundStatus,
 };

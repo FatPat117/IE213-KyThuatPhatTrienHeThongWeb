@@ -252,6 +252,7 @@ services:
             - RABBITMQ_RKEY_CERT_MINTED=${RABBITMQ_RKEY_CERT_MINTED}
             - RABBITMQ_RKEY_CAMP_FAILED=${RABBITMQ_RKEY_CAMP_FAILED}
             - RABBITMQ_RKEY_REFUND_ISSUED=${RABBITMQ_RKEY_REFUND_ISSUED}
+            - CAMPAIGN_SERVICE_URL=${CAMPAIGN_SERVICE_URL}
         volumes:
             - ./backend/listener-service:/app
             - /app/node_modules

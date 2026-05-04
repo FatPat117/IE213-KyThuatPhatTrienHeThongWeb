@@ -48,6 +48,8 @@ function getStatusBadgeColor(status: string): string {
         case "pending_verification":
         case "in_progress":
             return "bg-blue-100 text-blue-700";
+        case "resubmittable":
+            return "bg-orange-100 text-orange-700";
         case "deadline_exceeded":
         case "verification_failed":
         case "failed":
@@ -85,8 +87,10 @@ function getStatusLabel(status: string): string {
             return "Sắp tới";
         case "pending_funding":
             return "Chờ đủ vốn";
+        case "resubmittable":
+            return "Cần nộp lại";
         default:
-            return "Chưa có báo cáo";
+            return "Chưa nộp báo cáo";
     }
 }
 

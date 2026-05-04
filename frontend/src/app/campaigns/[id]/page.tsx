@@ -6,6 +6,8 @@ import {
     getCampaignMetadataFromCache,
     getDonationsByCampaign,
     getDonationsByCampaignAndWallet,
+    getPublicStats,
+    getRefundStatus,
     isPlaceholderCampaignDescription,
     isPlaceholderCampaignTitle,
     toAuthUserProfile,
@@ -17,6 +19,7 @@ import {
     useDisburseMilestone,
     useDonateToCampaign,
     useMarkAsFailed,
+    useMarkMilestoneFailed,
     useMintCertificate,
     useReadCampaign,
 } from "@/lib";
@@ -50,6 +53,10 @@ interface DonationEvent {
 export default function CampaignDetailPage() {
     const params = useParams();
     const { address, isConnected, chain } = useAccount();
+    const [hasMounted, setHasMounted] = useState(false);
+    useEffect(() => {
+        setHasMounted(true);
+    }, []);
     const id = Number(params?.id);
     const { campaign, isLoading, isError, error, refetch } = useReadCampaign(
         Number.isFinite(id) ? id : null,
@@ -57,6 +64,10 @@ export default function CampaignDetailPage() {
     const backendCampaign = useBackendCampaign(Number.isFinite(id) ? id : null);
     const { token, user, setAuth } = useAuth();
     const [amount, setAmount] = useState("0.01");
+    const [refundStatus, setRefundStatus] = useState<{
+        status: "none" | "eligible" | "prepared" | "refunded";
+        refundedWei: string;
+    } | null>(null);
     const [lastDonatedAmount, setLastDonatedAmount] = useState<string | null>(
         null,
     );
@@ -104,6 +115,12 @@ export default function CampaignDetailPage() {
         error: markAsFailedError,
     } = useMarkAsFailed();
     const {
+        markMilestoneFailed,
+        hash: milestoneFailedHash,
+        isPending: milestoneFailedPending,
+        error: milestoneFailedError,
+    } = useMarkMilestoneFailed();
+    const {
         mintCertificate,
         hash: mintHash,
         isPending: mintPending,
@@ -137,16 +154,17 @@ export default function CampaignDetailPage() {
     });
     useRegisterWalletTxOverlay(
         isPending ||
-            isConfirming ||
-            disbursePending ||
-            disburseConfirming ||
-            fundingRefundPending ||
-            milestoneRefundPending ||
-            refundConfirming ||
-            mintPending ||
-            mintConfirming ||
-            markAsFailedPending ||
-            markAsFailedConfirming,
+        isConfirming ||
+        disbursePending ||
+        disburseConfirming ||
+        fundingRefundPending ||
+        milestoneRefundPending ||
+        refundConfirming ||
+        mintPending ||
+        mintConfirming ||
+        markAsFailedPending ||
+        markAsFailedConfirming ||
+        milestoneFailedPending,
     );
 
     const { data: hasMintedCertificate } = useReadContract({
@@ -234,8 +252,8 @@ export default function CampaignDetailPage() {
                         "event Donated(uint256 indexed campaignId, address indexed donor, uint256 amount, uint256 totalRaised)",
                     );
                     const latestBlock = await publicClient.getBlockNumber();
-                    const maxBlocksToScan = 500n;
-                    const chunkSize = 10n;
+                    const maxBlocksToScan = 5000n;
+                    const chunkSize = 100n;
                     const fromBlock =
                         latestBlock > maxBlocksToScan
                             ? latestBlock - maxBlocksToScan + 1n
@@ -316,6 +334,23 @@ export default function CampaignDetailPage() {
         loadDonationHistory();
     }, [loadDonationHistory]);
 
+    const fetchRefundStatus = useCallback(async () => {
+        if (!Number.isFinite(id) || !address) {
+            setRefundStatus(null);
+            return;
+        }
+        try {
+            const data = await getRefundStatus(id, address);
+            setRefundStatus(data);
+        } catch (err) {
+            console.error("Failed to fetch refund status:", err);
+        }
+    }, [id, address]);
+
+    useEffect(() => {
+        fetchRefundStatus();
+    }, [fetchRefundStatus]);
+
     useEffect(() => {
         if (!campaign || !Number.isFinite(id)) return;
         // Trigger an additional fetch when campaign data is ready to avoid
@@ -339,7 +374,8 @@ export default function CampaignDetailPage() {
         | "cancelled"
         | undefined;
     const onChainStatusLabel = campaign?.statusLabel || "active";
-    const campaignStatusLabel = onChainStatusLabel;
+    // Ưu tiên trạng thái từ backend nếu có (vì backend xử lý logic timeout/failed chuẩn hơn)
+    const campaignStatusLabel = backendStatus || onChainStatusLabel;
     const isStatusOutOfSync =
         Boolean(backendStatus) && backendStatus !== onChainStatusLabel;
     const isCampaignActive = campaignStatusLabel === "active";
@@ -347,6 +383,7 @@ export default function CampaignDetailPage() {
     const isCampaignCompleted = campaignStatusLabel === "completed";
     const isCampaignPartialFailed = campaignStatusLabel === "partial_failed";
     const isCampaignFailed = campaignStatusLabel === "failed";
+    const isCampaignCancelled = campaignStatusLabel === "cancelled";
     const canMintCertificate =
         isCampaignInProgress || isCampaignCompleted || isCampaignPartialFailed;
     const canDisburseCurrentMilestone = Boolean(
@@ -360,6 +397,48 @@ export default function CampaignDetailPage() {
         campaign.raised < campaign.goal &&
         campaign.deadline > 0 &&
         Math.floor(Date.now() / 1000) >= campaign.deadline,
+    );
+
+    const { data: currentMilestoneData } = useReadContract({
+        ...contractConfig,
+        functionName: "getMilestone",
+        args:
+            campaign && Number.isFinite(id)
+                ? [BigInt(id), BigInt(campaign.currentMilestoneId)]
+                : undefined,
+        query: { enabled: !!campaign && Number.isFinite(id) },
+    });
+
+    const isCurrentMilestoneExpired = useMemo(() => {
+        if (!campaign || !isCampaignInProgress || !currentMilestoneData)
+            return false;
+
+        // Ưu tiên lấy deadline từ backend nếu có (đã được gia hạn 3 ngày)
+        // Lưu ý: campaign.milestones thường được load từ backend thông qua useReadCampaign 
+        // hoặc chúng ta có thể lấy từ backendCampaign hook.
+        
+        const mOnChain = currentMilestoneData as any;
+        let deadline = Number(mOnChain?.deadline ?? mOnChain?.[2] ?? 0);
+
+        // Tìm milestone tương ứng trong dữ liệu backend (nếu có)
+        if (backendCampaign.data?.milestones) {
+            const mBackend = backendCampaign.data.milestones.find(
+                (mb: any) => Number(mb.milestoneId) === Number(campaign.currentMilestoneId)
+            );
+            if (mBackend && mBackend.deadline) {
+                deadline = Math.floor(new Date(mBackend.deadline).getTime() / 1000);
+            }
+        }
+        
+        if (deadline === 0) return false;
+        const now = Math.floor(Date.now() / 1000);
+        return now > deadline;
+    }, [campaign, isCampaignInProgress, currentMilestoneData, backendCampaign.data]);
+
+    const shouldMarkMilestoneAsFailed = Boolean(
+        isCampaignInProgress &&
+        isCurrentMilestoneExpired &&
+        !isCampaignPartialFailed
     );
 
     // Compute total donated by current user in this campaign.
@@ -384,8 +463,13 @@ export default function CampaignDetailPage() {
     }, [donations]);
     const effectiveUserDonatedAmount = useMemo(() => {
         const onChain = (donatedAmountOnChain as bigint | undefined) ?? 0n;
+        // Nếu campaign đã thất bại hoặc thất bại một phần (đã qua giai đoạn donate), 
+        // trust blockchain hoàn toàn để xử lý việc đã rút tiền (refund)
+        if (isCampaignFailed || isCampaignPartialFailed) {
+            return onChain;
+        }
         return onChain > userDonatedAmount ? onChain : userDonatedAmount;
-    }, [donatedAmountOnChain, userDonatedAmount]);
+    }, [donatedAmountOnChain, userDonatedAmount, isCampaignFailed, isCampaignPartialFailed]);
 
     // Watch for donation events
     useWatchContractEvent({
@@ -473,7 +557,7 @@ export default function CampaignDetailPage() {
             const friendly = getFriendlyError(err as { message?: string });
             showErrorToast(
                 friendly ||
-                    "Không thể giải ngân milestone hiện tại. Vui lòng thử lại.",
+                "Không thể giải ngân milestone hiện tại. Vui lòng thử lại.",
             );
         }
     };
@@ -554,7 +638,20 @@ export default function CampaignDetailPage() {
             const friendly = getFriendlyError(err as { message?: string });
             showErrorToast(
                 friendly ||
-                    "Không thể cập nhật trạng thái thất bại. Vui lòng thử lại.",
+                "Không thể cập nhật trạng thái thất bại. Vui lòng thử lại.",
+            );
+        }
+    };
+
+    const handleMarkMilestoneAsFailed = () => {
+        if (!Number.isFinite(id) || !campaign) return;
+        try {
+            markMilestoneFailed(id, campaign.currentMilestoneId);
+        } catch (err) {
+            const friendly = getFriendlyError(err as { message?: string });
+            showErrorToast(
+                friendly ||
+                "Không thể cập nhật trạng thái thất bại của milestone. Vui lòng thử lại.",
             );
         }
     };
@@ -570,6 +667,18 @@ export default function CampaignDetailPage() {
             showSuccessToast("Đã cập nhật campaign sang trạng thái thất bại.");
         }
     }, [markAsFailedConfirmed, markAsFailedHash, refetch]);
+
+    const { isLoading: milestoneFailedConfirming, isSuccess: milestoneFailedConfirmed } =
+        useWaitForTransactionReceipt({
+            hash: milestoneFailedHash,
+        });
+
+    useEffect(() => {
+        if (milestoneFailedConfirmed) {
+            refetch();
+            showSuccessToast("Đã cập nhật mốc thất bại trên Blockchain.");
+        }
+    }, [milestoneFailedConfirmed, refetch]);
 
     useEffect(() => {
         if (
@@ -593,8 +702,9 @@ export default function CampaignDetailPage() {
             return;
         lastRefundSuccessTxRef.current = refundTxHash;
         refetch();
+        fetchRefundStatus();
         showSuccessToast("Hoàn tiền thành công.");
-    }, [fundingRefundHash, milestoneRefundHash, refundConfirmed, refetch]);
+    }, [fundingRefundHash, milestoneRefundHash, refundConfirmed, refetch, fetchRefundStatus]);
 
     useEffect(() => {
         const txHash = mintHash || hash;
@@ -908,6 +1018,8 @@ export default function CampaignDetailPage() {
 
                             {/* Right Column - Actions */}
                             <div className="lg:sticky lg:top-6 h-fit space-y-4">
+                                {hasMounted && (
+                                    <>
                                 {shouldMarkAsFailed && (
                                     <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
                                         <p className="text-sm font-semibold text-amber-900 mb-2">
@@ -930,8 +1042,8 @@ export default function CampaignDetailPage() {
                                             {markAsFailedPending
                                                 ? "⏳ Đợi xác nhận từ ví..."
                                                 : markAsFailedConfirming
-                                                  ? "🔄 Đang xác nhận..."
-                                                  : "Cập nhật trạng thái thất bại"}
+                                                    ? "🔄 Đang xác nhận..."
+                                                    : "Cập nhật trạng thái thất bại"}
                                         </button>
                                         {markAsFailedError && (
                                             <p className="mt-3 text-xs text-red-700">
@@ -942,17 +1054,55 @@ export default function CampaignDetailPage() {
                                         )}
                                     </div>
                                 )}
+                                {shouldMarkMilestoneAsFailed && (
+                                    <div className="rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm">
+                                        <div className="flex items-center gap-2 mb-2 text-red-900">
+                                            <span className="text-xl">⚠️</span>
+                                            <p className="text-sm font-bold">
+                                                Mốc hiện tại đã quá hạn nộp minh chứng
+                                            </p>
+                                        </div>
+                                        <p className="text-xs text-red-800 mb-4">
+                                            Thời hạn của mốc này đã kết thúc. Bạn cần xác nhận thất bại trên Blockchain để hệ thống mở tính năng hoàn tiền cho mọi người.
+                                        </p>
+                                        <button
+                                            onClick={handleMarkMilestoneAsFailed}
+                                            disabled={
+                                                milestoneFailedPending ||
+                                                milestoneFailedConfirming
+                                            }
+                                            className="w-full rounded-lg bg-red-600 px-4 py-3 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60 transition shadow-md hover:shadow-lg"
+                                        >
+                                            {milestoneFailedPending
+                                                ? "⏳ Đợi xác nhận từ ví..."
+                                                : milestoneFailedConfirming
+                                                    ? "🔄 Đang đồng bộ Blockchain..."
+                                                    : "Xác nhận thất bại On-chain"}
+                                        </button>
+                                        {milestoneFailedError && (
+                                            <p className="mt-3 text-xs text-red-700 font-medium">
+                                                {getFriendlyError(
+                                                    milestoneFailedError,
+                                                )}
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
                                 <RefundAndMintPanel
                                     showRefund={Boolean(
                                         (isCampaignFailed ||
                                             isCampaignPartialFailed) &&
-                                        effectiveUserDonatedAmount > 0n,
+                                        userDonatedAmount > 0n,
                                     )}
                                     showMint={Boolean(
                                         canMintCertificate &&
                                         effectiveUserDonatedAmount > 0n &&
                                         !hasMintedCertificate,
                                     )}
+                                    hasRefunded={
+                                        refundStatus?.status === 'refunded' || 
+                                        ((isCampaignFailed || isCampaignPartialFailed) && userDonatedAmount > 0n && donatedAmountOnChain === 0n)
+                                    }
                                     refundPending={
                                         isCampaignPartialFailed
                                             ? milestoneRefundPending
@@ -990,13 +1140,13 @@ export default function CampaignDetailPage() {
                                     isSepolia={isSepolia}
                                     campaignStatusLabel={
                                         campaignStatusLabel as
-                                            | "pending_approval"
-                                            | "active"
-                                            | "in_progress"
-                                            | "completed"
-                                            | "partial_failed"
-                                            | "failed"
-                                            | "cancelled"
+                                        | "pending_approval"
+                                        | "active"
+                                        | "in_progress"
+                                        | "completed"
+                                        | "partial_failed"
+                                        | "failed"
+                                        | "cancelled"
                                     }
                                     isPending={isPending}
                                     isConfirming={isConfirming}
@@ -1007,6 +1157,7 @@ export default function CampaignDetailPage() {
                                     onDonate={handleDonate}
                                 />
 
+                                {/* Network Info */}
                                 {/* Network Info */}
                                 <div className="rounded-xl bg-white border border-slate-200 p-4 text-center">
                                     <div className="flex items-center justify-center gap-2 mb-1">
@@ -1020,6 +1171,8 @@ export default function CampaignDetailPage() {
                                         Sepolia
                                     </p>
                                 </div>
+                                    </>
+                                )}
                             </div>
                         </div>
                     )}

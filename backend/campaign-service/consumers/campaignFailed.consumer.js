@@ -37,12 +37,12 @@ async function startCampaignFailedConsumer() {
                 );
             }
 
-            const campaign = await campaignService.updateCampaignStatus(
-                campaignOnChainId,
-                "failed",
-            );
+            // Call handleCampaignCascadeFailure to update status and create refund records
+            const { handleCampaignCascadeFailure } = require("../services/refundService");
+            const campaign = await handleCampaignCascadeFailure(campaignOnChainId);
+            
             console.log(
-                `[campaign-service] Campaign ${campaignOnChainId} -> failed`,
+                `[campaign-service] Campaign ${campaignOnChainId} -> failed (via cascade)`,
             );
 
             await recordTransaction({
@@ -54,11 +54,17 @@ async function startCampaignFailedConsumer() {
             });
 
             if (campaign?.creator) {
+                const isFundingFailure = payload.reason === "funding_deadline_not_reached_goal" || payload.reason === "AUTO_EXPIRATION_SYNC";
+                const failureTitle = isFundingFailure ? "Chiến dịch thất bại (Không đủ vốn)" : "Chiến dịch thất bại (Mốc hỏng)";
+                const failureMessage = isFundingFailure 
+                    ? `Chiến dịch "${campaign.title || `#${campaignOnChainId}`}" đã kết thúc nhưng không đạt được mục tiêu gây quỹ (Goal). Hệ thống đã tự động chuyển sang trạng thái thất bại và chuẩn bị hoàn tiền cho nhà hảo tâm.`
+                    : `Chiến dịch "${campaign.title || `#${campaignOnChainId}`}" đã thất bại tại một cột mốc. Nhà hảo tâm có thể yêu cầu hoàn lại phần tiền chưa sử dụng.`;
+
                 await notificationService.createNotification({
                     recipientWallet: campaign.creator,
                     type: "campaign_failed",
-                    title: "Campaign failed",
-                    message: `Campaign "${campaign.title || `#${campaignOnChainId}`}" expired before reaching its goal. Donors can claim refunds.`,
+                    title: failureTitle,
+                    message: failureMessage,
                     campaignOnChainId: Number(campaignOnChainId),
                     txHash: payload.txHash || "",
                 });
