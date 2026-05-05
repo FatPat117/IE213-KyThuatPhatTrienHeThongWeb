@@ -357,13 +357,17 @@ export default function CreateCampaignPage() {
 
         if (metadataSynced) {
             // Metadata đã được sync → chuyển hướng ngay
-            showSuccessToast("Tạo chiến dịch thành công! Đang chuyển tới trang chi tiết...");
+            showSuccessToast(
+                "Chiến dịch đã được tạo thành công và đang chờ được duyệt.",
+            );
             const timer = setTimeout(() => router.push(target), 800);
             return () => clearTimeout(timer);
         }
 
         // Hard timeout: chờ tối đa 15s rồi redirect dù chưa sync xong
-        showSuccessToast("Tạo chiến dịch thành công! Đang đồng bộ dữ liệu...");
+        showSuccessToast(
+            "Chiến dịch đã được tạo thành công và đang chờ được duyệt.",
+        );
         const timer = setTimeout(() => router.push(target), 15_000);
         return () => clearTimeout(timer);
     }, [createdCampaignId, metadataSynced, router, transactionStatus]);

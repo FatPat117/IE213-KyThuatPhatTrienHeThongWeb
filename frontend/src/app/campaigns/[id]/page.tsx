@@ -23,7 +23,11 @@ import {
     useMintCertificate,
     useReadCampaign,
 } from "@/lib";
-import { getChainErrorMessage } from "@/lib/errors/normalize";
+import {
+    getChainErrorMessage,
+    getWalletErrorMessage,
+    isWalletUserRejectedMessage,
+} from "@/lib/errors/normalize";
 import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -510,6 +514,81 @@ export default function CampaignDetailPage() {
     };
 
     useEffect(() => {
+        if (!isError) return;
+
+        // Vừa tạo campaign xong có thể bị "out of range" tạm thời do hook count
+        // chưa cập nhật kịp. Trường hợp này không nên hiện lỗi màu đỏ/toast,
+        // mà nên hiển thị trạng thái chờ và tự refetch.
+        const isWaitingForOnChainUpdate =
+            typeof error === "string" &&
+            error.toLowerCase().includes("does not exist on-chain");
+
+        if (isWaitingForOnChainUpdate) return;
+
+        showErrorToast(error || "Không thể tải chiến dịch.");
+    }, [error, isError]);
+
+    useEffect(() => {
+        const isWaitingForOnChainUpdate =
+            typeof error === "string" &&
+            error.toLowerCase().includes("does not exist on-chain");
+        if (!isError || !isWaitingForOnChainUpdate) return;
+
+        const timer = window.setInterval(() => {
+            refetch();
+        }, 3_000);
+
+        return () => window.clearInterval(timer);
+    }, [error, isError, refetch]);
+
+    useEffect(() => {
+        const friendly = getFriendlyError(markAsFailedError);
+        if (!friendly) return;
+        showErrorToast(friendly, {
+            emphasis: !isWalletUserRejectedMessage(friendly),
+        });
+    }, [markAsFailedError]);
+
+    useEffect(() => {
+        const friendly = getFriendlyError(milestoneFailedError);
+        if (!friendly) return;
+        showErrorToast(friendly, {
+            emphasis: !isWalletUserRejectedMessage(friendly),
+        });
+    }, [milestoneFailedError]);
+
+    useEffect(() => {
+        const friendly = getWalletErrorMessage(disburseError, {
+            fallback: "Không thể giải ngân milestone hiện tại. Vui lòng thử lại.",
+        });
+        if (!disburseError || !friendly) return;
+        showErrorToast(friendly, {
+            emphasis: !isWalletUserRejectedMessage(friendly),
+        });
+    }, [disburseError]);
+
+    useEffect(() => {
+        const rawError = isCampaignPartialFailed
+            ? milestoneRefundError
+            : fundingRefundError;
+        const friendly = getWalletErrorMessage(rawError, {
+            fallback: "Không thể hoàn tiền. Vui lòng thử lại.",
+        });
+        if (!rawError || !friendly) return;
+        showErrorToast(friendly, {
+            emphasis: !isWalletUserRejectedMessage(friendly),
+        });
+    }, [fundingRefundError, isCampaignPartialFailed, milestoneRefundError]);
+
+    useEffect(() => {
+        const rawError = mintFlowError || getFriendlyError(mintError);
+        if (!rawError) return;
+        showErrorToast(rawError, {
+            emphasis: !isWalletUserRejectedMessage(rawError),
+        });
+    }, [mintError, mintFlowError]);
+
+    useEffect(() => {
         if (isConfirmed && hash && lastDonationSuccessTxRef.current !== hash) {
             lastDonationSuccessTxRef.current = hash;
             if (hash && address && lastDonatedAmount) {
@@ -619,10 +698,6 @@ export default function CampaignDetailPage() {
                     ? err.message
                     : "Không thể cập nhật tên hiển thị trước khi mint.";
             setMintFlowError(message);
-            const friendly = getFriendlyError({ message } as {
-                message: string;
-            });
-            showErrorToast(friendly || message);
         } finally {
             setMintProfileSaving(false);
         }
@@ -777,23 +852,55 @@ export default function CampaignDetailPage() {
 
                 {/* Error State */}
                 {!isLoading && isError && (
-                    <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
-                        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4">
-                            <span className="text-2xl">⚠️</span>
-                        </div>
-                        <p className="text-lg font-semibold text-red-900 mb-2">
-                            Không thể tải chiến dịch
-                        </p>
-                        <p className="text-sm text-red-700 mb-4">
-                            {error || "Có lỗi xảy ra."}
-                        </p>
-                        <button
-                            onClick={() => refetch()}
-                            className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700 transition"
-                        >
-                            Thử lại
-                        </button>
-                    </div>
+                    <>
+                        {typeof error === "string" &&
+                            error
+                                .toLowerCase()
+                                .includes("does not exist on-chain") && (
+                                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-8 text-center">
+                                    <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-amber-100 mb-4">
+                                        <span className="text-2xl">⏳</span>
+                                    </div>
+                                    <p className="text-lg font-semibold text-amber-900 mb-2">
+                                        Đang chờ cập nhật chiến dịch mới
+                                    </p>
+                                    <p className="text-sm text-amber-800 mb-4">
+                                        Do on-chain vừa được tạo, hệ thống có thể
+                                        cần vài giây để cập nhật đủ dữ liệu.
+                                    </p>
+                                    <button
+                                        onClick={() => refetch()}
+                                        className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-amber-600 text-white font-semibold hover:bg-amber-700 transition"
+                                    >
+                                        Thử lại ngay
+                                    </button>
+                                </div>
+                            )}
+
+                        {(!error ||
+                            (typeof error === "string" &&
+                                !error
+                                    .toLowerCase()
+                                    .includes("does not exist on-chain"))) && (
+                            <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
+                                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4">
+                                    <span className="text-2xl">⚠️</span>
+                                </div>
+                                <p className="text-lg font-semibold text-red-900 mb-2">
+                                    Không thể tải chiến dịch
+                                </p>
+                                <p className="text-sm text-red-700 mb-4">
+                                    Đã xảy ra lỗi khi tải thông tin chiến dịch.
+                                </p>
+                                <button
+                                    onClick={() => refetch()}
+                                    className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700 transition"
+                                >
+                                    Thử lại
+                                </button>
+                            </div>
+                        )}
+                    </>
                 )}
 
                 {/* Campaign Content - hiển thị khi on-chain data sẵn, backend data được merge khi tải xong */}
@@ -1045,13 +1152,6 @@ export default function CampaignDetailPage() {
                                                     ? "🔄 Đang xác nhận..."
                                                     : "Cập nhật trạng thái thất bại"}
                                         </button>
-                                        {markAsFailedError && (
-                                            <p className="mt-3 text-xs text-red-700">
-                                                {getFriendlyError(
-                                                    markAsFailedError,
-                                                )}
-                                            </p>
-                                        )}
                                     </div>
                                 )}
                                 {shouldMarkMilestoneAsFailed && (
@@ -1079,13 +1179,6 @@ export default function CampaignDetailPage() {
                                                     ? "🔄 Đang đồng bộ Blockchain..."
                                                     : "Xác nhận thất bại On-chain"}
                                         </button>
-                                        {milestoneFailedError && (
-                                            <p className="mt-3 text-xs text-red-700 font-medium">
-                                                {getFriendlyError(
-                                                    milestoneFailedError,
-                                                )}
-                                            </p>
-                                        )}
                                     </div>
                                 )}
                                 <RefundAndMintPanel
@@ -1115,19 +1208,10 @@ export default function CampaignDetailPage() {
                                             ? milestoneRefundHash
                                             : fundingRefundHash
                                     }
-                                    refundError={getFriendlyError(
-                                        isCampaignPartialFailed
-                                            ? milestoneRefundError
-                                            : fundingRefundError,
-                                    )}
                                     mintPending={mintPending}
                                     mintConfirming={mintConfirming}
                                     mintConfirmed={mintConfirmed}
                                     mintHash={mintHash}
-                                    mintError={
-                                        mintFlowError ||
-                                        getFriendlyError(mintError)
-                                    }
                                     mintProfileSaving={mintProfileSaving}
                                     defaultDisplayName={user?.displayName || ""}
                                     onRefund={handleRefund}

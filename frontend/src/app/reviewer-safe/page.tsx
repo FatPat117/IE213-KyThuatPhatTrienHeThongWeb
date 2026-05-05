@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useReadReviewerSafesOnChain } from "@/lib";
+import { showErrorToast } from "@/lib/ui/toast";
 
 function shorten(value: string) {
     return `${value.slice(0, 8)}...${value.slice(-6)}`;
@@ -13,6 +14,11 @@ export default function ReviewerSafePage() {
         () => reviewerSafes.filter((item) => /^0x[a-f0-9]{40}$/.test(item)),
         [reviewerSafes],
     );
+
+    useEffect(() => {
+        if (!error) return;
+        showErrorToast(error);
+    }, [error]);
 
     return (
         <div className="min-h-screen bg-slate-50 px-6 py-10">
@@ -26,7 +32,6 @@ export default function ReviewerSafePage() {
                 {isLoading && (
                     <p className="mt-4 text-sm text-slate-600">Đang tải...</p>
                 )}
-                {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
                     {items.map((safe) => (
                         <div

@@ -10,9 +10,10 @@ import {
 } from "@/lib";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formatEther } from "viem";
 import { useAccount, useChainId } from "wagmi";
+import { showErrorToast } from "@/lib/ui/toast";
 
 const SEPOLIA_CHAIN_ID = 11155111;
 const TERMINAL_STATUSES = new Set([
@@ -63,6 +64,13 @@ function CampaignsPageContent() {
     const [sortBy, setSortBy] = useState<"newest" | "mostfunded" | "trending">("newest");
     const isSepoliaNetwork = chainId === SEPOLIA_CHAIN_ID;
     const canCreateCampaign = isConnected && isSepoliaNetwork;
+
+    useEffect(() => {
+        const message =
+            error || onChainError || "Có lỗi xảy ra. Vui lòng kiểm tra backend/on-chain RPC.";
+        if (!error && !onChainError) return;
+        showErrorToast(message);
+    }, [error, onChainError]);
 
     const backendCampaigns = useMemo(
         () =>
@@ -352,7 +360,7 @@ function CampaignsPageContent() {
                             </div>
                             <p className="text-lg font-semibold text-red-900 mb-2">Không thể tải chiến dịch</p>
                             <p className="text-sm text-red-700 mb-4">
-                                {error || onChainError || "Có lỗi xảy ra. Vui lòng kiểm tra backend/on-chain RPC."}
+                                Đã xảy ra lỗi tải dữ liệu chiến dịch.
                             </p>
                             <button
                                 onClick={() => {

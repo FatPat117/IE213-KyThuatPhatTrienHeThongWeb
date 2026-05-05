@@ -20,6 +20,11 @@ import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 import { openNotificationStream } from "@/lib/api/notifications";
 import { useReviewerCampaigns } from "@/lib/hooks/use-reviewer-campaigns";
 import { useOwnerSafes } from "@/lib/hooks/use-owner-safes";
+import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
+import {
+    getWalletErrorMessage,
+    isWalletUserRejectedMessage,
+} from "@/lib/errors/normalize";
 
 type ReviewFilter = "all" | "pending" | "processed";
 
@@ -440,7 +445,6 @@ export default function ReviewerWorkspacePage() {
     const [approvalStatusMap, setApprovalStatusMap] = useState<
         Record<string, MilestoneApprovalStatus>
     >({});
-    const [lastProposedTx, setLastProposedTx] = useState<{ safeTxHash: string; safeUiUrl: string } | null>(null);
 
     // Use new hook that fetches campaigns based on Safe API
     const { rows, myReviewerSafes, isLoading, error, lastUpdatedAt, refresh } = useReviewerCampaigns();
@@ -469,6 +473,27 @@ export default function ReviewerWorkspacePage() {
 
     // Check if user has reviewer access (has at least one registered safe)
     const hasReviewerAccess = myReviewerSafes.length > 0;
+
+    useEffect(() => {
+        if (!error) return;
+        showErrorToast(error);
+    }, [error]);
+
+    useEffect(() => {
+        if (!actionMessage) return;
+        if (actionIsSuccess) {
+            showSuccessToast(actionMessage);
+            return;
+        }
+        showErrorToast(actionMessage, {
+            emphasis: !isWalletUserRejectedMessage(actionMessage),
+        });
+    }, [actionIsSuccess, actionMessage]);
+
+    useEffect(() => {
+        if (!rejectError) return;
+        showErrorToast(rejectError, { emphasis: false });
+    }, [rejectError]);
 
     const refreshApprovalStatuses = useCallback(async (forceRefresh = false) => {
         if (!token || rows.length === 0) return;
@@ -612,12 +637,11 @@ export default function ReviewerWorkspacePage() {
         }
 
         if (isTxError) {
+            const normalizedMessage = getWalletErrorMessage(txError, {
+                fallback: "Thực thi giao dịch thất bại.",
+            });
             setActionIsSuccess(false);
-            setActionMessage(
-                txError instanceof Error
-                    ? txError.message
-                    : "Thực thi giao dịch thất bại."
-            );
+            setActionMessage(normalizedMessage);
             setTxHash(undefined);
             setExecutingKey(null);
         }
@@ -688,7 +712,6 @@ export default function ReviewerWorkspacePage() {
             const key = toApprovalKey(campaignId, milestoneId);
             setApprovingKey(key);
             setActionMessage(null);
-            setLastProposedTx(null);
 
             try {
                 console.log('[handleApprove] Calling proposeSafeTx with:', { campaignId, milestoneId, safe: campaignReviewerSafe });
@@ -697,7 +720,6 @@ export default function ReviewerWorkspacePage() {
                 console.log('[handleApprove] Proposal SUCCESS:', result);
                 setActionIsSuccess(true);
                 setActionMessage(`✅ ${result.message}`);
-                setLastProposedTx({ safeTxHash: result.safeTxHash, safeUiUrl: result.safeUiUrl });
 
                 // Open Safe UI in new tab so reviewer can see and continue signing
                 window.open(result.safeUiUrl, '_blank');
@@ -709,13 +731,11 @@ export default function ReviewerWorkspacePage() {
                 }, 3000);
             } catch (error) {
                 console.error('[handleApprove] ERROR:', error);
+                const normalizedMessage = getWalletErrorMessage(error, {
+                    fallback: "Không thể đề xuất giao dịch Safe phê duyệt",
+                });
                 setActionIsSuccess(false);
-                setActionMessage(
-                    error instanceof Error
-                        ? error.message
-                        : "Không thể đề xuất giao dịch Safe phê duyệt",
-                );
-                setLastProposedTx(null);
+                setActionMessage(normalizedMessage);
             } finally {
                 setApprovingKey(null);
             }
@@ -728,13 +748,11 @@ export default function ReviewerWorkspacePage() {
             if (!isConnected || !walletAddress) {
                 setActionIsSuccess(false);
                 setActionMessage("Vui lòng kết nối ví để gửi từ chối.");
-                setLastProposedTx(null);
                 return;
             }
             if (!token) {
                 setActionIsSuccess(false);
                 setActionMessage("Bạn cần đăng nhập để gửi từ chối milestone.");
-                setLastProposedTx(null);
                 return;
             }
             const campaignRow = rows.find((item) => item.campaign.onChainId === campaignId);
@@ -742,19 +760,16 @@ export default function ReviewerWorkspacePage() {
             if (!campaignReviewerSafe) {
                 setActionIsSuccess(false);
                 setActionMessage("Chiến dịch chưa có reviewerSafe nên không thể gửi từ chối on-chain.");
-                setLastProposedTx(null);
                 return;
             }
             // Check if this Safe is owned by the reviewer
             if (!myReviewerSafes.includes(campaignReviewerSafe)) {
                 setActionIsSuccess(false);
                 setActionMessage("Safe address của chiến dịch này không nằm trong danh sách Safe bạn được gán làm reviewer.");
-                setLastProposedTx(null);
                 return;
             }
             setRejectModalTarget({ campaignId, milestoneId });
             setActionMessage(null);
-            setLastProposedTx(null);
         },
         [isConnected, rows, token, walletAddress],
     );
@@ -834,11 +849,10 @@ export default function ReviewerWorkspacePage() {
                 console.log("[handleExecute] Transaction submitted:", hash);
             } catch (error) {
                 console.error("[handleExecute] ERROR:", error);
-                setActionMessage(
-                    error instanceof Error
-                        ? error.message
-                        : "Không thể thực thi giao dịch. Vui lòng thử lại."
-                );
+                const normalizedMessage = getWalletErrorMessage(error, {
+                    fallback: "Không thể thực thi giao dịch. Vui lòng thử lại.",
+                });
+                setActionMessage(normalizedMessage);
                 setActionIsSuccess(false);
                 setExecutingKey(null);
             }
@@ -955,11 +969,6 @@ export default function ReviewerWorkspacePage() {
                         </div>
                     )}
 
-                    {error && (
-                        <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                            {error}
-                        </div>
-                    )}
                 </header>
 
                 <div className="h-px w-full bg-slate-200/80" />
@@ -968,30 +977,6 @@ export default function ReviewerWorkspacePage() {
                     <p className="px-1 text-xs font-medium text-slate-500">
                         Cập nhật lúc: {lastUpdatedAt}
                     </p>
-                )}
-
-                {actionMessage && (
-                    <div className={`mb-4 rounded-2xl border px-4 py-3 text-sm ${actionIsSuccess ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-blue-200 bg-blue-50 text-blue-700"}`}>
-                        {actionMessage}
-                        {lastProposedTx && actionIsSuccess && (
-                            <div className="mt-3 flex flex-wrap items-center gap-3">
-                                <a
-                                    href={lastProposedTx.safeUiUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                    </svg>
-                                    Xem trên Safe UI
-                                </a>
-                                <span className="text-xs opacity-75">
-                                    Tx: {lastProposedTx.safeTxHash.slice(0, 12)}...{lastProposedTx.safeTxHash.slice(-6)}
-                                </span>
-                            </div>
-                        )}
-                    </div>
                 )}
 
                 {filteredRows.length === 0 && !isLoading && (
@@ -1209,11 +1194,6 @@ export default function ReviewerWorkspacePage() {
                             placeholder="Ví dụ: Bằng chứng chưa đủ rõ ràng, cần bổ sung hình ảnh hoàn công và tài liệu kiểm tra..."
                             className={`w-full resize-none rounded-xl border bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60 ${rejectError ? "border-rose-400 focus:border-rose-500" : "border-slate-200 focus:border-indigo-400"}`}
                         />
-                        {rejectError && (
-                            <p className="mt-2 text-xs font-bold text-rose-600">
-                                ⚠️ {rejectError}
-                            </p>
-                        )}
                         <p className={`mt-1 text-right text-xs ${rejectReason.trim().length < 10 ? "text-rose-500" : "text-emerald-600"}`}>
                             {rejectReason.trim().length}/10 ký tự tối thiểu
                         </p>

@@ -23,6 +23,7 @@ import {
 } from "@/components/campaign-milestones";
 import BackButton from "@/components/navigation/BackButton";
 import { useAccount, useReadContract } from "wagmi";
+import { showErrorToast } from "@/lib/ui/toast";
 
 export default function CampaignMilestonesPage() {
     const params = useParams();
@@ -95,6 +96,12 @@ export default function CampaignMilestonesPage() {
     useEffect(() => {
         loadMilestones();
     }, [loadMilestones]);
+
+    useEffect(() => {
+        const message = error || milestonesError;
+        if (!message) return;
+        showErrorToast(message);
+    }, [error, milestonesError]);
 
     useEffect(() => {
         if (!Number.isFinite(id)) return;
@@ -227,7 +234,7 @@ export default function CampaignMilestonesPage() {
                             Không thể tải timeline mốc
                         </p>
                         <p className="mt-2 text-sm text-red-700">
-                            {error || milestonesError || "Có lỗi xảy ra."}
+                            Đã xảy ra lỗi khi tải timeline mốc.
                         </p>
                         <button
                             onClick={() => {

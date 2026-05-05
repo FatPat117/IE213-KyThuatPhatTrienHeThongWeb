@@ -13,6 +13,7 @@ import {
   useReadAllCampaigns
 } from '@/lib';
 import BackButton from '@/components/navigation/BackButton';
+import { showErrorToast } from '@/lib/ui/toast';
 
 function formatEthAmount(value: number) {
   if (!Number.isFinite(value) || value <= 0) return '0';
@@ -142,6 +143,12 @@ export default function MyCampaignsPage() {
     };
   }, [address, mergedCampaigns]);
 
+  useEffect(() => {
+    const message = campaignsQuery.error || onChainQuery.error;
+    if (!message) return;
+    showErrorToast(message);
+  }, [campaignsQuery.error, onChainQuery.error]);
+
   if (!isConnected) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
@@ -198,9 +205,6 @@ export default function MyCampaignsPage() {
 
         {(campaignsQuery.isLoading || onChainQuery.isLoading) && (
           <p className="text-slate-600">Đang tải dữ liệu...</p>
-        )}
-        {!campaignsQuery.isLoading && !onChainQuery.isLoading && campaignsQuery.error && onChainQuery.error && (
-          <p className="text-red-700">{campaignsQuery.error || onChainQuery.error}</p>
         )}
         {!campaignsQuery.isLoading && !onChainQuery.isLoading && myCampaigns.length === 0 && (
           <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-12 text-center">

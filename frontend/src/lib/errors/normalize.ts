@@ -112,17 +112,7 @@ function normalizeBackendByMessage(rawMessage: string): string | null {
 
 function normalizeWalletOrChainMessage(rawMessage: string): string | null {
     const message = rawMessage.toLowerCase();
-    if (
-        message.includes("user rejected") ||
-        message.includes("user denied") ||
-        message.includes("rejected the request") ||
-        message.includes("request rejected") ||
-        message.includes("denied transaction") ||
-        message.includes("userrejected") ||
-        message.includes("action_rejected") ||
-        message.includes("cancelled") ||
-        message.includes("canceled")
-    ) {
+    if (isWalletUserRejectedMessage(rawMessage)) {
         return "Bạn đã hủy thao tác trong MetaMask.";
     }
     if (
@@ -178,6 +168,22 @@ function normalizeWalletOrChainMessage(rawMessage: string): string | null {
         return "Giao dịch bị revert. Vui lòng kiểm tra điều kiện và thử lại.";
     }
     return null;
+}
+
+export function isWalletUserRejectedMessage(rawMessage: string): boolean {
+    const message = (rawMessage || "").toLowerCase();
+    return (
+        message.includes("bạn đã hủy thao tác trong metamask.") ||
+        message.includes("user rejected") ||
+        message.includes("user denied") ||
+        message.includes("rejected the request") ||
+        message.includes("request rejected") ||
+        message.includes("denied transaction") ||
+        message.includes("userrejected") ||
+        message.includes("action_rejected") ||
+        message.includes("cancelled") ||
+        message.includes("canceled")
+    );
 }
 
 function buildMessage(

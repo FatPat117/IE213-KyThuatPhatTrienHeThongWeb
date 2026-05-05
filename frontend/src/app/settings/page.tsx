@@ -12,6 +12,7 @@ import {
   useAuth,
   useIsReviewer,
 } from '@/lib';
+import { showErrorToast, showSuccessToast } from '@/lib/ui/toast';
 
 const MAX_AVATAR_FILE_BYTES = 2 * 1024 * 1024;
 const MAX_AVATAR_PAYLOAD_BYTES = 1_200_000;
@@ -148,6 +149,21 @@ export default function SettingsPage() {
     };
   }, [walletAddress, token, isReviewer, isReviewerRoleLoading]);
 
+  useEffect(() => {
+    if (!error) return;
+    showErrorToast(error);
+  }, [error]);
+
+  useEffect(() => {
+    if (!reviewerProfileError) return;
+    showErrorToast(reviewerProfileError, { emphasis: false });
+  }, [reviewerProfileError]);
+
+  useEffect(() => {
+    if (!success) return;
+    showSuccessToast(success);
+  }, [success]);
+
   const handleAvatarFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -273,9 +289,6 @@ export default function SettingsPage() {
                   {isLoadingReviewerProfile ? (
                     <p className="mt-2 text-xs text-indigo-700">Đang tải thông tin reviewer...</p>
                   ) : null}
-                  {reviewerProfileError ? (
-                    <p className="mt-2 text-xs text-rose-700">{reviewerProfileError}</p>
-                  ) : null}
                 </div>
               )}
 
@@ -358,13 +371,6 @@ export default function SettingsPage() {
                     />
                   </div>
                 </>
-              )}
-
-              {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-              {success && (
-                <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                  {success}
-                </p>
               )}
 
               <button
