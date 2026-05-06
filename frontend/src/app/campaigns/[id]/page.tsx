@@ -525,7 +525,12 @@ export default function CampaignDetailPage() {
 
         if (isWaitingForOnChainUpdate) return;
 
-        showErrorToast(error || "Không thể tải chiến dịch.");
+        const friendly = getChainErrorMessage(error, {
+            fallback: "Không thể tải chiến dịch.",
+        });
+        showErrorToast(friendly, {
+            emphasis: !isWalletUserRejectedMessage(friendly),
+        });
     }, [error, isError]);
 
     useEffect(() => {
@@ -581,10 +586,12 @@ export default function CampaignDetailPage() {
     }, [fundingRefundError, isCampaignPartialFailed, milestoneRefundError]);
 
     useEffect(() => {
-        const rawError = mintFlowError || getFriendlyError(mintError);
-        if (!rawError) return;
-        showErrorToast(rawError, {
-            emphasis: !isWalletUserRejectedMessage(rawError),
+        const friendly = getWalletErrorMessage(mintFlowError || mintError, {
+            fallback: "Không thể mint chứng chỉ. Vui lòng thử lại.",
+        });
+        if (!friendly) return;
+        showErrorToast(friendly, {
+            emphasis: !isWalletUserRejectedMessage(friendly),
         });
     }, [mintError, mintFlowError]);
 
@@ -693,10 +700,9 @@ export default function CampaignDetailPage() {
             setAuth(token, toAuthUserProfile(updated));
             await mintCertificate(id);
         } catch (err) {
-            const message =
-                err instanceof Error
-                    ? err.message
-                    : "Không thể cập nhật tên hiển thị trước khi mint.";
+            const message = getWalletErrorMessage(err, {
+                fallback: "Không thể cập nhật tên hiển thị trước khi mint.",
+            });
             setMintFlowError(message);
         } finally {
             setMintProfileSaving(false);
