@@ -27,20 +27,40 @@ import { Page } from '@playwright/test';
  */
 export async function connectMockWallet(page: Page, address: string) {
   await page.addInitScript((walletAddress: string) => {
-    // Mock wagmi connector state
+    // Mock window.ethereum for injected connector
+    (window as any).ethereum = {
+      isMetaMask: true,
+      request: async (request: { method: string, params?: any[] }) => {
+        if (request.method === 'eth_requestAccounts' || request.method === 'eth_accounts') {
+          return [walletAddress];
+        }
+        if (request.method === 'eth_chainId') {
+          return '0xaa36a7'; // Sepolia (11155111)
+        }
+        return null;
+      },
+      on: () => {},
+      removeListener: () => {},
+      autoRefreshOnNetworkChange: false,
+    };
+
+    // Mock wagmi store (v2/v3 style)
+    // We use a simple object instead of Map for JSON compatibility
     localStorage.setItem('wagmi.store', JSON.stringify({
       state: {
-        connections: new Map([['mock', {
-          accounts: [walletAddress],
-          chainId: 31337, // Anvil local chainId
-          connector: { id: 'mock', name: 'Mock Wallet', type: 'mock' },
-        }]]),
-        current: 'mock',
+        connections: {
+          'injected': {
+            accounts: [walletAddress],
+            chainId: 11155111,
+            connector: { id: 'injected', name: 'Mock Wallet', type: 'injected' },
+          }
+        },
+        current: 'injected',
         status: 'connected',
       },
     }));
     localStorage.setItem('wagmi.connected', 'true');
-    localStorage.setItem('wagmi.wallet', 'mock');
+    localStorage.setItem('wagmi.recentConnectorId', 'injected');
   }, address);
 }
 
