@@ -94,8 +94,18 @@ describe('GET /api/campaigns/public/campaigns/:onChainId/refund-status', () => {
 
     it('ưu tiên record "refunded" nếu tồn tại nhiều records', async () => {
         const campaign = await seedCampaign(23);
-        // Tạo 2 records: 1 eligible, 1 refunded
-        await seedRefund(campaign._id, 23, DONOR_ADDR, 'eligible');
+        // Tạo 2 records với milestoneId khác nhau để tránh unique index conflict:
+        // record 0: milestone 0 → eligible
+        await CampaignRefund.create({
+            campaignId: campaign._id,
+            campaignOnChainId: 23,
+            donorAddress: DONOR_ADDR,
+            milestoneId: 0,
+            eligibleRefundWei: '700000000000000000',
+            refundedWei: '0',
+            status: 'eligible',
+        });
+        // record 1: milestone 1 → refunded
         await CampaignRefund.create({
             campaignId: campaign._id,
             campaignOnChainId: 23,
@@ -111,5 +121,17 @@ describe('GET /api/campaigns/public/campaigns/:onChainId/refund-status', () => {
             .query({ address: DONOR_ADDR });
 
         expect(res.body.data.status).toBe('refunded');
+    });
+
+    it('[EDGE] trả về status "none" nếu campaign đã "completed"', async () => {
+        // Campaign thành công rực rỡ, đã giải ngân hết
+        const campaign = await seedCampaign(24, 'completed');
+        
+        const res = await request(app)
+            .get('/api/campaigns/public/campaigns/24/refund-status')
+            .query({ address: DONOR_ADDR });
+
+        expect(res.status).toBe(200);
+        expect(res.body.data.status).toBe('none');
     });
 });

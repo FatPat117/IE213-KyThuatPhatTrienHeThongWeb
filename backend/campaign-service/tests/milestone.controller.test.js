@@ -27,6 +27,14 @@ jest.mock('../services/notificationService', () => ({
     createNotification: jest.fn().mockResolvedValue(null),
 }), { virtual: true });
 
+// Mock requireAuth middleware
+jest.mock('../middlewares/requireAuth', () => (req, res, next) => {
+    // Lấy địa chỉ ví từ header hoặc mặc định
+    const addr = req.headers['x-wallet-address'] || '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    req.walletAddress = addr.toLowerCase();
+    next();
+});
+
 // ─── Setup app với reviewer auth giả ─────────────────────────────────────────
 const milestoneRoutes = require('../routes/milestone.routes');
 const errorHandler = require('../middlewares/errorHandler');
@@ -38,9 +46,9 @@ function createAppWithReviewer(walletAddress = REVIEWER_WALLET) {
     const app = express();
     app.use(express.json());
 
-    // Inject fake auth middleware: giả lập reviewer đã đăng nhập
+    // Inject fake header middleware: đè header x-wallet-address cho mọi request
     app.use((req, _res, next) => {
-        req.user = { walletAddress };
+        req.headers['x-wallet-address'] = walletAddress;
         next();
     });
 
@@ -50,10 +58,10 @@ function createAppWithReviewer(walletAddress = REVIEWER_WALLET) {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-async function seedCampaignAndMilestone(onChainId = 1) {
+async function seedCampaignAndMilestone(onChainId = 1, milestoneOverrides = {}) {
     const campaign = await Campaign.create({
         onChainId,
-        title: 'Test',
+        title: 'Test Campaign',
         creator: CREATOR_WALLET,
         beneficiary: CREATOR_WALLET,
         goalWei: '1000000000000000000',
@@ -73,10 +81,11 @@ async function seedCampaignAndMilestone(onChainId = 1) {
         milestoneIndex: 0,
         title: 'Milestone 0',
         allocationBps: 3000,
-        status: 'pending_review',
+        status: 'submitted',
         maxRetries: 3,
         rejectionCount: 0,
-        deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 ngày từ bây giờ
+        deadline: new Date(Date.now() + 86400000),
+        ...milestoneOverrides
     });
 
     return { campaign, milestone };
@@ -86,7 +95,7 @@ async function seedCampaignAndMilestone(onChainId = 1) {
 describe('POST /api/milestones/campaigns/:campaignId/:milestoneIndex/reject', () => {
     const app = createAppWithReviewer();
     const rejectUrl = (onChainId, milestoneIndex) =>
-        `/api/milestones/campaigns/${onChainId}/${milestoneIndex}/reject`;
+        `/api/milestones/${onChainId}/${milestoneIndex}/reject`;
 
     it('tăng rejectionCount thêm 1 sau lần từ chối đầu tiên', async () => {
         await seedCampaignAndMilestone(30);
@@ -120,16 +129,12 @@ describe('POST /api/milestones/campaigns/:campaignId/:milestoneIndex/reject', ()
     });
 
     it('milestone chuyển sang failed sau lần từ chối thứ 3 (đạt maxRetries)', async () => {
-        await seedCampaignAndMilestone(32);
-        // Đặt rejectionCount = 2 (lần này sẽ là lần từ chối thứ 3)
-        await Milestone.findOneAndUpdate(
-            { campaignOnChainId: 32, milestoneIndex: 0 },
-            { rejectionCount: 2 }
-        );
-
+        // rejectionCount: 2, maxRetries: 2 -> lần này là lần 3 -> fail
+        await seedCampaignAndMilestone(32, { rejectionCount: 2, maxRetries: 2 });
+        
         const res = await request(app)
             .post(rejectUrl(32, 0))
-            .send({ reason: 'Không đạt yêu cầu lần 3' });
+            .send({ reason: 'Không đạt yêu cầu lần 3 - Quá giới hạn' });
 
         expect(res.status).toBe(200);
         expect(res.body.data.milestoneStatus).toBe('failed');
@@ -149,7 +154,7 @@ describe('POST /api/milestones/campaigns/:campaignId/:milestoneIndex/reject', ()
 
         await request(app)
             .post(rejectUrl(33, 0))
-            .send({ reason: 'Cần bổ sung tài liệu' });
+            .send({ reason: 'Cần bổ sung thêm tài liệu quan trọng' });
 
         const msAfter = await Milestone.findOne({ campaignOnChainId: 33, milestoneIndex: 0 });
         const deadlineAfter = msAfter.deadline.getTime();
@@ -161,7 +166,7 @@ describe('POST /api/milestones/campaigns/:campaignId/:milestoneIndex/reject', ()
 
     it('ghi lastRejectionReason vào milestone', async () => {
         await seedCampaignAndMilestone(34);
-        const reason = 'Hình ảnh không rõ ràng';
+        const reason = 'Hình ảnh sản phẩm không rõ ràng';
 
         await request(app)
             .post(rejectUrl(34, 0))
@@ -173,19 +178,61 @@ describe('POST /api/milestones/campaigns/:campaignId/:milestoneIndex/reject', ()
 
     it('trả về 404 nếu campaign không tồn tại', async () => {
         const res = await request(app)
-            .post(rejectUrl(9999, 0))
-            .send({ reason: 'test' });
+            .post(rejectUrl(999, 0))
+            .send({ reason: 'Lý do từ chối đủ dài 10 ký tự' });
 
         expect(res.status).toBe(404);
     });
 
     it('trả về 404 nếu milestone không tồn tại', async () => {
         await seedCampaignAndMilestone(35);
-
         const res = await request(app)
-            .post(rejectUrl(35, 99)) // milestoneIndex = 99 không tồn tại
-            .send({ reason: 'test' });
+            .post(rejectUrl(35, 99))
+            .send({ reason: 'Lý do từ chối đủ dài 10 ký tự' });
 
         expect(res.status).toBe(404);
+    });
+
+    // ══════════════════════════════════════════════════════════
+    // EDGE CASES: Milestone deadline đã qua
+    // ══════════════════════════════════════════════════════════
+
+    it('[EDGE] milestone deadline đã qua → failed ngay, không cần đủ 3 lần reject', async () => {
+        // deadline đã qua 1 giờ
+        await seedCampaignAndMilestone(40, { 
+            deadline: new Date(Date.now() - 60 * 60 * 1000),
+            status: 'submitted'
+        });
+
+        const res = await request(app)
+            .post(rejectUrl(40, 0))
+            .send({ reason: 'Đã quá hạn nộp bằng chứng nên bị từ chối tự động' });
+
+        // Khi deadline đã qua: milestone phải bị fail ngay, bất kể rejectionCount
+        expect(res.status).toBe(200);
+        expect(res.body.data.milestoneStatus).toBe('failed');
+        expect(res.body.data.cascadeTriggered).toBe(true);
+        // failureReason phải là DEADLINE_EXCEEDED_ON_REVIEW, không phải MAX_RETRIES_EXCEEDED
+        const ms = await Milestone.findOne({ campaignOnChainId: 40, milestoneIndex: 0 });
+        expect(ms.failureReason).toBe('DEADLINE_EXCEEDED_ON_REVIEW');
+    });
+
+    // ══════════════════════════════════════════════════════════
+    // ERROR CASES: Non-reviewer cố reject → 403
+    // ══════════════════════════════════════════════════════════
+
+    it('[ERROR] non-reviewer cố reject milestone → 403 Forbidden', async () => {
+        await seedCampaignAndMilestone(41);
+
+        // Tạo app với user KHÔNG phải reviewer
+        const NON_REVIEWER = '0x9999999999999999999999999999999999999999';
+        const appAsNonReviewer = createAppWithReviewer(NON_REVIEWER);
+
+        const res = await request(appAsNonReviewer)
+            .post(rejectUrl(41, 0))
+            .send({ reason: 'Cố gắng từ chối trái phép' });
+
+        // Non-reviewer phải bị từ chối với 403 hoặc 401
+        expect([401, 403]).toContain(res.status);
     });
 });

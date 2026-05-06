@@ -174,5 +174,63 @@ describe('refundService.handleCampaignCascadeFailure', () => {
             const refunds = await CampaignRefund.find({ campaignId: campaign._id });
             expect(refunds.length).toBe(1); // vẫn chỉ 1 record
         });
+
+        // ══════════════════════════════════════════════════════
+        // EDGE CASE: remainingWei = 0 (đã giải ngân hết toàn bộ)
+        // ══════════════════════════════════════════════════════
+        it('[EDGE] remainingWei = 0 → không tạo bất kỳ refund record nào', async () => {
+            // totalRaised = 1 ETH, totalDisbursed = 1 ETH → remaining = 0
+            const campaign = await createCampaign({
+                onChainId: 20,
+                totalRaisedWei: ONE_ETH,
+                totalDisbursedWei: ONE_ETH, // Đã giải ngân hết
+            });
+            await createMilestone(campaign._id, 20, {
+                status: 'disbursed',
+                financialTargetWei: ONE_ETH,
+            });
+            await createDonorShare(campaign._id, 20, DONOR_A, ONE_ETH);
+
+            const result = await handleCampaignCascadeFailure(20);
+
+            // Không còn tiền để hoàn → refundsCreated = 0
+            expect(result.refundsCreated).toBe(0);
+            expect(result.refundPoolWei).toBe('0');
+
+            const refunds = await CampaignRefund.find({ campaignId: campaign._id });
+            expect(refunds.length).toBe(0);
+        });
+
+        // ══════════════════════════════════════════════════════
+        // EDGE CASE: campaign vừa hết deadline funding (active → failed)
+        // ══════════════════════════════════════════════════════
+        it('[EDGE] campaign active hết hạn funding, chưa đủ goal → status = failed và tạo refund', async () => {
+            // Simulate: funding deadline đã qua, chỉ raise được 0.4 ETH < goal 1 ETH
+            const campaign = await createCampaign({
+                onChainId: 21,
+                status: 'active',
+                totalRaisedWei: '400000000000000000',  // 0.4 ETH
+                totalDisbursedWei: '0',
+                goalWei: ONE_ETH,
+                deadline: new Date(Date.now() - 1000), // deadline đã qua
+            });
+            await createDonorShare(campaign._id, 21, DONOR_A, '250000000000000000');
+            await createDonorShare(campaign._id, 21, DONOR_B, '150000000000000000');
+
+            await handleCampaignCascadeFailure(21);
+
+            // Status phải là 'failed' (không phải partial_failed vì chưa disburse)
+            const updated = await Campaign.findOne({ onChainId: 21 });
+            expect(updated.status).toBe('failed');
+
+            // Cả 2 donors đều được tạo refund record
+            const refunds = await CampaignRefund.find({ campaignId: campaign._id });
+            expect(refunds.length).toBe(2);
+            // Tổng eligible = 0.4 ETH (toàn bộ số tiền đã raise)
+            const totalEligible = refunds.reduce(
+                (sum, r) => sum + BigInt(r.eligibleRefundWei), 0n
+            );
+            expect(totalEligible).toBe(400000000000000000n);
+        });
     });
 });

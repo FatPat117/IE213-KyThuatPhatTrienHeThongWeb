@@ -101,12 +101,9 @@ const CampaignRefundSchema = new mongoose.Schema(
     { timestamps: true },
 );
 
-// Unique constraint: 1 campaign refund record per donor
-CampaignRefundSchema.index(
-    { campaignId: 1, donorAddress: 1 },
-    { unique: true },
-);
-
+// Unique constraint: 1 campaign refund record per donor per milestone failure
+// If milestoneId is null, it's a general campaign failure.
+// If milestoneId is set, it's a specific milestone failure.
 CampaignRefundSchema.index(
     { campaignOnChainId: 1, milestoneId: 1, donorAddress: 1 },
     { unique: true, sparse: true },
