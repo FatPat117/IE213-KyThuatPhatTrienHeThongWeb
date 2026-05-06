@@ -271,7 +271,7 @@ function HomeContent() {
                                 href="/campaigns"
                                 className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-6 py-3.5 text-base font-semibold text-slate-700 transition hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50/50"
                             >
-                                Duyệt chiến dịch
+                                Danh sách các chiến dịch
                             </Link>
                         </div>
 
@@ -700,7 +700,7 @@ function HomeContent() {
                             href="/campaigns"
                             className="inline-flex items-center justify-center rounded-xl border-2 border-white/80 px-8 py-3.5 text-base font-bold text-white transition hover:bg-white/10"
                         >
-                            Duyệt chiến dịch
+                            Danh sách các chiến dịch
                         </Link>
                     </div>
                 </section>
@@ -725,7 +725,7 @@ function HomeContent() {
                                 href="/campaigns"
                                 className="text-sm text-slate-600 transition hover:text-indigo-600"
                             >
-                                Duyệt chiến dịch
+                                Danh sách các chiến dịch
                             </Link>
                             <Link
                                 href="/leaderboard"
@@ -734,28 +734,10 @@ function HomeContent() {
                                 Bảng xếp hạng
                             </Link>
                             <Link
-                                href="/transparency"
-                                className="text-sm text-slate-600 transition hover:text-indigo-600"
-                            >
-                                Minh bạch
-                            </Link>
-                            <Link
                                 href="/campaigns/create"
                                 className="text-sm text-slate-600 transition hover:text-indigo-600"
                             >
                                 Tạo chiến dịch
-                            </Link>
-                            <Link
-                                href="/dashboard"
-                                className="text-sm text-slate-600 transition hover:text-indigo-600"
-                            >
-                                Tổng quan
-                            </Link>
-                            <Link
-                                href="/donations"
-                                className="text-sm text-slate-600 transition hover:text-indigo-600"
-                            >
-                                Quyên góp của tôi
                             </Link>
                             <Link
                                 href="/status"
@@ -790,35 +772,15 @@ function HomeContent() {
                                 Về chúng tôi
                             </p>
                             <p className="text-sm text-slate-600">
-                                Dự án IE213 — Công nghệ Phát triển Web, UIT
+                                Dự án IE213 — Kỹ thuật phát triển hệ thống web
                             </p>
                         </div>
                     </div>
                     <div className="mt-12 border-t border-slate-200/80 pt-8">
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                            <p className="text-sm text-slate-500">
+                        <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
+                            <p className="text-sm text-slate-500 text-center">
                                 © 2024 FundRaising. Bảo lưu mọi quyền.
                             </p>
-                            <div className="flex gap-6 text-sm text-slate-500">
-                                <a
-                                    href="#"
-                                    className="transition hover:text-indigo-600"
-                                >
-                                    Riêng tư
-                                </a>
-                                <a
-                                    href="#"
-                                    className="transition hover:text-indigo-600"
-                                >
-                                    Điều khoản
-                                </a>
-                                <a
-                                    href="#"
-                                    className="transition hover:text-indigo-600"
-                                >
-                                    Liên hệ
-                                </a>
-                            </div>
                         </div>
                     </div>
                 </footer>

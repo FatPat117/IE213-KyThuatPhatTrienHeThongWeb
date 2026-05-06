@@ -50,14 +50,23 @@ export default function Header() {
     // Only compute role-based links on client to avoid hydration mismatch
     if (isMounted) {
         if (isSignedIn && !isAdmin) {
-            roleLinks.push({ href: "/my-campaigns", label: "Campaign của tôi" });
+            roleLinks.push({
+                href: "/my-campaigns",
+                label: "Campaign của tôi",
+            });
         }
         if (isReviewer && !isAdmin) {
             roleLinks.push({ href: "/reviewer", label: "Duyệt milestone" });
         }
         if (isAdmin) {
-            roleLinks.push({ href: "/admin/campaigns", label: "Duyệt campaign" });
-            roleLinks.push({ href: "/admin/reviewers", label: "Quản lý Reviewer" });
+            roleLinks.push({
+                href: "/admin/campaigns",
+                label: "Duyệt campaign",
+            });
+            roleLinks.push({
+                href: "/admin/reviewers",
+                label: "Quản lý Reviewer",
+            });
         }
     }
 
@@ -65,8 +74,6 @@ export default function Header() {
 
     // Các trang cá nhân gom vào nhóm "Tài khoản" để header gọn hơn
     const accountLinks = [
-        { href: "/my-campaigns", label: "Campaign của tôi" },
-        { href: "/campaigns/create", label: "Tạo campaign mới" },
         { href: "/donations", label: "Quyên góp của tôi" },
         { href: "/settings", label: "Hồ sơ & cài đặt" },
     ];
@@ -77,9 +84,8 @@ export default function Header() {
               { href: "/donations", label: "Quyên góp của tôi" },
               { href: "/settings", label: "Hồ sơ & cài đặt" },
           ]
-        : isReviewer
-          ? [...accountLinks, { href: "/reviewer", label: "Duyệt milestone (Reviewer)" }]
-          : accountLinks;
+        : accountLinks;
+
 
     return (
         <>

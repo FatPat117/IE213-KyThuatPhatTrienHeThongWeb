@@ -155,35 +155,6 @@ export function ContractStatsDisplay() {
                     Tổng hợp tất cả chiến dịch
                 </p>
             </div>
-
-            {/* Disbursed Milestones */}
-            <div className="md:col-span-2 rounded-xl border border-cyan-200/80 bg-cyan-50/80 p-6">
-                <div className="mb-2 flex items-start justify-between gap-3">
-                    <p className="text-sm font-medium text-cyan-700">
-                        🎯 Số mốc đã giải ngân
-                    </p>
-                    <button
-                        type="button"
-                        onClick={refreshMilestones}
-                        disabled={isRefreshingMilestones}
-                        className="rounded-md border border-cyan-300 bg-white px-3 py-1 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-70"
-                    >
-                        {isRefreshingMilestones ? "Đang làm mới..." : "Làm mới"}
-                    </button>
-                </div>
-                <p className="text-3xl font-bold text-cyan-900">
-                    {disbursedMilestones}
-                </p>
-                <p className="mt-2 text-xs text-cyan-700">
-                    Dữ liệu thật từ API milestones
-                    {lastUpdatedAt ? ` • Cập nhật lúc ${lastUpdatedAt}` : ""}
-                </p>
-                {milestoneError && (
-                    <p className="mt-1 text-xs text-red-600">
-                        {milestoneError}
-                    </p>
-                )}
-            </div>
         </div>
     );
 }
