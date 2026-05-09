@@ -252,8 +252,9 @@ export default function CampaignDetailPage() {
                         "event Donated(uint256 indexed campaignId, address indexed donor, uint256 amount, uint256 totalRaised)",
                     );
                     const latestBlock = await publicClient.getBlockNumber();
-                    const maxBlocksToScan = 5000n;
-                    const chunkSize = 100n;
+                    // Alchemy Free tier giới hạn 10 block/request → dùng chunk 9 block
+                    const maxBlocksToScan = 1000n;
+                    const chunkSize = 9n;
                     const fromBlock =
                         latestBlock > maxBlocksToScan
                             ? latestBlock - maxBlocksToScan + 1n
@@ -270,15 +271,19 @@ export default function CampaignDetailPage() {
                             chunkFrom + chunkSize - 1n > latestBlock
                                 ? latestBlock
                                 : chunkFrom + chunkSize - 1n;
-                        const chunkLogs = await publicClient.getLogs({
-                            address: contractConfig.address,
-                            event: donatedEvent,
-                            args: { campaignId: BigInt(id) },
-                            fromBlock: chunkFrom,
-                            toBlock: chunkTo,
-                        });
-                        if (chunkLogs.length > 0) {
-                            logs.push(...chunkLogs);
+                        try {
+                            const chunkLogs = await publicClient.getLogs({
+                                address: contractConfig.address,
+                                event: donatedEvent,
+                                args: { campaignId: BigInt(id) },
+                                fromBlock: chunkFrom,
+                                toBlock: chunkTo,
+                            });
+                            if (chunkLogs.length > 0) {
+                                logs.push(...chunkLogs);
+                            }
+                        } catch {
+                            // Bỏ qua chunk lỗi (rate-limit / RPC tạm thời), tiếp tục các chunk còn lại
                         }
                     }
 

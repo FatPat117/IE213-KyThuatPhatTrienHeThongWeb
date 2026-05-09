@@ -523,11 +523,10 @@ export async function getRefundStatus(
     onChainId: number,
     address: string,
 ): Promise<RefundStatusResponse> {
-    const url = `${API_BASE_URL}/public/campaigns/${onChainId}/refund-status?address=${address}`;
     const response = await apiRequest<{
         success: boolean;
         data: RefundStatusResponse;
-    }>(url);
+    }>(`/campaigns/public/campaigns/${onChainId}/refund-status?address=${encodeURIComponent(address)}`);
     if (!response.success || !response.data) {
         throw new Error("Không thể lấy trạng thái hoàn tiền.");
     }

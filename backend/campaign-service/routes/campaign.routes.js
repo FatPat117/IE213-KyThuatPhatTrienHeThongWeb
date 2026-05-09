@@ -50,14 +50,14 @@ router.get(
     getPublicCampaignMilestones,
 );
 router.get(
-    "/public/campaigns/:onChainId",
-    publicRateLimit,
-    getPublicCampaignByOnChainId,
-);
-router.get(
     "/public/campaigns/:onChainId/refund-status",
     publicRateLimit,
     getRefundStatus,
+);
+router.get(
+    "/public/campaigns/:onChainId",
+    publicRateLimit,
+    getPublicCampaignByOnChainId,
 );
 
 router.get("/:onChainId/status", getCampaignIndexStatus);

@@ -1,6 +1,7 @@
 const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const { Campaign } = require("../models");
 const notificationService = require("../services/notification.service");
+const { getSafeOwners } = require("../utils/safeUtils");
 
 const QUEUE =
     process.env.RABBITMQ_QUEUE_CAMPAIGN_APPROVED || "campaign.approved.queue";
@@ -38,16 +39,23 @@ async function startCampaignApprovedConsumer() {
                     txHash: payload.txHash || "",
                 });
             }
-            // Thông báo cho reviewer của campaign này biết rằng campaign đã được duyệt
+            // Thông báo cho từng EOA owner của reviewerSafe (không phải Safe address)
             if (campaign?.reviewerSafe && /^0x[a-f0-9]{40}$/i.test(campaign.reviewerSafe)) {
-                await notificationService.createNotification({
-                    recipientWallet: campaign.reviewerSafe.toLowerCase(),
-                    type: "campaign_approved",
-                    title: "Chiến dịch bạn quản lý đã được duyệt",
-                    message: `Chiến dịch #${onChainId} mà bạn là kiểm duyệt viên đã được quản trị viên duyệt và sắp bắt đầu nhận quyên góp. Hãy chuẩn bị để theo dõi các mốc.`,
-                    campaignOnChainId: onChainId,
-                    txHash: payload.txHash || "",
-                });
+                const safeAddress = campaign.reviewerSafe.toLowerCase();
+                const safeOwners = await getSafeOwners(safeAddress);
+                const notifyTargets = safeOwners.length > 0 ? safeOwners : [safeAddress];
+                await Promise.all(
+                    notifyTargets.map((ownerWallet) =>
+                        notificationService.createNotification({
+                            recipientWallet: ownerWallet,
+                            type: "campaign_approved",
+                            title: "Chiến dịch bạn quản lý đã được duyệt",
+                            message: `Chiến dịch #${onChainId} mà bạn là kiểm duyệt viên đã được quản trị viên duyệt và sắp bắt đầu nhận quyên góp. Hãy chuẩn bị để theo dõi các mốc.`,
+                            campaignOnChainId: onChainId,
+                            txHash: payload.txHash || "",
+                        }),
+                    ),
+                );
             }
             channel.ack(msg);
         } catch (error) {

@@ -211,13 +211,8 @@ export function useReviewerCampaigns() {
 
         const { pendingMilestones, processedMilestones } = result.value;
 
-        if (
-          pendingMilestones.length === 0 &&
-          processedMilestones.length === 0
-        ) {
-          return;
-        }
-
+        // Luôn bao gồm campaign được giao cho reviewer, kể cả chưa có milestone nào cần duyệt
+        // (ví dụ: campaign mới tạo, chờ funding, chưa có milestone ở trạng thái pending)
         nextRows.push({
           campaign: campaignItem.campaign,
           milestones: [...pendingMilestones, ...processedMilestones].sort(
