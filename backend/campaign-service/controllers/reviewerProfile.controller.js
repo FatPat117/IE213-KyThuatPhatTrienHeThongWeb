@@ -23,17 +23,13 @@ function toPublicAdmin(doc) {
 }
 
 /**
- * GET /api/campaigns/reviewers/admin/profiles — chỉ admin (header x-user-role)
+ * GET /api/campaigns/reviewers/admin/profiles
+ * Accessible to any authenticated user (admin or reviewer)
+ * PATCH and DELETE endpoints still require admin role
  */
 async function listReviewerProfilesForAdmin(req, res, next) {
     try {
-        const role = (req.headers["x-user-role"] || "")
-            .toString()
-            .trim()
-            .toLowerCase();
-        if (role !== "admin") {
-            return errorRes(res, "Chỉ admin mới xem được danh sách này", 403);
-        }
+        // Admin role check removed - all authenticated users can view reviewer profiles
         const docs = await Reviewer.find({}).sort({ updatedAt: -1 }).lean();
         const data = docs.map(toPublicAdmin);
         return successRes(res, data);
