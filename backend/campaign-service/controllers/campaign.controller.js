@@ -273,8 +273,21 @@ async function getAllCampaigns(req, res, next) {
         if (req.query.status) filter.status = req.query.status;
         if (req.query.creator) filter.creator = req.query.creator;
 
-        const campaigns = await campaignService.getAllCampaigns(filter);
-        return successRes(res, campaigns);
+        const pagination = {};
+        if (req.query.page) pagination.page = req.query.page;
+        if (req.query.limit) pagination.limit = req.query.limit;
+
+        const { campaigns, total, page, limit } = await campaignService.getAllCampaigns(filter, pagination);
+
+        return successRes(res, {
+            campaigns,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: limit > 0 ? Math.max(Math.ceil(total / limit), 1) : 1,
+            },
+        });
     } catch (err) {
         return next(err);
     }

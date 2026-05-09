@@ -209,8 +209,30 @@ async function getAllPublicCampaigns(): Promise<PublicCampaignItem[]> {
     return allItems;
 }
 
-export async function getCampaigns() {
-    return apiRequest<CampaignRecord[]>("/campaigns");
+export interface PaginatedCampaignsResponse {
+    campaigns: CampaignRecord[];
+    pagination: {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+    };
+}
+
+export async function getCampaigns(params?: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    creator?: string;
+}) {
+    const query = new URLSearchParams();
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.limit) query.set("limit", String(params.limit));
+    if (params?.status) query.set("status", params.status);
+    if (params?.creator) query.set("creator", params.creator);
+
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return apiRequest<PaginatedCampaignsResponse>(`/campaigns${suffix}`);
 }
 
 export async function getCampaignById(id: number) {
