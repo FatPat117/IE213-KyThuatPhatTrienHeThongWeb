@@ -179,7 +179,7 @@ function MilestoneEvidenceUploadContent() {
     const handleUploadFile = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         if (!Number.isFinite(campaignId)) return setErrorMessage("Campaign ID không hợp lệ.");
-        if (!token) return setErrorMessage("Bạn cần đăng nhập ví để upload minh chứng.");
+        if (!token) return setErrorMessage("Bạn cần đăng nhập ví để đăng tải bằng chứng thi công.");
         if (!canUpload) return setErrorMessage("Chỉ creator mới có quyền upload.");
         if (files.length === 0) return setErrorMessage("Vui lòng chọn ít nhất 1 file.");
 
@@ -208,7 +208,7 @@ function MilestoneEvidenceUploadContent() {
             );
         } catch (error) {
             setErrorMessage(
-                error instanceof Error ? error.message : "Không thể upload minh chứng",
+                error instanceof Error ? error.message : "Không thể đăng tải bằng chứng thi công.",
             );
         } finally {
             setIsUploadingFile(false);
@@ -268,21 +268,21 @@ function MilestoneEvidenceUploadContent() {
                 <div className="mb-6 flex items-center justify-between gap-3">
                     <div>
                         <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">
-                            Minh chứng milestone
+                            Minh chứng thi công mốc giải ngân
                         </p>
                         <h1 className="mt-1 text-3xl font-bold text-slate-900">
-                            Upload và xác nhận minh chứng
+                            Đăng tải và xác nhận bằng chứng thi công cho mốc #{toDisplayMilestoneId(milestoneId + 1)} của chiến dịch #{Number.isFinite(campaignId) ? campaignId : "-"}
                         </h1>
                         <p className="mt-1 text-sm text-slate-600">
                             Mã chiến dịch #{Number.isFinite(campaignId) ? campaignId : "-"} - Mốc #
-                            {toDisplayMilestoneId(milestoneId)}
+                            {toDisplayMilestoneId(milestoneId + 1)}
                         </p>
                     </div>
                     <Link
                         href={`/campaigns/${campaignId}/milestones`}
                         className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700"
                     >
-                        Quay lại timeline
+                        Quay lại xem tiến độ
                     </Link>
                 </div>
 
@@ -377,7 +377,7 @@ function MilestoneEvidenceUploadContent() {
                         >
                             {isSubmittingOnChain || isConfirmingOnChain
                                 ? "Đang chờ xác nhận..."
-                                : "2) Submit tất cả CID on-chain"}
+                                : "2) Đăng tải tất cả CID on-chain"}
                         </button>
                         {milestoneStatus === "resubmittable" && (
                             <button
@@ -430,7 +430,7 @@ function MilestoneEvidenceUploadContent() {
 
                 <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                     <h2 className="text-lg font-semibold text-slate-900">
-                        Lịch sử CID đã nộp cho milestone này
+                        Lịch sử CID đã nộp cho mốc này
                     </h2>
                     {milestoneHistory.length === 0 ? (
                         <p className="mt-2 text-sm text-slate-500">Chưa có CID nào.</p>

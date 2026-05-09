@@ -52,20 +52,20 @@ export default function Header() {
         if (isSignedIn && !isAdmin) {
             roleLinks.push({
                 href: "/my-campaigns",
-                label: "Campaign của tôi",
+                label: "Các chiến dịch của tôi",
             });
         }
         if (isReviewer && !isAdmin) {
-            roleLinks.push({ href: "/reviewer", label: "Duyệt milestone" });
+            roleLinks.push({ href: "/reviewer", label: "Các mốc đang chờ duyệt" });
         }
         if (isAdmin) {
             roleLinks.push({
                 href: "/admin/campaigns",
-                label: "Duyệt campaign",
+                label: "Duyệt các chiến dịch mới",
             });
             roleLinks.push({
                 href: "/admin/reviewers",
-                label: "Quản lý Reviewer",
+                label: "Quản lý danh sách kiểm duyệt viên",
             });
         }
     }
@@ -79,8 +79,6 @@ export default function Header() {
     ];
     const visibleAccountLinks = isAdmin
         ? [
-              { href: "/admin/campaigns", label: "Duyệt campaign" },
-              { href: "/admin/reviewers", label: "Quản lý Reviewer" },
               { href: "/donations", label: "Quyên góp của tôi" },
               { href: "/settings", label: "Hồ sơ & cài đặt" },
           ]

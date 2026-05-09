@@ -274,10 +274,10 @@ export default function NotificationBell({ token }: { token: string | null }) {
                                             linkLabel = "Vào trang Reviewer";
                                         } else if (adminTypes.has(item.type || "")) {
                                             href = "/admin/campaigns";
-                                            linkLabel = "Duyệt campaign";
+                                            linkLabel = "Duyệt các chiến dịch mới";
                                         } else if (hasCampaignId) {
                                             href = `/campaigns/${campaignId}`;
-                                            linkLabel = "Mở campaign";
+                                            linkLabel = "Mở chiến dịch";
                                         }
 
                                         if (!href) return null;

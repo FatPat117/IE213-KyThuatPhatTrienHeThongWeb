@@ -302,9 +302,9 @@ async function startCampaignCreatedConsumer() {
                         notificationService.createNotification({
                             recipientWallet: adminWallet,
                             type: "campaign_created",
-                            title: "Có campaign mới cần duyệt",
+                            title: "Có chiến dịch mới cần duyệt",
                             message:
-                                "Một campaign mới vừa được tạo và đang chờ phê duyệt.",
+                                "Một chiến dịch mới vừa được tạo và đang chờ phê duyệt.",
                             campaignOnChainId: onChainId,
                             txHash: payload.txHash || "",
                         }),
@@ -317,8 +317,8 @@ async function startCampaignCreatedConsumer() {
                 await notificationService.createNotification({
                     recipientWallet: reviewerWallet,
                     type: "campaign_assigned",
-                    title: "New campaign assigned",
-                    message: "You have been assigned to review a new campaign.",
+                    title: "Chiến dịch mới được giao",
+                    message: "Bạn đã được giao nhiệm vụ kiểm duyệt một chiến dịch mới.",
                     campaignOnChainId: onChainId,
                     txHash: payload.txHash || "",
                 });

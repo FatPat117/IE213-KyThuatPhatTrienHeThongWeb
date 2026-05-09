@@ -132,7 +132,7 @@ export default function DonatePanel({
                                 ? campaignStatusLabel === "pending_approval"
                                     ? "Chiến dịch đang chờ duyệt"
                                     : campaignStatusLabel === "in_progress"
-                                    ? "Chiến dịch đang triển khai milestone"
+                                    ? "Chiến dịch đang triển khai các mốc"
                                     : campaignStatusLabel === "partial_failed"
                                       ? "Chiến dịch thất bại một phần"
                                       : campaignStatusLabel === "failed"

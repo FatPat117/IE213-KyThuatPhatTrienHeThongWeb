@@ -400,7 +400,7 @@ export default function AdminCampaignApprovalsPage() {
                                         ? "Đang xử lý..."
                                         : lastApprovedCampaignId === item.id
                                             ? "Đã duyệt ✓"
-                                            : "Duyệt campaign"}
+                                            : "Duyệt chiến dịch"}
                                 </button>
                             </div>
                         ))}

@@ -596,8 +596,8 @@ function HomeContent() {
                             },
                             {
                                 step: 4,
-                                title: "Rút tiền",
-                                desc: "Rút tiền an toàn khi chiến dịch đạt mục tiêu.",
+                                title: "Giải ngân an toàn",
+                                desc: "Tiền được giải ngân vào ví escrow, đảm bảo sử dụng đúng mục đích.",
                             },
                         ].map(({ step, title, desc }) => (
                             <div key={step} className="flex flex-col">
@@ -612,57 +612,6 @@ function HomeContent() {
                                 </p>
                             </div>
                         ))}
-                    </div>
-                </section>
-
-                {/* Network Info Section */}
-                <section className="flex flex-col gap-10 rounded-2xl border border-slate-200/80 bg-white p-8 shadow-lg shadow-slate-200/30 ring-1 ring-slate-900/5 md:p-10">
-                    <div className="text-center">
-                        <p className="mb-2 text-sm font-semibold uppercase tracking-wider text-indigo-600">
-                            Hạ tầng
-                        </p>
-                        <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-                            Xây dựng trên Ethereum Sepolia
-                        </h2>
-                        <p className="mx-auto mt-3 max-w-2xl text-lg text-slate-600">
-                            Mọi chiến dịch, quyên góp và cột mốc được ghi vĩnh
-                            viễn trên blockchain — minh bạch hoàn toàn.
-                        </p>
-                    </div>
-                    <div className="grid gap-8 sm:grid-cols-3">
-                        <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-6">
-                            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                                Mạng
-                            </p>
-                            <p className="mt-2 text-xl font-bold text-slate-900">
-                                Ethereum Sepolia
-                            </p>
-                            <p className="mt-1 text-sm text-slate-600">
-                                Mạng thử nghiệm để phát triển và kiểm tra
-                            </p>
-                        </div>
-                        <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-6">
-                            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                                Chain ID
-                            </p>
-                            <p className="mt-2 text-xl font-bold text-slate-900 font-mono">
-                                11155111
-                            </p>
-                            <p className="mt-1 text-sm text-slate-600">
-                                Định danh mạng duy nhất
-                            </p>
-                        </div>
-                        <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-6">
-                            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                                Công nghệ
-                            </p>
-                            <p className="mt-2 text-xl font-bold text-slate-900">
-                                Hợp đồng thông minh
-                            </p>
-                            <p className="mt-1 text-sm text-slate-600">
-                                Tự động hóa trên Solidity
-                            </p>
-                        </div>
                     </div>
                 </section>
 

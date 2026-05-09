@@ -113,7 +113,7 @@ function CampaignsPageContent() {
             if (existing) {
                 // Prioritize backend terminal statuses over on-chain status
                 const isBackendTerminal = TERMINAL_STATUSES.has(existing.status || "");
-                
+
                 campaignMap.set(campaign.id, {
                     ...existing,
                     creator: campaign.creator || existing.creator,
@@ -127,7 +127,7 @@ function CampaignsPageContent() {
                 campaignMap.set(campaign.id, {
                     id: campaign.id,
                     title: cached?.title || `Chiến dịch #${campaign.id}`,
-                    description: cached?.description || "Dữ liệu chiến dịch hiện chỉ có on-chain, chưa có metadata off-chain.",
+                    description: cached?.description || "Dữ liệu chiến dịch đang được đồng bộ giữa on-chain và backend. Vui lòng kiểm tra lại sau.",
                     creator: campaign.creator,
                     goal: campaign.goal,
                     raised: campaign.raised,

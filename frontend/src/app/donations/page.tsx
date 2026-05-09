@@ -239,10 +239,6 @@ function MyDonationsContent() {
                             <h1 className="text-3xl font-bold text-slate-900">
                                 Lịch sử quyên góp
                             </h1>
-                            <p className="text-lg text-slate-600">
-                                Minh bạch từ backend indexer + sự kiện on-chain
-                                Donated
-                            </p>
                         </div>
                     </div>
                 </div>

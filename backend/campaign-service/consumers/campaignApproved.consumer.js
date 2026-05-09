@@ -32,8 +32,8 @@ async function startCampaignApprovedConsumer() {
                 await notificationService.createNotification({
                     recipientWallet: campaign.creator,
                     type: "campaign_approved",
-                    title: "Campaign đã được duyệt",
-                    message: "Campaign đã được duyệt, bắt đầu nhận quyên góp.",
+                    title: "Chiến dịch đã được duyệt",
+                    message: "Chiến dịch của bạn đã được duyệt, bắt đầu nhận quyên góp.",
                     campaignOnChainId: onChainId,
                     txHash: payload.txHash || "",
                 });
@@ -43,8 +43,8 @@ async function startCampaignApprovedConsumer() {
                 await notificationService.createNotification({
                     recipientWallet: campaign.reviewerSafe.toLowerCase(),
                     type: "campaign_approved",
-                    title: "Campaign bạn quản lý đã được duyệt",
-                    message: `Campaign #${onChainId} mà bạn là reviewer đã được admin duyệt và sắp bắt đầu nhận quyên góp. Hãy chuẩn bị để theo dõi các milestone.`,
+                    title: "Chiến dịch bạn quản lý đã được duyệt",
+                    message: `Chiến dịch #${onChainId} mà bạn là kiểm duyệt viên đã được quản trị viên duyệt và sắp bắt đầu nhận quyên góp. Hãy chuẩn bị để theo dõi các mốc.`,
                     campaignOnChainId: onChainId,
                     txHash: payload.txHash || "",
                 });
