@@ -32,6 +32,8 @@ async function getSafeOwners(safeAddress) {
 
     const res = await axios.get(url, {
       timeout: 15_000,
+      // axios ném exception cho status >= 400 theo mặc định, nhưng ta xử lý thủ công
+      validateStatus: () => true,
     });
 
     // Rate limited → return stale cache if available
@@ -41,7 +43,8 @@ async function getSafeOwners(safeAddress) {
       return [];
     }
 
-    if (!res.ok) {
+    // axios dùng res.status (không phải res.ok như fetch)
+    if (res.status < 200 || res.status >= 300) {
       console.warn(`[safeUtils] Safe API error ${res.status} for ${key}`);
       if (cached) return cached.owners;
       return [];
@@ -58,6 +61,7 @@ async function getSafeOwners(safeAddress) {
       expiresAt: Date.now() + OWNERS_CACHE_TTL,
     });
 
+    console.log(`[safeUtils] getSafeOwners for ${key}: found ${owners.length} owners`);
     return owners;
   } catch (error) {
     console.error(`[safeUtils] Error in getSafeOwners for ${key}:`, error.message);
@@ -89,6 +93,7 @@ async function getSafeInfo(safeAddress) {
 
     const res = await axios.get(url, {
       timeout: 15_000,
+      validateStatus: () => true,
     });
 
     // Rate limited → return stale cache if available
@@ -98,7 +103,8 @@ async function getSafeInfo(safeAddress) {
       return null;
     }
 
-    if (!res.ok) {
+    // axios dùng res.status (không phải res.ok như fetch)
+    if (res.status < 200 || res.status >= 300) {
       console.warn(`[safeUtils] Safe API error ${res.status} for ${key}`);
       if (cached) return cached.info;
       return null;

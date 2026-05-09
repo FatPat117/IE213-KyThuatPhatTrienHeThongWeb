@@ -268,10 +268,10 @@ export default function NotificationBell({ token }: { token: string | null }) {
 
                                         if (isMilestoneApproved && hasCampaignId) {
                                             href = `/campaigns/${campaignId}/milestones`;
-                                            linkLabel = "View milestone";
+                                            linkLabel = "Xem chi tiết mốc";
                                         } else if (reviewerTypes.has(item.type || "")) {
                                             href = "/reviewer";
-                                            linkLabel = "Vào trang Reviewer";
+                                            linkLabel = "Vào trang duyệt mốc";
                                         } else if (adminTypes.has(item.type || "")) {
                                             href = "/admin/campaigns";
                                             linkLabel = "Duyệt các chiến dịch mới";

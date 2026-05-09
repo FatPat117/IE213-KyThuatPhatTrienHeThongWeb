@@ -2,6 +2,7 @@ const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const { Campaign, Milestone } = require("../models");
 const { recordTransaction } = require("../utils/recordTransaction");
 const notificationService = require("../services/notification.service");
+const { getSafeOwners } = require("../utils/safeUtils");
 
 const QUEUE =
     process.env.RABBITMQ_QUEUE_MILESTONE_DISBURSED ||
@@ -76,16 +77,23 @@ async function startMilestoneDisbursedConsumer() {
                 await campaign.save();
             }
 
-            // Thông báo cho reviewer biết có milestone mới được mở khóa
+            // Thông báo cho từng EOA owner của reviewerSafe (không phải Safe address)
             if (campaign?.reviewerSafe && /^0x[a-f0-9]{40}$/i.test(campaign.reviewerSafe)) {
-                await notificationService.createNotification({
-                    recipientWallet: campaign.reviewerSafe.toLowerCase(),
-                    type: "milestone_disbursed",
-                    title: "Milestone mới được mở khóa",
-                    message: `Milestone #${milestoneId} của campaign #${campaignOnChainId} vừa được giải ngân và đang chờ creator nộp bằng chứng. Hãy chuẩn bị duyệt.`,
-                    campaignOnChainId,
-                    txHash: payload.txHash || "",
-                });
+                const safeAddress = campaign.reviewerSafe.toLowerCase();
+                const safeOwners = await getSafeOwners(safeAddress);
+                const notifyTargets = safeOwners.length > 0 ? safeOwners : [safeAddress];
+                await Promise.all(
+                    notifyTargets.map((ownerWallet) =>
+                        notificationService.createNotification({
+                            recipientWallet: ownerWallet,
+                            type: "milestone_disbursed",
+                            title: "Milestone mới được mở khóa",
+                            message: `Milestone #${milestoneId} của chiến dịch #${campaignOnChainId} vừa được giải ngân và đang chờ creator nộp bằng chứng. Hãy chuẩn bị duyệt.`,
+                            campaignOnChainId,
+                            txHash: payload.txHash || "",
+                        }),
+                    ),
+                );
             }
 
             await recordTransaction({

@@ -295,16 +295,15 @@ async function getAllCampaigns(req, res, next) {
 
 async function getCampaignById(req, res, next) {
     try {
-        const campaign = await campaignService.getCampaignById(
-            Number(req.params.id),
-        );
+        const onChainId = Number(req.params.onChainId ?? req.params.id);
+        const campaign = await campaignService.getCampaignById(onChainId);
         if (!campaign) {
             return errorRes(res, "Campaign not found", 404);
         }
 
         // Fetch milestones for this campaign
         const milestones = await Milestone.find({ 
-            campaignOnChainId: Number(req.params.id) 
+            campaignOnChainId: onChainId 
         }).sort({ milestoneId: 1 }).lean();
 
         const responseData = {
