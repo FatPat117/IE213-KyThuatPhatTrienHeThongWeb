@@ -559,7 +559,7 @@ function HomeContent() {
                         </Link>
                     </div>
                     <div>
-                        <CampaignListDisplay />
+                        <CampaignListDisplay limit={3} onlyActive={true} />
                     </div>
                 </section>
 

@@ -10,7 +10,7 @@ import {
 } from "@/lib";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formatEther } from "viem";
 import { useAccount, useChainId } from "wagmi";
 
@@ -48,6 +48,8 @@ function CampaignCardSkeleton() {
     );
 }
 
+const ITEMS_PER_PAGE = 9;
+
 function CampaignsPageContent() {
     const { data: campaigns, isLoading, error, refetch } = useBackendCampaigns();
     const {
@@ -61,6 +63,7 @@ function CampaignsPageContent() {
     const [searchQuery, setSearchQuery] = useState("");
     const [filterStatus, setFilterStatus] = useState<"all" | "active" | "ended">("all");
     const [sortBy, setSortBy] = useState<"newest" | "mostfunded" | "trending">("newest");
+    const [currentPage, setCurrentPage] = useState(1);
     const isSepoliaNetwork = chainId === SEPOLIA_CHAIN_ID;
     const canCreateCampaign = isConnected && isSepoliaNetwork;
 
@@ -177,6 +180,18 @@ function CampaignsPageContent() {
 
         return result;
     }, [normalizedCampaigns, searchQuery, filterStatus, sortBy]);
+
+    // Pagination derived values
+    const totalPages = Math.max(Math.ceil(filteredCampaigns.length / ITEMS_PER_PAGE), 1);
+    const safePage = Math.min(currentPage, totalPages);
+    const paginatedCampaigns = useMemo(
+        () => filteredCampaigns.slice((safePage - 1) * ITEMS_PER_PAGE, safePage * ITEMS_PER_PAGE),
+        [filteredCampaigns, safePage]
+    );
+
+    // Reset to page 1 whenever filters or search change
+    useEffect(() => { setCurrentPage(1); }, [searchQuery, filterStatus, sortBy]);
+
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
@@ -331,6 +346,11 @@ function CampaignsPageContent() {
                             <div className="w-full rounded-lg bg-blue-50 border border-blue-200 px-3 py-2">
                                 <p className="text-sm font-medium text-blue-600">
                                     Tìm thấy {filteredCampaigns.length} chiến dịch
+                                    {filteredCampaigns.length > 0 && (
+                                        <span className="text-blue-400 font-normal ml-1">
+                                            (trang {safePage}/{totalPages})
+                                        </span>
+                                    )}
                                 </p>
                             </div>
                         </div>
@@ -404,8 +424,8 @@ function CampaignsPageContent() {
                     )}
 
                     {/* Campaign Cards */}
-                    {!isLoading && !error && filteredCampaigns.length > 0 &&
-                        filteredCampaigns.map((campaign) => {
+                    {!isLoading && !error && paginatedCampaigns.length > 0 &&
+                        paginatedCampaigns.map((campaign) => {
                             const goalEth = Number(formatEther(campaign.goal));
                             const raisedEth = Number(formatEther(campaign.raised));
                             const progress = goalEth > 0 ? Math.min((raisedEth / goalEth) * 100, 100) : 0;
@@ -519,6 +539,91 @@ function CampaignsPageContent() {
                             );
                         })}
                 </section>
+
+                {/* Pagination Controls */}
+                {!isLoading && !isOnChainLoading && filteredCampaigns.length > ITEMS_PER_PAGE && (
+                    <div className="mt-10 flex items-center justify-center gap-2">
+                        {/* First page */}
+                        <button
+                            onClick={() => setCurrentPage(1)}
+                            disabled={safePage === 1}
+                            aria-label="Trang đầu"
+                            className="flex h-9 w-9 items-center justify-center rounded-lg border-2 border-slate-200 bg-white text-slate-600 font-semibold text-sm transition hover:border-blue-600 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            «
+                        </button>
+
+                        {/* Previous page */}
+                        <button
+                            onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                            disabled={safePage === 1}
+                            aria-label="Trang trước"
+                            className="flex h-9 w-9 items-center justify-center rounded-lg border-2 border-slate-200 bg-white text-slate-600 font-semibold text-sm transition hover:border-blue-600 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            ‹
+                        </button>
+
+                        {/* Page numbers */}
+                        {Array.from({ length: totalPages }, (_, i) => i + 1)
+                            .filter(p =>
+                                p === 1 ||
+                                p === totalPages ||
+                                Math.abs(p - safePage) <= 1
+                            )
+                            .reduce<(number | "...")[]>((acc, p, idx, arr) => {
+                                if (idx > 0 && (p as number) - (arr[idx - 1] as number) > 1) {
+                                    acc.push("...");
+                                }
+                                acc.push(p);
+                                return acc;
+                            }, [])
+                            .map((item, idx) =>
+                                item === "..." ? (
+                                    <span
+                                        key={`ellipsis-${idx}`}
+                                        className="flex h-9 w-9 items-center justify-center text-slate-400 text-sm select-none"
+                                    >
+                                        …
+                                    </span>
+                                ) : (
+                                    <button
+                                        key={item}
+                                        onClick={() => setCurrentPage(item as number)}
+                                        aria-label={`Trang ${item}`}
+                                        aria-current={item === safePage ? "page" : undefined}
+                                        className={`flex h-9 w-9 items-center justify-center rounded-lg border-2 text-sm font-semibold transition ${
+                                            item === safePage
+                                                ? "border-blue-600 bg-blue-600 text-white shadow-md"
+                                                : "border-slate-200 bg-white text-slate-700 hover:border-blue-600 hover:text-blue-600"
+                                        }`}
+                                    >
+                                        {item}
+                                    </button>
+                                )
+                            )
+                        }
+
+                        {/* Next page */}
+                        <button
+                            onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+                            disabled={safePage === totalPages}
+                            aria-label="Trang sau"
+                            className="flex h-9 w-9 items-center justify-center rounded-lg border-2 border-slate-200 bg-white text-slate-600 font-semibold text-sm transition hover:border-blue-600 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            ›
+                        </button>
+
+                        {/* Last page */}
+                        <button
+                            onClick={() => setCurrentPage(totalPages)}
+                            disabled={safePage === totalPages}
+                            aria-label="Trang cuối"
+                            className="flex h-9 w-9 items-center justify-center rounded-lg border-2 border-slate-200 bg-white text-slate-600 font-semibold text-sm transition hover:border-blue-600 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            »
+                        </button>
+                    </div>
+                )}
 
             </main>
         </div>
