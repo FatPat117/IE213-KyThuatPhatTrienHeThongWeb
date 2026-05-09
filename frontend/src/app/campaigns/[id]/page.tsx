@@ -642,6 +642,22 @@ export default function CampaignDetailPage() {
     const handleDonate = () => {
         if (!Number.isFinite(id)) return;
         if (parseFloat(amount) <= 0) return;
+
+        // Kiểm tra số tiền donate không vượt quá remaining goal
+        if (campaign) {
+            const goalWei = campaign.goal;
+            const raisedWei = campaign.raised;
+            const remainingWei = goalWei - raisedWei;
+            const amountWei = parseEther(amount);
+
+            if (amountWei > remainingWei) {
+                showErrorToast(
+                    `Số tiền quyên góp vượt quá mục tiêu còn lại. Tối đa: ${formatEther(remainingWei)} ETH`
+                );
+                return;
+            }
+        }
+
         setLastDonatedAmount(amount);
         donate(id, amount).catch((err) => {
             setLastDonatedAmount(null);

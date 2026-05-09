@@ -220,7 +220,7 @@ function ReviewerMilestoneActions({
     // Fetch on-chain data to check for proof existence
     const { proofCidsByIndex, isLoading: isLoadingOnChain } = useReadMilestonesOnChain(
         campaignId,
-        milestone.milestoneId + 1 
+        milestone.milestoneId + 1
     );
 
     const onChainProofs = proofCidsByIndex.get(milestone.milestoneId) || [];
@@ -263,7 +263,7 @@ function ReviewerMilestoneActions({
                         const uniqueProofs = Array.from(new Set(onChainProofs.map(c => (c || "").trim().toLowerCase())))
                             .map(k => onChainProofs.find(c => (c || "").trim().toLowerCase() === k))
                             .filter(Boolean) as string[];
-                        
+
                         return uniqueProofs.map((cid, index) => (
                             <div
                                 key={`${milestone.milestoneId}-onchain-${index}-${cid}`}
@@ -337,12 +337,12 @@ function ReviewerMilestoneActions({
                                         isLoadingOnChain
                                     }
                                     title={
-                                        isLoadingOnChain 
-                                            ? "Đang kiểm tra dữ liệu on-chain..." 
-                                            : !hasOnChainProof 
-                                                ? "Chưa có minh chứng trên Smart Contract" 
-                                                : !canWalletApproveMilestone 
-                                                    ? "Ví không trùng reviewerSafe" 
+                                        isLoadingOnChain
+                                            ? "Đang kiểm tra dữ liệu on-chain..."
+                                            : !hasOnChainProof
+                                                ? "Chưa có minh chứng trên Smart Contract"
+                                                : !canWalletApproveMilestone
+                                                    ? "Ví không trùng reviewerSafe"
                                                     : undefined
                                     }
                                     className="flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 hover:shadow-emerald-700/30 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
@@ -365,8 +365,8 @@ function ReviewerMilestoneActions({
                                         !canWalletRejectMilestone
                                     }
                                     title={
-                                        !myReviewerSafes.includes(campaignReviewerSafe) 
-                                            ? "Ví không nằm trong danh sách reviewer của campaign" 
+                                        !myReviewerSafes.includes(campaignReviewerSafe)
+                                            ? "Ví không nằm trong danh sách reviewer của campaign"
                                             : milestone.status === "resubmittable"
                                                 ? "Đã từ chối, đang chờ Creator nộp lại minh chứng"
                                             : !isPendingMilestone
@@ -896,7 +896,7 @@ export default function ReviewerWorkspacePage() {
                             </div>
 
                             <h1 className="mt-4 text-3xl font-extrabold leading-[1.15] tracking-tight text-slate-900 md:text-[3.2rem]">
-                                Chiến dịch của tôi (Reviewer)
+                                Các mốc đang chờ bạn phê duyệt
                             </h1>
 
                             <p className="mt-4 max-w-2xl text-lg leading-8 text-slate-600">
@@ -911,14 +911,9 @@ export default function ReviewerWorkspacePage() {
                                         "Chưa kết nối"}
                                 </p>
                                 <p>
-                                    Số Safe reviewer được gán:{" "}
+                                    Số ví Safe được gán làm kiểm duyệt viên:{" "}
                                     {myReviewerSafes.length}
                                 </p>
-                                {ownerSafes.length > 0 && (
-                                    <p className="text-xs text-slate-500">
-                                        Safe của owner: {ownerSafes.length} (chỉ {myReviewerSafes.length} được đăng ký reviewer)
-                                    </p>
-                                )}
                             </div>
 
                             <div className="mt-6 flex flex-wrap items-center gap-3">

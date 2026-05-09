@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { useAccount } from 'wagmi';
-import Link from 'next/link';
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useAccount } from "wagmi";
+import Link from "next/link";
 import {
   getReviewerProfile,
   getUserProfile,
@@ -19,135 +19,185 @@ const MAX_AVATAR_PAYLOAD_BYTES = 1_200_000;
 const MAX_AVATAR_DIMENSION = 512;
 
 async function fileToDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(new Error('Không thể đọc file ảnh.'));
-    reader.readAsDataURL(file);
-  });
+    return new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("Không thể đọc file ảnh."));
+        reader.readAsDataURL(file);
+    });
 }
 
 function dataUrlPayloadBytes(dataUrl: string) {
-  if (!dataUrl) return 0;
-  const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] || '' : dataUrl;
-  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
-  return Math.max((base64.length * 3) / 4 - padding, 0);
+    if (!dataUrl) return 0;
+    const base64 = dataUrl.includes(",")
+        ? dataUrl.split(",")[1] || ""
+        : dataUrl;
+    const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+    return Math.max((base64.length * 3) / 4 - padding, 0);
 }
 
 async function optimizeAvatarDataUrl(file: File) {
-  const originalDataUrl = await fileToDataUrl(file);
-  if (dataUrlPayloadBytes(originalDataUrl) <= MAX_AVATAR_PAYLOAD_BYTES) {
-    return originalDataUrl;
-  }
+    const originalDataUrl = await fileToDataUrl(file);
+    if (dataUrlPayloadBytes(originalDataUrl) <= MAX_AVATAR_PAYLOAD_BYTES) {
+        return originalDataUrl;
+    }
 
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(MAX_AVATAR_DIMENSION / bitmap.width, MAX_AVATAR_DIMENSION / bitmap.height, 1);
-  const width = Math.max(1, Math.round(bitmap.width * scale));
-  const height = Math.max(1, Math.round(bitmap.height * scale));
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext('2d');
-  if (!context) return originalDataUrl;
-  context.drawImage(bitmap, 0, 0, width, height);
-  bitmap.close();
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(
+        MAX_AVATAR_DIMENSION / bitmap.width,
+        MAX_AVATAR_DIMENSION / bitmap.height,
+        1,
+    );
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) return originalDataUrl;
+    context.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
 
-  const webpDataUrl = canvas.toDataURL('image/webp', 0.8);
-  if (dataUrlPayloadBytes(webpDataUrl) <= MAX_AVATAR_PAYLOAD_BYTES) {
-    return webpDataUrl;
-  }
+    const webpDataUrl = canvas.toDataURL("image/webp", 0.8);
+    if (dataUrlPayloadBytes(webpDataUrl) <= MAX_AVATAR_PAYLOAD_BYTES) {
+        return webpDataUrl;
+    }
 
-  const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.75);
-  return jpegDataUrl;
+    const jpegDataUrl = canvas.toDataURL("image/jpeg", 0.75);
+    return jpegDataUrl;
 }
 
 export default function SettingsPage() {
-  const { address, isConnected } = useAccount();
-  const { token, user, setAuth } = useAuth();
-  const { isReviewer, isLoading: isReviewerRoleLoading } = useIsReviewer();
+    const { address, isConnected } = useAccount();
+    const { token, user, setAuth } = useAuth();
+    const { isReviewer, isLoading: isReviewerRoleLoading } = useIsReviewer();
 
-  /** Tránh hydration mismatch: wagmi `isConnected` / `address` khác SSR và client. */
-  const [isMounted, setIsMounted] = useState(false);
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
+    /** Tránh hydration mismatch: wagmi `isConnected` / `address` khác SSR và client. */
+    const [isMounted, setIsMounted] = useState(false);
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
 
-  const [displayName, setDisplayName] = useState('');
-  const [avatarDataUrl, setAvatarDataUrl] = useState('');
-  const [organizationName, setOrganizationName] = useState('');
-  const [region, setRegion] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingReviewerProfile, setIsLoadingReviewerProfile] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [reviewerProfileError, setReviewerProfileError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+    const [displayName, setDisplayName] = useState("");
+    const [avatarDataUrl, setAvatarDataUrl] = useState("");
+    const [organizationName, setOrganizationName] = useState("");
+    const [region, setRegion] = useState("");
+    const [isLoading, setIsLoading] = useState(true);
+    const [isLoadingReviewerProfile, setIsLoadingReviewerProfile] =
+        useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [reviewerProfileError, setReviewerProfileError] = useState<
+        string | null
+    >(null);
+    const [success, setSuccess] = useState<string | null>(null);
 
-  const walletAddress = useMemo(() => address || user?.wallet || '', [address, user?.wallet]);
-  const canEdit = Boolean(token && walletAddress);
+    const walletAddress = useMemo(
+        () => address || user?.wallet || "",
+        [address, user?.wallet],
+    );
+    const canEdit = Boolean(token && walletAddress);
 
-  useEffect(() => {
-    if (!walletAddress) {
-      setIsLoading(false);
-      return;
-    }
+    useEffect(() => {
+        if (!walletAddress) {
+            setIsLoading(false);
+            return;
+        }
 
-    let cancelled = false;
-    setIsLoading(true);
-    setError(null);
+        let cancelled = false;
+        setIsLoading(true);
+        setError(null);
 
-    getUserProfile(walletAddress)
-      .then((profile) => {
-        if (cancelled) return;
-        setDisplayName(profile?.displayName || '');
-        setAvatarDataUrl(profile?.avatarUrl || '');
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'Không tải được thông tin người dùng.');
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
+        getUserProfile(walletAddress)
+            .then((profile) => {
+                if (cancelled) return;
+                setDisplayName(profile?.displayName || "");
+                setAvatarDataUrl(profile?.avatarUrl || "");
+            })
+            .catch((err) => {
+                if (cancelled) return;
+                setError(
+                    err instanceof Error
+                        ? err.message
+                        : "Không tải được thông tin người dùng.",
+                );
+            })
+            .finally(() => {
+                if (!cancelled) setIsLoading(false);
+            });
 
-    return () => {
-      cancelled = true;
+        return () => {
+            cancelled = true;
+        };
+    }, [walletAddress]);
+
+    useEffect(() => {
+        if (!walletAddress || !token || !isReviewer || isReviewerRoleLoading) {
+            if (!isReviewer || !token) {
+                setOrganizationName("");
+                setRegion("");
+            }
+            return;
+        }
+
+        let cancelled = false;
+        setIsLoadingReviewerProfile(true);
+        setReviewerProfileError(null);
+
+        getReviewerProfile(token, walletAddress.trim().toLowerCase())
+            .then((profile) => {
+                if (cancelled) return;
+                setOrganizationName(profile.organizationName || "");
+                setRegion(profile.region || "");
+            })
+            .catch((err) => {
+                if (cancelled) return;
+                setReviewerProfileError(
+                    err instanceof Error
+                        ? err.message
+                        : "Không tải được thông tin reviewer.",
+                );
+            })
+            .finally(() => {
+                if (!cancelled) setIsLoadingReviewerProfile(false);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [walletAddress, token, isReviewer, isReviewerRoleLoading]);
+
+    const handleAvatarFileChange = async (
+        event: React.ChangeEvent<HTMLInputElement>,
+    ) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        if (!file.type.startsWith("image/")) {
+            setError("Vui lòng chọn file ảnh (png/jpg/webp...).");
+            return;
+        }
+        if (file.size > MAX_AVATAR_FILE_BYTES) {
+            setError("Ảnh đại diện tối đa 2MB.");
+            return;
+        }
+
+        setError(null);
+        try {
+            const dataUrl = await optimizeAvatarDataUrl(file);
+            if (dataUrlPayloadBytes(dataUrl) > MAX_AVATAR_PAYLOAD_BYTES) {
+                setError(
+                    "Ảnh quá lớn sau khi xử lý. Vui lòng chọn ảnh nhỏ hơn hoặc đổi định dạng khác.",
+                );
+                return;
+            }
+            setAvatarDataUrl(dataUrl);
+        } catch (err) {
+            setError(
+                err instanceof Error ? err.message : "Không thể đọc file ảnh.",
+            );
+        }
     };
-  }, [walletAddress]);
-
-  useEffect(() => {
-    if (!walletAddress || !token || !isReviewer || isReviewerRoleLoading) {
-      if (!isReviewer || !token) {
-        setOrganizationName('');
-        setRegion('');
-      }
-      return;
-    }
-
-    let cancelled = false;
-    setIsLoadingReviewerProfile(true);
-    setReviewerProfileError(null);
-
-    getReviewerProfile(token, walletAddress.trim().toLowerCase())
-      .then((profile) => {
-        if (cancelled) return;
-        setOrganizationName(profile.organizationName || '');
-        setRegion(profile.region || '');
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setReviewerProfileError(
-          err instanceof Error ? err.message : 'Không tải được thông tin reviewer.',
-        );
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoadingReviewerProfile(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [walletAddress, token, isReviewer, isReviewerRoleLoading]);
 
   useEffect(() => {
     if (!error) return;
@@ -196,37 +246,46 @@ export default function SettingsPage() {
     setReviewerProfileError(null);
     setSuccess(null);
 
-    if (!canEdit) {
-      setError('Bạn cần kết nối ví và đăng nhập để cập nhật hồ sơ.');
-      return;
+    if (!isMounted) {
+        return (
+            <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+                <main className="mx-auto w-full max-w-3xl px-6 py-12 md:px-10">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+                        <h1 className="text-2xl font-bold text-slate-900">
+                            Hồ sơ &amp; cài đặt
+                        </h1>
+                        <p className="mt-3 text-sm text-slate-600">
+                            Đang tải...
+                        </p>
+                    </div>
+                </main>
+            </div>
+        );
     }
 
-    setIsSaving(true);
-    try {
-      const updated = await updateUserProfile(token, walletAddress, {
-        displayName: displayName.trim(),
-        avatarUrl: avatarDataUrl.trim(),
-      });
-
-      if (isReviewer && !isReviewerRoleLoading) {
-        await updateReviewerProfile(token, {
-          organizationName: organizationName.trim(),
-          region: region.trim(),
-        });
-      }
-
-      if (token) {
-        setAuth(token, toAuthUserProfile(updated));
-      }
-      setSuccess('Đã lưu thông tin hồ sơ thành công.');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Cập nhật hồ sơ thất bại.');
-    } finally {
-      setIsSaving(false);
+    if (!isConnected || !address) {
+        return (
+            <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+                <main className="mx-auto w-full max-w-3xl px-6 py-12 md:px-10">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+                        <h1 className="text-2xl font-bold text-slate-900">
+                            Hồ sơ &amp; cài đặt
+                        </h1>
+                        <p className="mt-3 text-sm text-slate-600">
+                            Bạn cần kết nối ví để quản lý hồ sơ cá nhân.
+                        </p>
+                        <Link
+                            href="/campaigns"
+                            className="mt-5 inline-flex rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                        >
+                            Xem chiến dịch công khai
+                        </Link>
+                    </div>
+                </main>
+            </div>
+        );
     }
-  };
 
-  if (!isMounted) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
         <main className="mx-auto w-full max-w-3xl px-6 py-12 md:px-10">
@@ -387,7 +446,5 @@ export default function SettingsPage() {
             </form>
           )}
         </div>
-      </main>
-    </div>
-  );
+    );
 }

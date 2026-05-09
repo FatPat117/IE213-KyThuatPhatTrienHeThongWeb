@@ -28,16 +28,51 @@ type QueryState<T> = {
     refetch: () => Promise<void>;
 };
 
-export function useBackendCampaigns(): QueryState<CampaignRecord[]> {
+export interface BackendCampaignsPagination {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+}
+
+export interface BackendCampaignsState {
+    data: CampaignRecord[];
+    pagination: BackendCampaignsPagination;
+    isLoading: boolean;
+    error: string | null;
+    refetch: () => Promise<void>;
+}
+
+export function useBackendCampaigns(params?: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    creator?: string;
+}): BackendCampaignsState {
     const [data, setData] = useState<CampaignRecord[]>([]);
+    const [pagination, setPagination] = useState<BackendCampaignsPagination>({
+        page: 1,
+        limit: 0,
+        total: 0,
+        totalPages: 1,
+    });
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const page = params?.page;
+    const limit = params?.limit;
+    const status = params?.status;
+    const creator = params?.creator;
 
     const fetchData = useCallback(async () => {
         try {
             setIsLoading(true);
             setError(null);
-            setData(await getCampaigns());
+            const result = await getCampaigns({ page, limit, status, creator });
+            setData(result.campaigns ?? []);
+            if (result.pagination) {
+                setPagination(result.pagination);
+            }
         } catch (err) {
             setError(
                 getBackendErrorMessage(err, {
@@ -48,14 +83,15 @@ export function useBackendCampaigns(): QueryState<CampaignRecord[]> {
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [page, limit, status, creator]);
 
     useEffect(() => {
         fetchData();
     }, [fetchData]);
 
-    return { data, isLoading, error, refetch: fetchData };
+    return { data, pagination, isLoading, error, refetch: fetchData };
 }
+
 
 export function useBackendCampaign(
     id: number | null,

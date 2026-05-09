@@ -55,7 +55,7 @@ function getStatusBadge(
         case "in_progress":
             return {
                 className: "bg-blue-100 text-blue-700",
-                label: "Đang triển khai milestone",
+                label: "Đang triển khai các mốc",
             };
         case "completed":
             return {
@@ -156,7 +156,7 @@ function getStatusBadge(
 
             <div className="rounded-xl bg-slate-50 p-4 mb-6">
                 <p className="text-sm font-medium text-slate-600 mb-1">
-                    Người tạo campaign
+                    Người tạo chiến dịch
                 </p>
                 <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600" />
@@ -237,8 +237,8 @@ function getStatusBadge(
                             Hoàn lại nếu thất bại
                         </p>
                         <span className="bg-amber-100 text-amber-700 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">
-                            {totalRaisedWei > 0n 
-                                ? `${((Number(remainingWei) * 100) / Number(totalRaisedWei)).toFixed(0)}%` 
+                            {totalRaisedWei > 0n
+                                ? `${((Number(remainingWei) * 100) / Number(totalRaisedWei)).toFixed(0)}%`
                                 : "100%"}
                         </span>
                     </div>

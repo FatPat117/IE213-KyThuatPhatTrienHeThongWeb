@@ -245,10 +245,6 @@ function MyDonationsContent() {
                             <h1 className="text-3xl font-bold text-slate-900">
                                 Lịch sử quyên góp
                             </h1>
-                            <p className="text-lg text-slate-600">
-                                Minh bạch từ backend indexer + sự kiện on-chain
-                                Donated
-                            </p>
                         </div>
                     </div>
                 </div>
@@ -334,35 +330,6 @@ function MyDonationsContent() {
                             ))}
                     </div>
                 )}
-
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-8">
-                    <div className="mb-6">
-                        <h2 className="text-xl font-bold text-slate-900">
-                            Lịch sử quyên góp toàn hệ thống
-                        </h2>
-                        <p className="mt-1 text-xs text-slate-600">
-                            Dữ liệu on-chain công khai cho mọi campaign. Bạn có
-                            thể xem nhà tài trợ, campaign, số tiền và lời nhắn
-                            (nếu có).
-                        </p>
-                    </div>
-                    {isOnChainLoading && (
-                        <p className="text-sm text-slate-600">
-                            Đang tải dữ liệu on-chain...
-                        </p>
-                    )}
-                    {!isOnChainLoading && publicDonationItems.length > 0 && (
-                        <DonationHistoryList
-                            donations={publicDonationItems}
-                            showDonor
-                        />
-                    )}
-                    {!isOnChainLoading && publicDonationItems.length === 0 && (
-                        <p className="text-sm text-slate-600">
-                            Chưa có dữ liệu donation on-chain.
-                        </p>
-                    )}
-                </div>
             </div>
 
             <TransactionHistoryModal

@@ -342,17 +342,6 @@ export default function LeaderboardPage() {
             )}
           </section>
         </div>
-
-        <div className="mt-8 rounded-xl border border-slate-200/80 bg-slate-900 p-6 text-sm text-slate-100 shadow-sm ring-1 ring-slate-900/5">
-          <h2 className="mb-2 text-lg font-bold text-white">Cách tính bảng xếp hạng</h2>
-          <p className="mb-1">
-            • <span className="font-semibold">Chiến dịch</span> dựa trên dữ liệu kết hợp backend campaign-service và contract on-chain.
-          </p>
-          <p>
-            • <span className="font-semibold">Donor</span> lấy từ backend indexer sự kiện{' '}
-            <code className="font-mono">Donated</code> (hoặc on-chain 2.000 block gần nhất nếu API lỗi), quy đổi sang ETH.
-          </p>
-        </div>
       </main>
     </div>
   );

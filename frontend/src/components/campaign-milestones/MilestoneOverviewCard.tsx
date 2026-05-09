@@ -72,12 +72,6 @@ export default function MilestoneOverviewCard({
                             {inProgressCount}
                         </p>
                     </div>
-                    <div className="rounded-xl bg-rose-50 px-4 py-3">
-                        <p className="text-xs text-rose-700">Issues</p>
-                        <p className="text-base font-semibold text-rose-800">
-                            {issueCount}
-                        </p>
-                    </div>
                     <div className="rounded-xl bg-indigo-50 px-4 py-3">
                         <p className="text-xs text-indigo-700">Mục tiêu quỹ</p>
                         <p className="text-base font-semibold text-indigo-800">
