@@ -47,9 +47,7 @@ function collectErrorTextParts(
             parts.push(...collectErrorTextParts(o.cause, seen, depth + 1));
         }
         if (o.data && typeof o.data === "object") {
-            parts.push(
-                ...collectErrorTextParts(o.data, seen, depth + 1),
-            );
+            parts.push(...collectErrorTextParts(o.data, seen, depth + 1));
         }
     }
 
@@ -112,18 +110,8 @@ function normalizeBackendByMessage(rawMessage: string): string | null {
 
 function normalizeWalletOrChainMessage(rawMessage: string): string | null {
     const message = rawMessage.toLowerCase();
-    if (
-        message.includes("user rejected") ||
-        message.includes("user denied") ||
-        message.includes("rejected the request") ||
-        message.includes("request rejected") ||
-        message.includes("denied transaction") ||
-        message.includes("userrejected") ||
-        message.includes("action_rejected") ||
-        message.includes("cancelled") ||
-        message.includes("canceled")
-    ) {
-        return "Bạn đã hủy thao tác trong MetaMask.";
+    if (isWalletUserRejectedMessage(rawMessage)) {
+        return "Bạn đã hủy thao tác xác nhận trong MetaMask.";
     }
     if (
         message.includes("not been authorized") ||
@@ -180,24 +168,42 @@ function normalizeWalletOrChainMessage(rawMessage: string): string | null {
     return null;
 }
 
+export function isWalletUserRejectedMessage(rawMessage: string): boolean {
+    const message = (rawMessage || "").toLowerCase();
+    return (
+        message.includes("bạn đã hủy thao tác xác nhận trong metamask.") ||
+        message.includes("user rejected") ||
+        message.includes("user denied") ||
+        message.includes("rejected the request") ||
+        message.includes("request rejected") ||
+        message.includes("denied transaction") ||
+        message.includes("userrejected") ||
+        message.includes("action_rejected") ||
+        message.includes("cancelled") ||
+        message.includes("canceled")
+    );
+}
+
 function buildMessage(
     source: ErrorSource,
     error: unknown,
     options?: ErrorMessageOptions,
 ): string {
-    const rawMessage = extractMessage(error).trim();
+    const rawMessage = extractMessage(error).replace(/\s+/g, " ").trim();
     const statusMessage =
         source === "backend" ? normalizeBackendByStatus(options?.status) : null;
     const messageMatch =
         source === "backend"
             ? normalizeBackendByMessage(rawMessage)
             : normalizeWalletOrChainMessage(rawMessage);
+    const shouldHideLongRawMessage =
+        source !== "backend" && rawMessage.length > 220;
 
     return (
         messageMatch ||
         statusMessage ||
         options?.fallback ||
-        rawMessage ||
+        (!shouldHideLongRawMessage ? rawMessage : null) ||
         DEFAULT_MESSAGES[source]
     );
 }

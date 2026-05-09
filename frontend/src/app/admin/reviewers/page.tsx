@@ -10,7 +10,10 @@ import {
     useAuth,
     type ReviewerProfileAdminRecord,
 } from "@/lib";
-import { getWalletErrorMessage } from "@/lib/errors/normalize";
+import {
+    getWalletErrorMessage,
+    isWalletUserRejectedMessage,
+} from "@/lib/errors/normalize";
 import {
     useAddReviewerSafe,
     useReadAllCampaigns,
@@ -64,8 +67,6 @@ export default function AdminReviewersPage() {
         type: "add" | "remove";
         safe: string;
     } | null>(null);
-    const [actionError, setActionError] = useState<string | null>(null);
-    const [isCancelMessage, setIsCancelMessage] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
     const { reviewerSafes, refetch } = useReadReviewerSafesOnChain();
     const { campaigns } = useReadAllCampaigns();
@@ -197,6 +198,16 @@ export default function AdminReviewersPage() {
             cancelled = true;
         };
     }, [isAdmin, token]);
+
+    useEffect(() => {
+        if (!reviewerDbError) return;
+        showErrorToast(reviewerDbError);
+    }, [reviewerDbError]);
+
+    useEffect(() => {
+        if (!profileSaveError) return;
+        showErrorToast(profileSaveError);
+    }, [profileSaveError]);
 
     useEffect(() => {
         let cancelled = false;
@@ -364,7 +375,6 @@ export default function AdminReviewersPage() {
         if (isConfirming) return;
 
         if (isTxSuccess) {
-            setIsCancelMessage(false);
             refetch();
             if (token) {
                 getAdminReviewerProfiles(token)
@@ -389,10 +399,11 @@ export default function AdminReviewersPage() {
             const normalized = getWalletErrorMessage(txError, {
                 fallback: "Giao dịch thất bại hoặc bị từ chối.",
             });
-            setIsCancelMessage(
-                normalized === "Bạn đã hủy thao tác trong MetaMask.",
-            );
-            setActionError(normalized);
+            const isCancelledByUser =
+                isWalletUserRejectedMessage(normalized);
+            showErrorToast(normalized, {
+                emphasis: !isCancelledByUser,
+            });
             setPendingAction(null);
             setTxHash(undefined);
         }
@@ -445,17 +456,6 @@ export default function AdminReviewersPage() {
                 {!isSepolia && (
                     <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
                         ⚠️ Bạn đang kết nối đến network không phải Sepolia. Reviewer Safe chỉ được đồng bộ trên Sepolia. Vui lòng chuyển sang Sepolia trước khi thêm/xóa reviewer.
-                    </p>
-                )}
-                {actionError && (
-                    <p
-                        className={`mt-3 rounded-lg border px-3 py-2 text-sm ${
-                            isCancelMessage
-                                ? "border-amber-200 bg-amber-50 text-amber-800"
-                                : "border-red-200 bg-red-50 text-red-700"
-                        }`}
-                    >
-                        {actionError}
                     </p>
                 )}
                 <div className="mt-4 flex gap-2">
@@ -512,8 +512,6 @@ export default function AdminReviewersPage() {
                         className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={async () => {
                             try {
-                                setIsCancelMessage(false);
-                                setActionError(null);
                                 const normalized = newSafe.trim().toLowerCase();
                                 if (!/^0x[a-f0-9]{40}$/.test(normalized)) {
                                     throw new Error(
@@ -534,11 +532,11 @@ export default function AdminReviewersPage() {
                                 const normalized = getWalletErrorMessage(error, {
                                     fallback: "Không thể thêm reviewer safe.",
                                 });
-                                setIsCancelMessage(
-                                    normalized ===
-                                        "Bạn đã hủy thao tác trong MetaMask.",
-                                );
-                                setActionError(normalized);
+                                const isCancelledByUser =
+                                    isWalletUserRejectedMessage(normalized);
+                                showErrorToast(normalized, {
+                                    emphasis: !isCancelledByUser,
+                                });
                             }
                         }}
                     >
@@ -559,7 +557,9 @@ export default function AdminReviewersPage() {
                         <p className="mt-2 text-sm text-slate-600">Đang tải...</p>
                     )}
                     {reviewerDbError && (
-                        <p className="mt-2 text-sm text-red-600">{reviewerDbError}</p>
+                        <p className="mt-2 text-sm text-slate-500">
+                            Không thể tải hồ sơ reviewer.
+                        </p>
                     )}
                     {!reviewerDbLoading &&
                         !reviewerDbError &&
@@ -673,6 +673,7 @@ export default function AdminReviewersPage() {
                     {reviewerSafes.map((safe) => {
                         const safeKey = safe.toLowerCase();
                         const meta = safeMetaByAddress[safeKey];
+                        const safeProfile = profileByWallet.get(safeKey);
                         const owners = meta?.owners ?? [];
                         return (
                         <div
@@ -691,6 +692,113 @@ export default function AdminReviewersPage() {
                                 {meta?.threshold ?? "—"} /{" "}
                                 {meta?.ownerCount ?? "—"}
                             </p>
+                            <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 p-3">
+                                <p className="text-xs font-semibold text-slate-700">
+                                    Hồ sơ theo địa chỉ Safe
+                                </p>
+                                {safeProfile ? (
+                                    <div className="mt-2 rounded-md border border-white bg-white px-2 py-2 text-xs shadow-sm">
+                                        <p className="font-mono text-[11px] text-slate-800 break-all">
+                                            {safe}
+                                        </p>
+                                        <div className="mt-1.5 space-y-0.5 text-slate-700">
+                                            <p>
+                                                <span className="text-slate-500">
+                                                    Mã:
+                                                </span>{" "}
+                                                {safeProfile.reviewerCode || "—"}
+                                            </p>
+                                            <p>
+                                                <span className="text-slate-500">
+                                                    Tổ chức:
+                                                </span>{" "}
+                                                {safeProfile.organizationName ||
+                                                    "—"}
+                                            </p>
+                                            <p>
+                                                <span className="text-slate-500">
+                                                    Tỉnh/TP:
+                                                </span>{" "}
+                                                {safeProfile.region || "—"}
+                                            </p>
+                                            <p className="text-[11px] text-slate-400">
+                                                Cập nhật hồ sơ:{" "}
+                                                {formatAdminDate(
+                                                    safeProfile.updatedAt,
+                                                )}
+                                            </p>
+                                            <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                                <button
+                                                    type="button"
+                                                    className="rounded-md border border-indigo-200 bg-indigo-50/80 px-2 py-1 text-[11px] font-semibold text-indigo-900 hover:bg-indigo-100 disabled:opacity-50"
+                                                    disabled={
+                                                        clearingWallet ===
+                                                        safeKey
+                                                    }
+                                                    onClick={() => {
+                                                        setProfileSaveError(
+                                                            null,
+                                                        );
+                                                        setProfileEditor({
+                                                            walletAddress: safe,
+                                                            organizationName:
+                                                                safeProfile.organizationName ||
+                                                                "",
+                                                            region:
+                                                                safeProfile.region ||
+                                                                "",
+                                                            isActive:
+                                                                safeProfile.isActive !==
+                                                                false,
+                                                        });
+                                                    }}
+                                                >
+                                                    Sửa hồ sơ Safe
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-800 hover:bg-red-100 disabled:opacity-50"
+                                                    disabled={
+                                                        clearingWallet ===
+                                                        safeKey
+                                                    }
+                                                    onClick={() =>
+                                                        runClearReviewerProfile(
+                                                            safe,
+                                                        )
+                                                    }
+                                                >
+                                                    {clearingWallet === safeKey
+                                                        ? "Đang xóa…"
+                                                        : "Xóa hồ sơ"}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="mt-2 space-y-1.5">
+                                        <p className="text-amber-800">
+                                            Chưa có hồ sơ cho địa chỉ Safe này.
+                                            Admin có thể thêm thủ công.
+                                        </p>
+                                        <button
+                                            type="button"
+                                            className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-900 hover:bg-amber-100"
+                                            onClick={() => {
+                                                setProfileSaveError(null);
+                                                setProfileEditor({
+                                                    walletAddress: safe,
+                                                    organizationName: "",
+                                                    region: "",
+                                                    isActive: true,
+                                                });
+                                            }}
+                                        >
+                                            Thêm hồ sơ Safe (admin)
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                             <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 p-3">
                                 <p className="text-xs font-semibold text-slate-700">
                                     Owner Safe &amp; hồ sơ đăng ký
@@ -843,8 +951,6 @@ export default function AdminReviewersPage() {
                                 className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
                                 onClick={async () => {
                                     try {
-                                        setIsCancelMessage(false);
-                                        setActionError(null);
                                         const hash = await removeReviewerSafe(
                                             safe as `0x${string}`,
                                         );
@@ -861,11 +967,13 @@ export default function AdminReviewersPage() {
                                                     "Không thể xóa reviewer safe.",
                                             },
                                         );
-                                        setIsCancelMessage(
-                                            normalized ===
-                                                "Bạn đã hủy thao tác trong MetaMask.",
-                                        );
-                                        setActionError(normalized);
+                                        const isCancelledByUser =
+                                            isWalletUserRejectedMessage(
+                                                normalized,
+                                            );
+                                        showErrorToast(normalized, {
+                                            emphasis: !isCancelledByUser,
+                                        });
                                     }
                                 }}
                             >
@@ -957,11 +1065,6 @@ export default function AdminReviewersPage() {
                             />
                             Đang hoạt động
                         </label>
-                        {profileSaveError && (
-                            <p className="mt-2 text-sm text-red-600">
-                                {profileSaveError}
-                            </p>
-                        )}
                         <div className="mt-5 flex justify-end gap-2">
                             <button
                                 type="button"

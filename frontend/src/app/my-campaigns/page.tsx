@@ -5,14 +5,15 @@ import { useEffect, useMemo, useState } from "react";
 import { formatEther } from "viem";
 import { useAccount } from "wagmi";
 import {
-    getPublicCampaignMilestones,
-    getCampaignMetadataFromCache,
-    isPlaceholderCampaignDescription,
-    isPlaceholderCampaignTitle,
-    useBackendCampaigns,
-    useReadAllCampaigns,
-} from "@/lib";
-import BackButton from "@/components/navigation/BackButton";
+  getPublicCampaignMilestones,
+  getCampaignMetadataFromCache,
+  isPlaceholderCampaignDescription,
+  isPlaceholderCampaignTitle,
+  useBackendCampaigns,
+  useReadAllCampaigns
+} from '@/lib';
+import BackButton from '@/components/navigation/BackButton';
+import { showErrorToast } from '@/lib/ui/toast';
 
 function formatEthAmount(value: number) {
     if (!Number.isFinite(value) || value <= 0) return "0";
@@ -203,22 +204,30 @@ export default function MyCampaignsPage() {
         );
     }
 
-    if (chain?.id !== 11155111) {
-        return (
-            <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
-                <main className="mx-auto w-full max-w-3xl px-6 py-12 md:px-10">
-                    <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
-                        <h2 className="text-2xl font-bold text-red-900 mb-2">
-                            Sai mạng
-                        </h2>
-                        <p className="text-red-700 mb-6">
-                            Vui lòng chuyển sang Sepolia để xem chiến dịch.
-                        </p>
-                    </div>
-                </main>
-            </div>
-        );
-    }
+  useEffect(() => {
+    const message = campaignsQuery.error || onChainQuery.error;
+    if (!message) return;
+    showErrorToast(message);
+  }, [campaignsQuery.error, onChainQuery.error]);
+
+  if (!isConnected) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
+        <main className="mx-auto w-full max-w-7xl px-6 py-12 md:px-10">
+          <div className="rounded-2xl border-2 border-slate-200 bg-slate-50 p-12 text-center">
+            <h2 className="text-2xl font-bold text-slate-900 mb-3">Chưa kết nối ví</h2>
+            <p className="text-slate-600 mb-6">Vui lòng kết nối ví để xem chiến dịch của bạn</p>
+            <Link
+              href="/"
+              className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition"
+            >
+              Về trang chủ
+            </Link>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
@@ -267,33 +276,20 @@ export default function MyCampaignsPage() {
                         </div>
                     )}
 
-                {!campaignsQuery.isLoading &&
-                    !onChainQuery.isLoading &&
-                    myCampaigns.length > 0 && (
-                        <section className="space-y-10">
-                            {[
-                                {
-                                    key: "active" as const,
-                                    title: "Đang diễn ra",
-                                    description:
-                                        "Các chiến dịch đang mở và có thể tiếp tục nhận quyên góp.",
-                                },
-                                {
-                                    key: "ended" as const,
-                                    title: "Đã kết thúc",
-                                    description:
-                                        "Chiến dịch đã kết thúc, có thể rút tiền nếu đạt mục tiêu.",
-                                },
-                                {
-                                    key: "failed" as const,
-                                    title: "Thất bại",
-                                    description:
-                                        "Chiến dịch không đạt mục tiêu, donor có thể yêu cầu hoàn tiền.",
-                                },
-                            ].map((group) => {
-                                const campaignsInGroup = myCampaigns.filter(
-                                    (campaign) => campaign.status === group.key,
-                                );
+        {(campaignsQuery.isLoading || onChainQuery.isLoading) && (
+          <p className="text-slate-600">Đang tải dữ liệu...</p>
+        )}
+        {!campaignsQuery.isLoading && !onChainQuery.isLoading && myCampaigns.length === 0 && (
+          <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-12 text-center">
+            <p className="text-slate-600 mb-6">Bạn chưa có chiến dịch nào.</p>
+            <Link
+              href="/campaigns/create"
+              className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition"
+            >
+              Tạo chiến dịch đầu tiên
+            </Link>
+          </div>
+        )}
 
                                 return (
                                     <div key={group.key} className="space-y-4">

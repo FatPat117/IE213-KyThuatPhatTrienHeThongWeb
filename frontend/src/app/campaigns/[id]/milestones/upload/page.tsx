@@ -14,6 +14,11 @@ import {
 } from "@/lib";
 import { useReadMilestonesOnChain } from "@/lib/contracts/hooks";
 import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
+import {
+    getWalletErrorMessage,
+    isWalletUserRejectedMessage,
+} from "@/lib/errors/normalize";
+import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
 
 const DEFAULT_API_BASE_URL = "http://localhost:4000/api";
 
@@ -85,7 +90,6 @@ function MilestoneEvidenceUploadContent() {
     const [uploadedCids, setUploadedCids] = useState<string[]>(
         sourceCid ? [sourceCid] : [],
     );
-    const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [resultMessage, setResultMessage] = useState<string | null>(null);
     const [milestoneHistory, setMilestoneHistory] = useState<string[]>([]);
     const [milestoneStatus, setMilestoneStatus] = useState<string>("");
@@ -136,7 +140,9 @@ function MilestoneEvidenceUploadContent() {
 
     useEffect(() => {
         if (isConfirmedOnChain) {
-            setResultMessage("Đã submit minh chứng on-chain thành công.");
+            const message = "Đã submit minh chứng on-chain thành công.";
+            setResultMessage(message);
+            showSuccessToast(message);
             for (const uploadedCid of uploadedCids) {
                 setMilestoneHistory((prev) =>
                     prev.some((x) => x.toLowerCase() === uploadedCid.toLowerCase())
@@ -178,13 +184,24 @@ function MilestoneEvidenceUploadContent() {
 
     const handleUploadFile = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
-        if (!Number.isFinite(campaignId)) return setErrorMessage("Campaign ID không hợp lệ.");
-        if (!token) return setErrorMessage("Bạn cần đăng nhập ví để đăng tải bằng chứng thi công.");
-        if (!canUpload) return setErrorMessage("Chỉ creator mới có quyền upload.");
-        if (files.length === 0) return setErrorMessage("Vui lòng chọn ít nhất 1 file.");
+        if (!Number.isFinite(campaignId)) {
+            showErrorToast("Campaign ID không hợp lệ.");
+            return;
+        }
+        if (!token) {
+            showErrorToast("Bạn cần đăng nhập ví để upload minh chứng.");
+            return;
+        }
+        if (!canUpload) {
+            showErrorToast("Chỉ creator mới có quyền upload.");
+            return;
+        }
+        if (files.length === 0) {
+            showErrorToast("Vui lòng chọn ít nhất 1 file.");
+            return;
+        }
 
         setIsUploadingFile(true);
-        setErrorMessage(null);
         setResultMessage(null);
         try {
             const newCids: string[] = [];
@@ -206,26 +223,33 @@ function MilestoneEvidenceUploadContent() {
             setResultMessage(
                 `Upload IPFS thành công ${newCids.length} file. Xác nhận để submit on-chain.`,
             );
-        } catch (error) {
-            setErrorMessage(
-                error instanceof Error ? error.message : "Không thể đăng tải bằng chứng thi công.",
+            showSuccessToast(
+                `Upload IPFS thành công ${newCids.length} file. Xác nhận để submit on-chain.`,
             );
+        } catch (error) {
+            const message =
+                error instanceof Error ? error.message : "Không thể upload minh chứng";
+            showErrorToast(message);
         } finally {
             setIsUploadingFile(false);
         }
     };
 
     const handleSubmitOnChain = async () => {
-        if (!Number.isFinite(campaignId)) return setErrorMessage("Campaign ID không hợp lệ.");
+        if (!Number.isFinite(campaignId)) {
+            showErrorToast("Campaign ID không hợp lệ.");
+            return;
+        }
         if (uploadedCids.length === 0) {
-            return setErrorMessage("Bạn cần upload để lấy CID trước.");
+            showErrorToast("Bạn cần upload để lấy CID trước.");
+            return;
         }
         if (!isCampaignInProgress) {
-            return setErrorMessage(
+            showErrorToast(
                 "Chiến dịch chưa ở trạng thái In Progress nên chưa thể submit minh chứng on-chain.",
             );
+            return;
         }
-        setErrorMessage(null);
         setResultMessage(null);
         try {
             for (const cid of uploadedCids) {
@@ -234,20 +258,32 @@ function MilestoneEvidenceUploadContent() {
             setResultMessage(
                 `Đã gửi ${uploadedCids.length} giao dịch submit minh chứng. Đang chờ xác nhận...`,
             );
-        } catch (error) {
-            setErrorMessage(
-                error instanceof Error
-                    ? error.message
-                    : "Không thể submit minh chứng on-chain",
+            showSuccessToast(
+                `Đã gửi ${uploadedCids.length} giao dịch submit minh chứng. Đang chờ xác nhận...`,
             );
+        } catch (error) {
+            const normalizedMessage = getWalletErrorMessage(error, {
+                fallback: "Không thể submit minh chứng on-chain",
+            });
+            showErrorToast(normalizedMessage, {
+                emphasis: !isWalletUserRejectedMessage(normalizedMessage),
+            });
         }
     };
 
     const handleResubmitOffChain = async () => {
-        if (!Number.isFinite(campaignId)) return setErrorMessage("Campaign ID không hợp lệ.");
-        if (!token) return setErrorMessage("Bạn cần đăng nhập ví để nộp lại minh chứng.");
-        if (uploadedCids.length === 0) return setErrorMessage("Chưa có CID để nộp lại.");
-        setErrorMessage(null);
+        if (!Number.isFinite(campaignId)) {
+            showErrorToast("Campaign ID không hợp lệ.");
+            return;
+        }
+        if (!token) {
+            showErrorToast("Bạn cần đăng nhập ví để nộp lại minh chứng.");
+            return;
+        }
+        if (uploadedCids.length === 0) {
+            showErrorToast("Chưa có CID để nộp lại.");
+            return;
+        }
         try {
             const newestCid = uploadedCids[uploadedCids.length - 1];
             await resubmitMilestone(campaignId, milestoneIndexOnChain, token, newestCid);
@@ -255,10 +291,13 @@ function MilestoneEvidenceUploadContent() {
                 "Đã chuyển milestone sang trạng thái submitted (resubmit off-chain). Tiếp tục xác nhận on-chain ở bước 2.",
             );
             setMilestoneStatus("submitted");
-        } catch (error) {
-            setErrorMessage(
-                error instanceof Error ? error.message : "Không thể resubmit milestone",
+            showSuccessToast(
+                "Đã chuyển milestone sang trạng thái submitted (resubmit off-chain). Tiếp tục xác nhận on-chain ở bước 2.",
             );
+        } catch (error) {
+            const message =
+                error instanceof Error ? error.message : "Không thể resubmit milestone";
+            showErrorToast(message);
         }
     };
 
@@ -419,11 +458,6 @@ function MilestoneEvidenceUploadContent() {
                     {resultMessage ? (
                         <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
                             {resultMessage}
-                        </p>
-                    ) : null}
-                    {errorMessage ? (
-                        <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                            {errorMessage}
                         </p>
                     ) : null}
                 </form>

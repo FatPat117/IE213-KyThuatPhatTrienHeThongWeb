@@ -18,6 +18,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { formatEther, parseAbiItem } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
+import { showErrorToast } from "@/lib/ui/toast";
 
 function MyDonationsContent() {
     const searchParams = useSearchParams();
@@ -229,6 +230,11 @@ function MyDonationsContent() {
         [allOnChainDonations, campaignTitleById],
     );
 
+    useEffect(() => {
+        if (!donationQuery.error) return;
+        showErrorToast(donationQuery.error);
+    }, [donationQuery.error]);
+
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-5xl mx-auto">
@@ -301,11 +307,6 @@ function MyDonationsContent() {
                         {(donationQuery.isLoading || isOnChainLoading) && (
                             <p className="text-sm text-slate-600">
                                 Đang tải dữ liệu...
-                            </p>
-                        )}
-                        {!donationQuery.isLoading && donationQuery.error && (
-                            <p className="text-sm text-red-700">
-                                {donationQuery.error}
                             </p>
                         )}
                         {!donationQuery.isLoading &&

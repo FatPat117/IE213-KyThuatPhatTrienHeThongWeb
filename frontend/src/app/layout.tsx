@@ -40,9 +40,10 @@ export default function RootLayout({
               <NetworkAccessGuard />
               <Header />
               <Toaster
-                position="top-center"
+                position="top-right"
                 containerStyle={{
-                  top: "7.5rem",
+                  top: "0.5rem",
+                  right: "0.5rem",
                   zIndex: 10000,
                 }}
                 toastOptions={{

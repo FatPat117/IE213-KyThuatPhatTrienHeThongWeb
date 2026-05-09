@@ -23,7 +23,11 @@ import {
     useMintCertificate,
     useReadCampaign,
 } from "@/lib";
-import { getChainErrorMessage } from "@/lib/errors/normalize";
+import {
+    getChainErrorMessage,
+    getWalletErrorMessage,
+    isWalletUserRejectedMessage,
+} from "@/lib/errors/normalize";
 import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -154,17 +158,17 @@ export default function CampaignDetailPage() {
     });
     useRegisterWalletTxOverlay(
         isPending ||
-        isConfirming ||
-        disbursePending ||
-        disburseConfirming ||
-        fundingRefundPending ||
-        milestoneRefundPending ||
-        refundConfirming ||
-        mintPending ||
-        mintConfirming ||
-        markAsFailedPending ||
-        markAsFailedConfirming ||
-        milestoneFailedPending,
+            isConfirming ||
+            disbursePending ||
+            disburseConfirming ||
+            fundingRefundPending ||
+            milestoneRefundPending ||
+            refundConfirming ||
+            mintPending ||
+            mintConfirming ||
+            markAsFailedPending ||
+            markAsFailedConfirming ||
+            milestoneFailedPending,
     );
 
     const { data: hasMintedCertificate } = useReadContract({
@@ -258,8 +262,9 @@ export default function CampaignDetailPage() {
                         latestBlock > maxBlocksToScan
                             ? latestBlock - maxBlocksToScan + 1n
                             : 0n;
-                    const logs: Awaited<ReturnType<typeof publicClient.getLogs>> =
-                        [];
+                    const logs: Awaited<
+                        ReturnType<typeof publicClient.getLogs>
+                    > = [];
 
                     for (
                         let chunkFrom = fromBlock;
@@ -414,31 +419,40 @@ export default function CampaignDetailPage() {
             return false;
 
         // Ưu tiên lấy deadline từ backend nếu có (đã được gia hạn 3 ngày)
-        // Lưu ý: campaign.milestones thường được load từ backend thông qua useReadCampaign 
+        // Lưu ý: campaign.milestones thường được load từ backend thông qua useReadCampaign
         // hoặc chúng ta có thể lấy từ backendCampaign hook.
-        
+
         const mOnChain = currentMilestoneData as any;
         let deadline = Number(mOnChain?.deadline ?? mOnChain?.[2] ?? 0);
 
         // Tìm milestone tương ứng trong dữ liệu backend (nếu có)
         if (backendCampaign.data?.milestones) {
             const mBackend = backendCampaign.data.milestones.find(
-                (mb: any) => Number(mb.milestoneId) === Number(campaign.currentMilestoneId)
+                (mb: any) =>
+                    Number(mb.milestoneId) ===
+                    Number(campaign.currentMilestoneId),
             );
             if (mBackend && mBackend.deadline) {
-                deadline = Math.floor(new Date(mBackend.deadline).getTime() / 1000);
+                deadline = Math.floor(
+                    new Date(mBackend.deadline).getTime() / 1000,
+                );
             }
         }
-        
+
         if (deadline === 0) return false;
         const now = Math.floor(Date.now() / 1000);
         return now > deadline;
-    }, [campaign, isCampaignInProgress, currentMilestoneData, backendCampaign.data]);
+    }, [
+        campaign,
+        isCampaignInProgress,
+        currentMilestoneData,
+        backendCampaign.data,
+    ]);
 
     const shouldMarkMilestoneAsFailed = Boolean(
         isCampaignInProgress &&
         isCurrentMilestoneExpired &&
-        !isCampaignPartialFailed
+        !isCampaignPartialFailed,
     );
 
     // Compute total donated by current user in this campaign.
@@ -463,13 +477,18 @@ export default function CampaignDetailPage() {
     }, [donations]);
     const effectiveUserDonatedAmount = useMemo(() => {
         const onChain = (donatedAmountOnChain as bigint | undefined) ?? 0n;
-        // Nếu campaign đã thất bại hoặc thất bại một phần (đã qua giai đoạn donate), 
+        // Nếu campaign đã thất bại hoặc thất bại một phần (đã qua giai đoạn donate),
         // trust blockchain hoàn toàn để xử lý việc đã rút tiền (refund)
         if (isCampaignFailed || isCampaignPartialFailed) {
             return onChain;
         }
         return onChain > userDonatedAmount ? onChain : userDonatedAmount;
-    }, [donatedAmountOnChain, userDonatedAmount, isCampaignFailed, isCampaignPartialFailed]);
+    }, [
+        donatedAmountOnChain,
+        userDonatedAmount,
+        isCampaignFailed,
+        isCampaignPartialFailed,
+    ]);
 
     // Watch for donation events
     useWatchContractEvent({
@@ -508,6 +527,91 @@ export default function CampaignDetailPage() {
             fallback: "Giao dịch thất bại. Vui lòng thử lại.",
         });
     };
+
+    useEffect(() => {
+        if (!isError) return;
+
+        // Vừa tạo campaign xong có thể bị "out of range" tạm thời do hook count
+        // chưa cập nhật kịp. Trường hợp này không nên hiện lỗi màu đỏ/toast,
+        // mà nên hiển thị trạng thái chờ và tự refetch.
+        const isWaitingForOnChainUpdate =
+            typeof error === "string" &&
+            error.toLowerCase().includes("does not exist on-chain");
+
+        if (isWaitingForOnChainUpdate) return;
+
+        const friendly = getChainErrorMessage(error, {
+            fallback: "Không thể tải chiến dịch.",
+        });
+        showErrorToast(friendly, {
+            emphasis: !isWalletUserRejectedMessage(friendly),
+        });
+    }, [error, isError]);
+
+    useEffect(() => {
+        const isWaitingForOnChainUpdate =
+            typeof error === "string" &&
+            error.toLowerCase().includes("does not exist on-chain");
+        if (!isError || !isWaitingForOnChainUpdate) return;
+
+        const timer = window.setInterval(() => {
+            refetch();
+        }, 3_000);
+
+        return () => window.clearInterval(timer);
+    }, [error, isError, refetch]);
+
+    useEffect(() => {
+        const friendly = getFriendlyError(markAsFailedError);
+        if (!friendly) return;
+        showErrorToast(friendly, {
+            emphasis: !isWalletUserRejectedMessage(friendly),
+        });
+    }, [markAsFailedError]);
+
+    useEffect(() => {
+        const friendly = getFriendlyError(milestoneFailedError);
+        if (!friendly) return;
+        showErrorToast(friendly, {
+            emphasis: !isWalletUserRejectedMessage(friendly),
+        });
+    }, [milestoneFailedError]);
+
+    useEffect(() => {
+        const friendly = getWalletErrorMessage(disburseError, {
+            fallback:
+                "Không thể giải ngân milestone hiện tại. Vui lòng thử lại.",
+        });
+        if (!disburseError || !friendly) return;
+        showErrorToast(friendly, {
+            emphasis: !isWalletUserRejectedMessage(friendly),
+        });
+    }, [disburseError]);
+
+    useEffect(() => {
+        const rawError = isCampaignPartialFailed
+            ? milestoneRefundError
+            : fundingRefundError;
+        const friendly = getWalletErrorMessage(rawError, {
+            fallback: "Không thể hoàn tiền. Vui lòng thử lại.",
+        });
+        if (!rawError || !friendly) return;
+        showErrorToast(friendly, {
+            emphasis: !isWalletUserRejectedMessage(friendly),
+        });
+    }, [fundingRefundError, isCampaignPartialFailed, milestoneRefundError]);
+
+    useEffect(() => {
+        if (!mintFlowError && !mintError) return; // ← thêm dòng này
+
+        const friendly = getWalletErrorMessage(mintFlowError || mintError, {
+            fallback: "Không thể mint chứng chỉ. Vui lòng thử lại.",
+        });
+        if (!friendly) return;
+        showErrorToast(friendly, {
+            emphasis: !isWalletUserRejectedMessage(friendly),
+        });
+    }, [mintError, mintFlowError]);
 
     useEffect(() => {
         if (isConfirmed && hash && lastDonationSuccessTxRef.current !== hash) {
@@ -573,7 +677,7 @@ export default function CampaignDetailPage() {
             const friendly = getFriendlyError(err as { message?: string });
             showErrorToast(
                 friendly ||
-                "Không thể giải ngân milestone hiện tại. Vui lòng thử lại.",
+                    "Không thể giải ngân milestone hiện tại. Vui lòng thử lại.",
             );
         }
     };
@@ -630,15 +734,10 @@ export default function CampaignDetailPage() {
             setAuth(token, toAuthUserProfile(updated));
             await mintCertificate(id);
         } catch (err) {
-            const message =
-                err instanceof Error
-                    ? err.message
-                    : "Không thể cập nhật tên hiển thị trước khi mint.";
-            setMintFlowError(message);
-            const friendly = getFriendlyError({ message } as {
-                message: string;
+            const message = getWalletErrorMessage(err, {
+                fallback: "Không thể cập nhật tên hiển thị trước khi mint.",
             });
-            showErrorToast(friendly || message);
+            setMintFlowError(message);
         } finally {
             setMintProfileSaving(false);
         }
@@ -654,7 +753,7 @@ export default function CampaignDetailPage() {
             const friendly = getFriendlyError(err as { message?: string });
             showErrorToast(
                 friendly ||
-                "Không thể cập nhật trạng thái thất bại. Vui lòng thử lại.",
+                    "Không thể cập nhật trạng thái thất bại. Vui lòng thử lại.",
             );
         }
     };
@@ -667,7 +766,7 @@ export default function CampaignDetailPage() {
             const friendly = getFriendlyError(err as { message?: string });
             showErrorToast(
                 friendly ||
-                "Không thể cập nhật trạng thái thất bại của milestone. Vui lòng thử lại.",
+                    "Không thể cập nhật trạng thái thất bại của milestone. Vui lòng thử lại.",
             );
         }
     };
@@ -684,10 +783,12 @@ export default function CampaignDetailPage() {
         }
     }, [markAsFailedConfirmed, markAsFailedHash, refetch]);
 
-    const { isLoading: milestoneFailedConfirming, isSuccess: milestoneFailedConfirmed } =
-        useWaitForTransactionReceipt({
-            hash: milestoneFailedHash,
-        });
+    const {
+        isLoading: milestoneFailedConfirming,
+        isSuccess: milestoneFailedConfirmed,
+    } = useWaitForTransactionReceipt({
+        hash: milestoneFailedHash,
+    });
 
     useEffect(() => {
         if (milestoneFailedConfirmed) {
@@ -720,7 +821,13 @@ export default function CampaignDetailPage() {
         refetch();
         fetchRefundStatus();
         showSuccessToast("Hoàn tiền thành công.");
-    }, [fundingRefundHash, milestoneRefundHash, refundConfirmed, refetch, fetchRefundStatus]);
+    }, [
+        fundingRefundHash,
+        milestoneRefundHash,
+        refundConfirmed,
+        refetch,
+        fetchRefundStatus,
+    ]);
 
     useEffect(() => {
         const txHash = mintHash || hash;
@@ -793,166 +900,255 @@ export default function CampaignDetailPage() {
 
                 {/* Error State */}
                 {!isLoading && isError && (
-                    <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
-                        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4">
-                            <span className="text-2xl">⚠️</span>
-                        </div>
-                        <p className="text-lg font-semibold text-red-900 mb-2">
-                            Không thể tải chiến dịch
-                        </p>
-                        <p className="text-sm text-red-700 mb-4">
-                            {error || "Có lỗi xảy ra."}
-                        </p>
-                        <button
-                            onClick={() => refetch()}
-                            className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700 transition"
-                        >
-                            Thử lại
-                        </button>
-                    </div>
+                    <>
+                        {typeof error === "string" &&
+                            error
+                                .toLowerCase()
+                                .includes("does not exist on-chain") && (
+                                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-8 text-center">
+                                    <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-amber-100 mb-4">
+                                        <span className="text-2xl">⏳</span>
+                                    </div>
+                                    <p className="text-lg font-semibold text-amber-900 mb-2">
+                                        Đang chờ cập nhật chiến dịch mới
+                                    </p>
+                                    <p className="text-sm text-amber-800 mb-4">
+                                        Do on-chain vừa được tạo, hệ thống có
+                                        thể cần vài giây để cập nhật đủ dữ liệu.
+                                    </p>
+                                    <button
+                                        onClick={() => refetch()}
+                                        className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-amber-600 text-white font-semibold hover:bg-amber-700 transition"
+                                    >
+                                        Thử lại ngay
+                                    </button>
+                                </div>
+                            )}
+
+                        {(!error ||
+                            (typeof error === "string" &&
+                                !error
+                                    .toLowerCase()
+                                    .includes("does not exist on-chain"))) && (
+                            <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
+                                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4">
+                                    <span className="text-2xl">⚠️</span>
+                                </div>
+                                <p className="text-lg font-semibold text-red-900 mb-2">
+                                    Không thể tải chiến dịch
+                                </p>
+                                <p className="text-sm text-red-700 mb-4">
+                                    Đã xảy ra lỗi khi tải thông tin chiến dịch.
+                                </p>
+                                <button
+                                    onClick={() => refetch()}
+                                    className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700 transition"
+                                >
+                                    Thử lại
+                                </button>
+                            </div>
+                        )}
+                    </>
                 )}
 
                 {/* Campaign Content - hiển thị khi on-chain data sẵn, backend data được merge khi tải xong */}
-                {!isLoading &&
-                    !isError &&
-                    campaign && (
-                        <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
-                            {/* Left Column - Main Content */}
-                            <div className="space-y-6">
-                                {isStatusOutOfSync && (
-                                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-4 text-amber-900">
-                                        <p className="text-sm font-semibold">
-                                            Trạng thái đang đồng bộ
-                                        </p>
-                                        <p className="text-xs text-amber-800">
-                                            Trạng thái on-chain khác backend. Dữ liệu sẽ tự cập nhật sau khi đồng bộ.
-                                        </p>
+                {!isLoading && !isError && campaign && (
+                    <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
+                        {/* Left Column - Main Content */}
+                        <div className="space-y-6">
+                            {isStatusOutOfSync && (
+                                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-4 text-amber-900">
+                                    <p className="text-sm font-semibold">
+                                        Trạng thái đang đồng bộ
+                                    </p>
+                                    <p className="text-xs text-amber-800">
+                                        Trạng thái on-chain khác backend. Dữ
+                                        liệu sẽ tự cập nhật sau khi đồng bộ.
+                                    </p>
+                                </div>
+                            )}
+                            <MilestonePreviewCard
+                                campaignId={campaign.id}
+                                campaignDeadline={campaign.deadline}
+                                campaignCreatedAt={
+                                    backendCampaign.data?.createdAt
+                                }
+                                progressPercent={progress}
+                                goalWei={campaign.goal}
+                                raisedWei={campaign.raised}
+                                disbursedWei={campaign.totalDisbursed}
+                                userDonatedWei={effectiveUserDonatedAmount}
+                                milestoneCount={campaign.milestoneCount}
+                                campaignStatusLabel={campaignStatusLabel}
+                                currentMilestoneId={campaign.currentMilestoneId}
+                            />
+
+                            <CampaignInfoPanel
+                                campaign={{
+                                    ...campaign,
+                                    statusLabel: campaignStatusLabel,
+                                }}
+                                userDonatedWei={effectiveUserDonatedAmount}
+                                backendTitle={
+                                    !isPlaceholderCampaignTitle(
+                                        backendCampaign.data?.title,
+                                        id,
+                                    )
+                                        ? backendCampaign.data?.title
+                                        : cachedMetadata?.title
+                                }
+                                backendDescription={
+                                    !isPlaceholderCampaignDescription(
+                                        backendCampaign.data?.description,
+                                    )
+                                        ? backendCampaign.data?.description
+                                        : cachedMetadata?.description
+                                }
+                                reviewerSafe={
+                                    backendCampaign.data?.reviewerSafe
+                                }
+                                progress={progress}
+                                thumbnailUrl={
+                                    backendCampaign.data?.thumbnailUrl ?? null
+                                }
+                            />
+
+                            {/* Donation History Card */}
+                            <div className="rounded-2xl bg-white border border-slate-200 p-8 shadow-sm">
+                                <div className="flex items-center justify-between mb-6">
+                                    <h3 className="text-xl font-bold text-slate-900">
+                                        Lịch sử quyên góp
+                                    </h3>
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-sm font-medium text-slate-600">
+                                            {donations.length} lượt quyên góp
+                                        </span>
+                                        <button
+                                            onClick={handleReloadDonations}
+                                            type="button"
+                                            className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                        >
+                                            Tải lại lịch sử
+                                        </button>
                                     </div>
+                                </div>
+                                {donationHistoryWarning && (
+                                    <p className="mb-4 text-xs text-amber-700">
+                                        {donationHistoryWarning}
+                                    </p>
                                 )}
-                                <MilestonePreviewCard
-                                    campaignId={campaign.id}
-                                    campaignDeadline={campaign.deadline}
-                                    campaignCreatedAt={
-                                        backendCampaign.data?.createdAt
-                                    }
-                                    progressPercent={progress}
-                                    goalWei={campaign.goal}
-                                    raisedWei={campaign.raised}
-                                    disbursedWei={campaign.totalDisbursed}
-                                    userDonatedWei={effectiveUserDonatedAmount}
-                                    milestoneCount={campaign.milestoneCount}
-                                    campaignStatusLabel={campaignStatusLabel}
-                                    currentMilestoneId={
-                                        campaign.currentMilestoneId
-                                    }
-                                />
+                                {isDonationHistoryLoading && (
+                                    <p className="mb-4 text-xs text-slate-500">
+                                        Đang tải lịch sử quyên góp...
+                                    </p>
+                                )}
 
-                                <CampaignInfoPanel
-                                    campaign={{
-                                        ...campaign,
-                                        statusLabel: campaignStatusLabel,
-                                    }}
-                                    userDonatedWei={effectiveUserDonatedAmount}
-                                    backendTitle={
-                                        !isPlaceholderCampaignTitle(
-                                            backendCampaign.data?.title,
-                                            id,
-                                        )
-                                            ? backendCampaign.data?.title
-                                            : cachedMetadata?.title
-                                    }
-                                    backendDescription={
-                                        !isPlaceholderCampaignDescription(
-                                            backendCampaign.data?.description,
-                                        )
-                                            ? backendCampaign.data?.description
-                                            : cachedMetadata?.description
-                                    }
-                                    reviewerSafe={backendCampaign.data?.reviewerSafe}
-                                    progress={progress}
-                                    thumbnailUrl={backendCampaign.data?.thumbnailUrl ?? null}
-                                />
-
-                                {/* Donation History Card */}
-                                <div className="rounded-2xl bg-white border border-slate-200 p-8 shadow-sm">
-                                    <div className="flex items-center justify-between mb-6">
-                                        <h3 className="text-xl font-bold text-slate-900">
-                                            Lịch sử quyên góp
-                                        </h3>
-                                        <div className="flex items-center gap-3">
-                                            <span className="text-sm font-medium text-slate-600">
-                                                {donations.length} lượt quyên
-                                                góp
-                                            </span>
-                                            <button
-                                                onClick={handleReloadDonations}
-                                                type="button"
-                                                className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                                            >
-                                                Tải lại lịch sử
-                                            </button>
+                                {donations.length === 0 ? (
+                                    <div className="text-center py-12">
+                                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
+                                            <span className="text-3xl">💝</span>
                                         </div>
+                                        <p className="text-slate-600 mb-2">
+                                            Chưa có quyên góp
+                                        </p>
+                                        <p className="text-sm text-slate-500">
+                                            Hãy là người đầu tiên ủng hộ!
+                                        </p>
                                     </div>
-                                    {donationHistoryWarning && (
-                                        <p className="mb-4 text-xs text-amber-700">
-                                            {donationHistoryWarning}
-                                        </p>
-                                    )}
-                                    {isDonationHistoryLoading && (
-                                        <p className="mb-4 text-xs text-slate-500">
-                                            Đang tải lịch sử quyên góp...
-                                        </p>
-                                    )}
-
-                                    {donations.length === 0 ? (
-                                        <div className="text-center py-12">
-                                            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
-                                                <span className="text-3xl">
-                                                    💝
-                                                </span>
-                                            </div>
-                                            <p className="text-slate-600 mb-2">
-                                                Chưa có quyên góp
-                                            </p>
-                                            <p className="text-sm text-slate-500">
-                                                Hãy là người đầu tiên ủng hộ!
-                                            </p>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <div className="space-y-3">
-                                                {donations.map(
-                                                    (donation, index) => (
-                                                        <div
-                                                            key={`${donation.transactionHash}-${index}`}
-                                                            className="rounded-xl bg-slate-50 border border-slate-200 p-4 hover:bg-slate-100 transition"
-                                                        >
-                                                            <div className="flex items-center justify-between mb-2">
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="w-8 h-8 rounded-full bg-linear-to-br from-green-400 to-green-600" />
-                                                                    <div>
-                                                                        <code className="text-sm font-mono text-slate-900">
-                                                                            {donation.donor.slice(
-                                                                                0,
-                                                                                6,
-                                                                            )}
-                                                                            ...
-                                                                            {donation.donor.slice(
-                                                                                -4,
-                                                                            )}
-                                                                        </code>
-                                                                        <p className="text-xs text-slate-500">
-                                                                            {new Date(
-                                                                                donation.timestamp,
-                                                                            ).toLocaleString()}
-                                                                        </p>
-                                                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="space-y-3">
+                                            {donations.map(
+                                                (donation, index) => (
+                                                    <div
+                                                        key={`${donation.transactionHash}-${index}`}
+                                                        className="rounded-xl bg-slate-50 border border-slate-200 p-4 hover:bg-slate-100 transition"
+                                                    >
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-8 h-8 rounded-full bg-linear-to-br from-green-400 to-green-600" />
+                                                                <div>
+                                                                    <code className="text-sm font-mono text-slate-900">
+                                                                        {donation.donor.slice(
+                                                                            0,
+                                                                            6,
+                                                                        )}
+                                                                        ...
+                                                                        {donation.donor.slice(
+                                                                            -4,
+                                                                        )}
+                                                                    </code>
+                                                                    <p className="text-xs text-slate-500">
+                                                                        {new Date(
+                                                                            donation.timestamp,
+                                                                        ).toLocaleString()}
+                                                                    </p>
                                                                 </div>
-                                                                <p className="text-lg font-bold text-green-600">
-                                                                    +
+                                                            </div>
+                                                            <p className="text-lg font-bold text-green-600">
+                                                                +
+                                                                {Number(
+                                                                    formatEther(
+                                                                        donation.amount,
+                                                                    ),
+                                                                ).toFixed(
+                                                                    4,
+                                                                )}{" "}
+                                                                ETH
+                                                            </p>
+                                                        </div>
+                                                        <a
+                                                            href={`https://sepolia.etherscan.io/tx/${donation.transactionHash}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+                                                        >
+                                                            Xem giao dịch →
+                                                        </a>
+                                                    </div>
+                                                ),
+                                            )}
+                                        </div>
+                                        {topDonors.length > 0 && (
+                                            <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                                <div className="mb-3 flex items-center justify-between">
+                                                    <p className="text-sm font-semibold text-slate-900">
+                                                        Bảng xếp hạng nhà hảo
+                                                        tâm
+                                                    </p>
+                                                    <p className="text-xs text-slate-500">
+                                                        Top {topDonors.length}{" "}
+                                                        theo tổng ETH đã quyên
+                                                        góp
+                                                    </p>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    {topDonors.map(
+                                                        (item, index) => (
+                                                            <div
+                                                                key={item.donor}
+                                                                className="flex items-center justify-between rounded-lg bg-white px-3 py-2"
+                                                            >
+                                                                <div className="flex items-center gap-3">
+                                                                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-700">
+                                                                        {index +
+                                                                            1}
+                                                                    </span>
+                                                                    <code className="text-xs font-mono text-slate-900">
+                                                                        {item.donor.slice(
+                                                                            0,
+                                                                            6,
+                                                                        )}
+                                                                        ...
+                                                                        {item.donor.slice(
+                                                                            -4,
+                                                                        )}
+                                                                    </code>
+                                                                </div>
+                                                                <p className="text-sm font-semibold text-emerald-700">
                                                                     {Number(
                                                                         formatEther(
-                                                                            donation.amount,
+                                                                            item.totalAmount,
                                                                         ),
                                                                     ).toFixed(
                                                                         4,
@@ -960,240 +1156,170 @@ export default function CampaignDetailPage() {
                                                                     ETH
                                                                 </p>
                                                             </div>
-                                                            <a
-                                                                href={`https://sepolia.etherscan.io/tx/${donation.transactionHash}`}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
-                                                            >
-                                                                Xem giao dịch →
-                                                            </a>
-                                                        </div>
-                                                    ),
-                                                )}
-                                            </div>
-                                            {topDonors.length > 0 && (
-                                                <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                                                    <div className="mb-3 flex items-center justify-between">
-                                                        <p className="text-sm font-semibold text-slate-900">
-                                                            Bảng xếp hạng nhà
-                                                            hảo tâm
-                                                        </p>
-                                                        <p className="text-xs text-slate-500">
-                                                            Top{" "}
-                                                            {topDonors.length}{" "}
-                                                            theo tổng ETH đã
-                                                            quyên góp
-                                                        </p>
-                                                    </div>
-                                                    <div className="space-y-2">
-                                                        {topDonors.map(
-                                                            (item, index) => (
-                                                                <div
-                                                                    key={
-                                                                        item.donor
-                                                                    }
-                                                                    className="flex items-center justify-between rounded-lg bg-white px-3 py-2"
-                                                                >
-                                                                    <div className="flex items-center gap-3">
-                                                                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-700">
-                                                                            {index +
-                                                                                1}
-                                                                        </span>
-                                                                        <code className="text-xs font-mono text-slate-900">
-                                                                            {item.donor.slice(
-                                                                                0,
-                                                                                6,
-                                                                            )}
-                                                                            ...
-                                                                            {item.donor.slice(
-                                                                                -4,
-                                                                            )}
-                                                                        </code>
-                                                                    </div>
-                                                                    <p className="text-sm font-semibold text-emerald-700">
-                                                                        {Number(
-                                                                            formatEther(
-                                                                                item.totalAmount,
-                                                                            ),
-                                                                        ).toFixed(
-                                                                            4,
-                                                                        )}{" "}
-                                                                        ETH
-                                                                    </p>
-                                                                </div>
-                                                            ),
-                                                        )}
-                                                    </div>
+                                                        ),
+                                                    )}
                                                 </div>
-                                            )}
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Right Column - Actions */}
-                            <div className="lg:sticky lg:top-6 h-fit space-y-4">
-                                {hasMounted && (
-                                    <>
-                                {shouldMarkAsFailed && (
-                                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-                                        <p className="text-sm font-semibold text-amber-900 mb-2">
-                                            Campaign đã quá deadline nhưng chưa
-                                            cập nhật thất bại
-                                        </p>
-                                        <p className="text-xs text-amber-800 mb-4">
-                                            Bấm để ghi nhận trạng thái thất bại
-                                            on-chain, sau đó donor có thể
-                                            refund.
-                                        </p>
-                                        <button
-                                            onClick={handleMarkAsFailed}
-                                            disabled={
-                                                markAsFailedPending ||
-                                                markAsFailedConfirming
-                                            }
-                                            className="w-full rounded-lg bg-amber-600 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
-                                        >
-                                            {markAsFailedPending
-                                                ? "⏳ Đợi xác nhận từ ví..."
-                                                : markAsFailedConfirming
-                                                    ? "🔄 Đang xác nhận..."
-                                                    : "Cập nhật trạng thái thất bại"}
-                                        </button>
-                                        {markAsFailedError && (
-                                            <p className="mt-3 text-xs text-red-700">
-                                                {getFriendlyError(
-                                                    markAsFailedError,
-                                                )}
-                                            </p>
+                                            </div>
                                         )}
-                                    </div>
-                                )}
-                                {shouldMarkMilestoneAsFailed && (
-                                    <div className="rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm">
-                                        <div className="flex items-center gap-2 mb-2 text-red-900">
-                                            <span className="text-xl">⚠️</span>
-                                            <p className="text-sm font-bold">
-                                                Mốc hiện tại đã quá hạn nộp minh chứng
-                                            </p>
-                                        </div>
-                                        <p className="text-xs text-red-800 mb-4">
-                                            Thời hạn của mốc này đã kết thúc. Bạn cần xác nhận thất bại trên Blockchain để hệ thống mở tính năng hoàn tiền cho mọi người.
-                                        </p>
-                                        <button
-                                            onClick={handleMarkMilestoneAsFailed}
-                                            disabled={
-                                                milestoneFailedPending ||
-                                                milestoneFailedConfirming
-                                            }
-                                            className="w-full rounded-lg bg-red-600 px-4 py-3 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60 transition shadow-md hover:shadow-lg"
-                                        >
-                                            {milestoneFailedPending
-                                                ? "⏳ Đợi xác nhận từ ví..."
-                                                : milestoneFailedConfirming
-                                                    ? "🔄 Đang đồng bộ Blockchain..."
-                                                    : "Xác nhận thất bại On-chain"}
-                                        </button>
-                                        {milestoneFailedError && (
-                                            <p className="mt-3 text-xs text-red-700 font-medium">
-                                                {getFriendlyError(
-                                                    milestoneFailedError,
-                                                )}
-                                            </p>
-                                        )}
-                                    </div>
-                                )}
-                                <RefundAndMintPanel
-                                    showRefund={Boolean(
-                                        (isCampaignFailed ||
-                                            isCampaignPartialFailed) &&
-                                        userDonatedAmount > 0n,
-                                    )}
-                                    showMint={Boolean(
-                                        canMintCertificate &&
-                                        effectiveUserDonatedAmount > 0n &&
-                                        !hasMintedCertificate,
-                                    )}
-                                    hasRefunded={
-                                        refundStatus?.status === 'refunded' || 
-                                        ((isCampaignFailed || isCampaignPartialFailed) && userDonatedAmount > 0n && donatedAmountOnChain === 0n)
-                                    }
-                                    refundPending={
-                                        isCampaignPartialFailed
-                                            ? milestoneRefundPending
-                                            : fundingRefundPending
-                                    }
-                                    refundConfirming={refundConfirming}
-                                    refundConfirmed={refundConfirmed}
-                                    refundHash={
-                                        isCampaignPartialFailed
-                                            ? milestoneRefundHash
-                                            : fundingRefundHash
-                                    }
-                                    refundError={getFriendlyError(
-                                        isCampaignPartialFailed
-                                            ? milestoneRefundError
-                                            : fundingRefundError,
-                                    )}
-                                    mintPending={mintPending}
-                                    mintConfirming={mintConfirming}
-                                    mintConfirmed={mintConfirmed}
-                                    mintHash={mintHash}
-                                    mintError={
-                                        mintFlowError ||
-                                        getFriendlyError(mintError)
-                                    }
-                                    mintProfileSaving={mintProfileSaving}
-                                    defaultDisplayName={user?.displayName || ""}
-                                    onRefund={handleRefund}
-                                    onMint={handleMintCertificate}
-                                />
-                                <DonatePanel
-                                    amount={amount}
-                                    canDonate={canDonate}
-                                    isConnected={isConnected}
-                                    isSepolia={isSepolia}
-                                    campaignStatusLabel={
-                                        campaignStatusLabel as
-                                        | "pending_approval"
-                                        | "active"
-                                        | "in_progress"
-                                        | "completed"
-                                        | "partial_failed"
-                                        | "failed"
-                                        | "cancelled"
-                                    }
-                                    isPending={isPending}
-                                    isConfirming={isConfirming}
-                                    isConfirmed={isConfirmed}
-                                    txHash={hash}
-                                    donateError={getFriendlyError(donateError)}
-                                    goal={campaign?.goal?.toString() || "0"}
-                                    raised={campaign?.raised?.toString() || "0"}
-                                    onAmountChange={setAmount}
-                                    onDonate={handleDonate}
-                                />
-
-                                {/* Network Info */}
-                                {/* Network Info */}
-                                <div className="rounded-xl bg-white border border-slate-200 p-4 text-center">
-                                    <div className="flex items-center justify-center gap-2 mb-1">
-                                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                                        <p className="text-xs font-semibold text-slate-600">
-                                            MẠNG THỬ NGHIỆM SEPOLIA
-                                        </p>
-                                    </div>
-                                    <p className="text-xs text-slate-500">
-                                        Mọi giao dịch diễn ra trên Ethereum
-                                        Sepolia
-                                    </p>
-                                </div>
                                     </>
                                 )}
                             </div>
                         </div>
-                    )}
+
+                        {/* Right Column - Actions */}
+                        <div className="lg:sticky lg:top-6 h-fit space-y-4">
+                            {hasMounted && (
+                                <>
+                                    {shouldMarkAsFailed && (
+                                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                                            <p className="text-sm font-semibold text-amber-900 mb-2">
+                                                Campaign đã quá deadline nhưng
+                                                chưa cập nhật thất bại
+                                            </p>
+                                            <p className="text-xs text-amber-800 mb-4">
+                                                Bấm để ghi nhận trạng thái thất
+                                                bại on-chain, sau đó donor có
+                                                thể refund.
+                                            </p>
+                                            <button
+                                                onClick={handleMarkAsFailed}
+                                                disabled={
+                                                    markAsFailedPending ||
+                                                    markAsFailedConfirming
+                                                }
+                                                className="w-full rounded-lg bg-amber-600 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                            >
+                                                {markAsFailedPending
+                                                    ? "⏳ Đợi xác nhận từ ví..."
+                                                    : markAsFailedConfirming
+                                                      ? "🔄 Đang xác nhận..."
+                                                      : "Cập nhật trạng thái thất bại"}
+                                            </button>
+                                        </div>
+                                    )}
+                                    {shouldMarkMilestoneAsFailed && (
+                                        <div className="rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm">
+                                            <div className="flex items-center gap-2 mb-2 text-red-900">
+                                                <span className="text-xl">
+                                                    ⚠️
+                                                </span>
+                                                <p className="text-sm font-bold">
+                                                    Mốc hiện tại đã quá hạn nộp
+                                                    minh chứng
+                                                </p>
+                                            </div>
+                                            <p className="text-xs text-red-800 mb-4">
+                                                Thời hạn của mốc này đã kết
+                                                thúc. Bạn cần xác nhận thất bại
+                                                trên Blockchain để hệ thống mở
+                                                tính năng hoàn tiền cho mọi
+                                                người.
+                                            </p>
+                                            <button
+                                                onClick={
+                                                    handleMarkMilestoneAsFailed
+                                                }
+                                                disabled={
+                                                    milestoneFailedPending ||
+                                                    milestoneFailedConfirming
+                                                }
+                                                className="w-full rounded-lg bg-red-600 px-4 py-3 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60 transition shadow-md hover:shadow-lg"
+                                            >
+                                                {milestoneFailedPending
+                                                    ? "⏳ Đợi xác nhận từ ví..."
+                                                    : milestoneFailedConfirming
+                                                      ? "🔄 Đang đồng bộ Blockchain..."
+                                                      : "Xác nhận thất bại On-chain"}
+                                            </button>
+                                        </div>
+                                    )}
+                                    <RefundAndMintPanel
+                                        showRefund={Boolean(
+                                            (isCampaignFailed ||
+                                                isCampaignPartialFailed) &&
+                                            userDonatedAmount > 0n,
+                                        )}
+                                        showMint={Boolean(
+                                            canMintCertificate &&
+                                            effectiveUserDonatedAmount > 0n &&
+                                            !hasMintedCertificate,
+                                        )}
+                                        hasRefunded={
+                                            refundStatus?.status ===
+                                                "refunded" ||
+                                            ((isCampaignFailed ||
+                                                isCampaignPartialFailed) &&
+                                                userDonatedAmount > 0n &&
+                                                donatedAmountOnChain === 0n)
+                                        }
+                                        refundPending={
+                                            isCampaignPartialFailed
+                                                ? milestoneRefundPending
+                                                : fundingRefundPending
+                                        }
+                                        refundConfirming={refundConfirming}
+                                        refundConfirmed={refundConfirmed}
+                                        refundHash={
+                                            isCampaignPartialFailed
+                                                ? milestoneRefundHash
+                                                : fundingRefundHash
+                                        }
+                                        mintPending={mintPending}
+                                        mintConfirming={mintConfirming}
+                                        mintConfirmed={mintConfirmed}
+                                        mintHash={mintHash}
+                                        mintProfileSaving={mintProfileSaving}
+                                        defaultDisplayName={
+                                            user?.displayName || ""
+                                        }
+                                        onRefund={handleRefund}
+                                        onMint={handleMintCertificate}
+                                    />
+                                    <DonatePanel
+                                        amount={amount}
+                                        canDonate={canDonate}
+                                        isConnected={isConnected}
+                                        isSepolia={isSepolia}
+                                        campaignStatusLabel={
+                                            campaignStatusLabel as
+                                                | "pending_approval"
+                                                | "active"
+                                                | "in_progress"
+                                                | "completed"
+                                                | "partial_failed"
+                                                | "failed"
+                                                | "cancelled"
+                                        }
+                                        isPending={isPending}
+                                        isConfirming={isConfirming}
+                                        isConfirmed={isConfirmed}
+                                        txHash={hash}
+                                        donateError={getFriendlyError(
+                                            donateError,
+                                        )}
+                                        onAmountChange={setAmount}
+                                        onDonate={handleDonate}
+                                    />
+
+                                    {/* Network Info */}
+                                    {/* Network Info */}
+                                    <div className="rounded-xl bg-white border border-slate-200 p-4 text-center">
+                                        <div className="flex items-center justify-center gap-2 mb-1">
+                                            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                                            <p className="text-xs font-semibold text-slate-600">
+                                                MẠNG THỬ NGHIỆM SEPOLIA
+                                            </p>
+                                        </div>
+                                        <p className="text-xs text-slate-500">
+                                            Mọi giao dịch diễn ra trên Ethereum
+                                            Sepolia
+                                        </p>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                )}
             </main>
         </div>
     );
