@@ -191,19 +191,21 @@ function buildMessage(
     error: unknown,
     options?: ErrorMessageOptions,
 ): string {
-    const rawMessage = extractMessage(error).trim();
+    const rawMessage = extractMessage(error).replace(/\s+/g, " ").trim();
     const statusMessage =
         source === "backend" ? normalizeBackendByStatus(options?.status) : null;
     const messageMatch =
         source === "backend"
             ? normalizeBackendByMessage(rawMessage)
             : normalizeWalletOrChainMessage(rawMessage);
+    const shouldHideLongRawMessage =
+        source !== "backend" && rawMessage.length > 220;
 
     return (
         messageMatch ||
         statusMessage ||
         options?.fallback ||
-        rawMessage ||
+        (!shouldHideLongRawMessage ? rawMessage : null) ||
         DEFAULT_MESSAGES[source]
     );
 }
