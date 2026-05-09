@@ -47,9 +47,7 @@ function collectErrorTextParts(
             parts.push(...collectErrorTextParts(o.cause, seen, depth + 1));
         }
         if (o.data && typeof o.data === "object") {
-            parts.push(
-                ...collectErrorTextParts(o.data, seen, depth + 1),
-            );
+            parts.push(...collectErrorTextParts(o.data, seen, depth + 1));
         }
     }
 
@@ -113,7 +111,7 @@ function normalizeBackendByMessage(rawMessage: string): string | null {
 function normalizeWalletOrChainMessage(rawMessage: string): string | null {
     const message = rawMessage.toLowerCase();
     if (isWalletUserRejectedMessage(rawMessage)) {
-        return "Bạn đã hủy thao tác trong MetaMask.";
+        return "Bạn đã hủy thao tác xác nhận trong MetaMask.";
     }
     if (
         message.includes("not been authorized") ||
@@ -173,7 +171,7 @@ function normalizeWalletOrChainMessage(rawMessage: string): string | null {
 export function isWalletUserRejectedMessage(rawMessage: string): boolean {
     const message = (rawMessage || "").toLowerCase();
     return (
-        message.includes("bạn đã hủy thao tác trong metamask.") ||
+        message.includes("bạn đã hủy thao tác xác nhận trong metamask.") ||
         message.includes("user rejected") ||
         message.includes("user denied") ||
         message.includes("rejected the request") ||
