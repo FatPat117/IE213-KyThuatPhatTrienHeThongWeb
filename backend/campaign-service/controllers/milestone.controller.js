@@ -746,11 +746,15 @@ const rejectMilestone = async (req, res) => {
         }
 
         const deadlineExceeded = isDeadlineExceeded(milestone.deadline);
+        // retriesLeft is calculated BEFORE incrementing rejectionCount.
+        // We need retriesLeft > 1 so that the CURRENT rejection still leaves
+        // at least 1 retry, i.e. the 3rd rejection (rejectionCount=2 → retriesLeft=1)
+        // should already mark the milestone as failed.
         const retriesLeft =
             Number(milestone.maxRetries || 3) -
             Number(milestone.rejectionCount || 0);
 
-        if (!deadlineExceeded && retriesLeft > 0) {
+        if (!deadlineExceeded && retriesLeft > 1) {
             const now = new Date();
             const oldDeadline = milestone.deadline ? new Date(milestone.deadline) : now;
             const baseDate = oldDeadline > now ? oldDeadline : now;

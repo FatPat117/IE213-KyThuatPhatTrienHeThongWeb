@@ -662,6 +662,9 @@ async function getPublicCampaignMilestones(req, res, next) {
                     approvedAt: milestone.approvedAt,
                     approvedBy: milestone.approvedBy || "",
                     disbursedAt: milestone.disbursedAt,
+                    lastRejectionReason: milestone.lastRejectionReason || null,
+                    rejectionCount: Number(milestone.rejectionCount || 0),
+                    maxRetries: Number(milestone.maxRetries || 3),
                 };
             }),
         });

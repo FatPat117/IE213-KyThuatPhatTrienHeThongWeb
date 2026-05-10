@@ -1137,7 +1137,7 @@ export function useSubmitMilestoneProof() {
             const rawMessage =
                 simulationError instanceof Error
                     ? simulationError.message
-                    : "Không thể mô phỏng giao dịch submit minh chứng.";
+                    : "Không thể mô phỏng giao dịch đăng tải minh chứng.";
             // Some RPCs return generic "gas limit too high" during estimation/simulation.
             // Continue and let the wallet send with a known-safe gas limit.
             if (message.includes("gas limit too high")) {
