@@ -40,9 +40,10 @@ import {
     useWatchContractEvent,
 } from "wagmi";
 import CampaignInfoPanel from "@/components/campaign-detail/CampaignInfoPanel";
-import { MilestonePreviewCard } from "@/components/campaign-milestones";
+import dynamic from "next/dynamic";
 import DonatePanel from "@/components/campaign-detail/DonatePanel";
-import RefundAndMintPanel from "@/components/campaign-detail/RefundAndMintPanel";
+const MilestonePreviewCard = dynamic(() => import("@/components/campaign-milestones").then(mod => mod.MilestonePreviewCard), { ssr: false });
+const RefundAndMintPanel = dynamic(() => import("@/components/campaign-detail/RefundAndMintPanel"), { ssr: false });
 import BackButton from "@/components/navigation/BackButton";
 import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 
@@ -156,20 +157,13 @@ export default function CampaignDetailPage() {
     } = useWaitForTransactionReceipt({
         hash: markAsFailedHash,
     });
-    useRegisterWalletTxOverlay(
-        isPending ||
-            isConfirming ||
-            disbursePending ||
-            disburseConfirming ||
-            fundingRefundPending ||
-            milestoneRefundPending ||
-            refundConfirming ||
-            mintPending ||
-            mintConfirming ||
-            markAsFailedPending ||
-            markAsFailedConfirming ||
-            milestoneFailedPending,
-    );
+    const isActive = isPending || isConfirming || disbursePending || disburseConfirming || fundingRefundPending || milestoneRefundPending || refundConfirming || mintPending || mintConfirming || markAsFailedPending || markAsFailedConfirming || milestoneFailedPending;
+    const isAnyConfirming = isConfirming || disburseConfirming || refundConfirming || mintConfirming || markAsFailedConfirming;
+    const isAnyPending = isPending || disbursePending || fundingRefundPending || milestoneRefundPending || mintPending || markAsFailedPending || milestoneFailedPending;
+    const stage = isAnyConfirming ? "confirming" : isAnyPending ? "signing" : "preparing";
+    const currentHash = hash || disburseHash || fundingRefundHash || milestoneRefundHash || mintHash || markAsFailedHash || milestoneFailedHash || undefined;
+
+    useRegisterWalletTxOverlay(isActive, stage, currentHash);
 
     const { data: hasMintedCertificate } = useReadContract({
         ...contractConfig,
@@ -256,9 +250,14 @@ export default function CampaignDetailPage() {
                         "event Donated(uint256 indexed campaignId, address indexed donor, uint256 amount, uint256 totalRaised)",
                     );
                     const latestBlock = await publicClient.getBlockNumber();
+<<<<<<< Updated upstream
                     // Alchemy Free tier giới hạn 10 block/request → dùng chunk 9 block
                     const maxBlocksToScan = 1000n;
                     const chunkSize = 9n;
+=======
+                    const maxBlocksToScan = 5000n;
+                    const chunkSize = 5000n;
+>>>>>>> Stashed changes
                     const fromBlock =
                         latestBlock > maxBlocksToScan
                             ? latestBlock - maxBlocksToScan + 1n
@@ -339,9 +338,7 @@ export default function CampaignDetailPage() {
     }, [address, id, publicClient]);
 
     useEffect(() => {
-        setDonations([]);
-        setDonationHistoryWarning(null);
-        loadDonationHistory();
+        // Only load when campaign is ready to prevent double-fetching on mount
     }, [loadDonationHistory]);
 
     const fetchRefundStatus = useCallback(async () => {

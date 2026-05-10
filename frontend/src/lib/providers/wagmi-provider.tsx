@@ -12,7 +12,7 @@ const queryClient = new QueryClient({
       retry: 1,
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
-      staleTime: 30_000,
+      staleTime: 300_000, // 5 minutes cache to reduce RPC calls
     },
   },
 });

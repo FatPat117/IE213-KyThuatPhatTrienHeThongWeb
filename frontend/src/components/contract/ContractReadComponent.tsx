@@ -90,12 +90,18 @@ export function ContractStatsDisplay() {
 
     if (isLoading) {
         return (
-            <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-6">
-                <div className="flex items-center gap-3">
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
-                    <p className="text-sm text-indigo-700">
-                        Đang tải thống kê contract...
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="rounded-xl border border-indigo-200/80 bg-indigo-50/80 p-6">
+                    <p className="text-sm font-medium text-indigo-600 mb-2">
+                        📊 Tổng chiến dịch
                     </p>
+                    <div className="h-9 w-16 bg-indigo-200/50 rounded animate-pulse" />
+                </div>
+                <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/80 p-6">
+                    <p className="text-sm text-green-600 mb-2 font-medium">
+                        💰 Tổng huy động
+                    </p>
+                    <div className="h-9 w-24 bg-emerald-200/50 rounded animate-pulse" />
                 </div>
             </div>
         );

@@ -53,7 +53,7 @@ function MyDonationsContent() {
                 setIsOnChainLoading(true);
                 const latestBlock = await publicClient.getBlockNumber();
                 const maxBlocksToScan = 500n;
-                const chunkSize = 10n;
+                const chunkSize = 500n;
                 const fromBlock =
                     latestBlock > maxBlocksToScan
                         ? latestBlock - maxBlocksToScan + 1n
