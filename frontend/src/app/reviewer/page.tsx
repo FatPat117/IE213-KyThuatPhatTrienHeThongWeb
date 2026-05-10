@@ -785,7 +785,10 @@ export default function ReviewerWorkspacePage() {
             try {
                 await rejectMilestone(campaignId, milestoneId, token, reason);
                 setActionIsSuccess(true);
-                setActionMessage("✅ Đã ghi nhận từ chối milestone. Creator đã được thông báo.");
+                const successMsg = "Đã ghi nhận từ chối milestone. Creator đã được thông báo.";
+                setActionMessage(successMsg);
+                // Show toast directly to ensure it fires even when message text is unchanged
+                showSuccessToast(successMsg);
                 await refresh();
                 await refreshApprovalStatuses();
                 return true;

@@ -103,6 +103,8 @@ interface CampaignMilestoneRecord {
     approvedBy?: string;
     disbursedAt?: string | null;
     lastRejectionReason?: string;
+    rejectionCount?: number;
+    maxRetries?: number;
 }
 
 interface MilestoneServiceResponse {
@@ -191,6 +193,13 @@ function mapMilestoneRecord(
         approvedAt: item.approvedAt || null,
         approvedBy: item.approvedBy || "",
         disbursedAt: item.disbursedAt || null,
+        lastRejectionReason: item.lastRejectionReason,
+        rejectionCount: typeof (item as Record<string, unknown>).rejectionCount === 'number'
+            ? (item as Record<string, unknown>).rejectionCount as number
+            : undefined,
+        maxRetries: typeof (item as Record<string, unknown>).maxRetries === 'number'
+            ? (item as Record<string, unknown>).maxRetries as number
+            : undefined,
     };
 }
 

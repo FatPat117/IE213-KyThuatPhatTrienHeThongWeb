@@ -526,6 +526,54 @@ export default function CampaignDetailPage() {
         },
     });
 
+    // Watch for FundingComplete: campaign đủ vốn → cập nhật trạng thái ngay lập tức
+    useWatchContractEvent({
+        ...contractConfig,
+        eventName: "FundingComplete",
+        onLogs: (logs) => {
+            const relevant = logs.some(
+                (log) =>
+                    Number(
+                        (log as { args?: { campaignId?: bigint } }).args
+                            ?.campaignId ?? 0n,
+                    ) === id,
+            );
+            if (!relevant) return;
+            // On-chain đã confirm đủ vốn → refetch on-chain data ngay
+            refetch();
+            // Backend listener cần vài giây để index FundingComplete → poll 3 lần × 4s
+            let attempts = 0;
+            const timer = window.setInterval(() => {
+                attempts += 1;
+                backendCampaign.refetch();
+                if (attempts >= 3) window.clearInterval(timer);
+            }, 4_000);
+        },
+    });
+
+    // Watch for CampaignApproved: admin duyệt campaign → cập nhật trạng thái ngay
+    useWatchContractEvent({
+        ...contractConfig,
+        eventName: "CampaignApproved",
+        onLogs: (logs) => {
+            const relevant = logs.some(
+                (log) =>
+                    Number(
+                        (log as { args?: { campaignId?: bigint } }).args
+                            ?.campaignId ?? 0n,
+                    ) === id,
+            );
+            if (!relevant) return;
+            refetch();
+            let attempts = 0;
+            const timer = window.setInterval(() => {
+                attempts += 1;
+                backendCampaign.refetch();
+                if (attempts >= 3) window.clearInterval(timer);
+            }, 4_000);
+        },
+    });
+
     const getFriendlyError = (err?: { message?: string } | null) => {
         if (!err) return null;
         return getChainErrorMessage(err, {
@@ -643,6 +691,20 @@ export default function CampaignDetailPage() {
             setLastDonatedAmount(null);
         }
     }, [address, hash, id, isConfirmed, lastDonatedAmount, refetch]);
+
+    // Sau khi donation được confirm on-chain, poll backend vài lần để bắt kịp
+    // trạng thái in_progress (backend cần ~3-5s để xử lý FundingComplete event)
+    useEffect(() => {
+        if (!isConfirmed || !hash || lastDonationSuccessTxRef.current !== hash) return;
+        let attempts = 0;
+        const timer = window.setInterval(() => {
+            attempts += 1;
+            backendCampaign.refetch();
+            if (attempts >= 4) window.clearInterval(timer);
+        }, 3_000);
+        return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isConfirmed, hash]);
 
     const handleDonate = () => {
         if (!Number.isFinite(id)) return;

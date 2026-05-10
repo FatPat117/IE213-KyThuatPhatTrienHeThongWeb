@@ -93,6 +93,9 @@ function MilestoneEvidenceUploadContent() {
     const [resultMessage, setResultMessage] = useState<string | null>(null);
     const [milestoneHistory, setMilestoneHistory] = useState<string[]>([]);
     const [milestoneStatus, setMilestoneStatus] = useState<string>("");
+    const [rejectionCount, setRejectionCount] = useState<number>(0);
+    const [maxRetries, setMaxRetries] = useState<number>(3);
+    const [hasSubmittedOnChain, setHasSubmittedOnChain] = useState(false);
 
     const apiBaseUrl = useMemo(
         () => normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_URL),
@@ -118,6 +121,8 @@ function MilestoneEvidenceUploadContent() {
                     );
                 });
                 setMilestoneStatus((milestone?.status || "").toLowerCase());
+                setRejectionCount(typeof milestone?.rejectionCount === "number" ? milestone.rejectionCount : 0);
+                setMaxRetries(typeof milestone?.maxRetries === "number" ? milestone.maxRetries : 3);
                 const fromBackend = (milestone?.reportCids || []).map((x) => x.cid);
                 const fromChain = proofCidsByIndex.get(milestoneIndexOnChain) || [];
                 const seen = new Set<string>();
@@ -143,6 +148,7 @@ function MilestoneEvidenceUploadContent() {
             const message = "Đã submit minh chứng on-chain thành công.";
             setResultMessage(message);
             showSuccessToast(message);
+            setHasSubmittedOnChain(true);
             for (const uploadedCid of uploadedCids) {
                 setMilestoneHistory((prev) =>
                     prev.some((x) => x.toLowerCase() === uploadedCid.toLowerCase())
@@ -256,10 +262,10 @@ function MilestoneEvidenceUploadContent() {
                 await submitMilestoneProof(campaignId, milestoneIndexOnChain, cid);
             }
             setResultMessage(
-                `Đã gửi ${uploadedCids.length} giao dịch submit minh chứng. Đang chờ xác nhận...`,
+                `Đã gửi ${uploadedCids.length} giao dịch đăng tải minh chứng. Đang chờ xác nhận...`,
             );
             showSuccessToast(
-                `Đã gửi ${uploadedCids.length} giao dịch submit minh chứng. Đang chờ xác nhận...`,
+                `Đã gửi ${uploadedCids.length} giao dịch đăng tải minh chứng. Đang chờ xác nhận...`,
             );
         } catch (error) {
             const normalizedMessage = getWalletErrorMessage(error, {
@@ -398,10 +404,10 @@ function MilestoneEvidenceUploadContent() {
                     <div className="flex flex-wrap gap-3">
                         <button
                             type="submit"
-                            disabled={!canUpload || isUploadingFile}
+                            disabled={!canUpload || isUploadingFile || hasSubmittedOnChain}
                             className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
                         >
-                            {isUploadingFile ? "Đang upload..." : "1) Upload file lấy CID"}
+                            {isUploadingFile ? "Đang upload..." : hasSubmittedOnChain ? "Đã hoàn tất" : "1) Upload file lấy CID"}
                         </button>
                         <button
                             type="button"
@@ -409,29 +415,49 @@ function MilestoneEvidenceUploadContent() {
                                 uploadedCids.length === 0 ||
                                 !isCampaignInProgress ||
                                 isSubmittingOnChain ||
-                                isConfirmingOnChain
+                                isConfirmingOnChain ||  
+                                hasSubmittedOnChain
                             }
                             onClick={handleSubmitOnChain}
                             className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
                         >
                             {isSubmittingOnChain || isConfirmingOnChain
                                 ? "Đang chờ xác nhận..."
-                                : "2) Đăng tải tất cả CID on-chain"}
+                                : hasSubmittedOnChain
+                                    ? "Đã submit on-chain"
+                                    : "2) Đăng tải tất cả CID on-chain"}
                         </button>
-                        {milestoneStatus === "resubmittable" && (
-                            <button
-                                type="button"
-                                disabled={uploadedCids.length === 0 || isUploadingFile}
-                                onClick={handleResubmitOffChain}
-                                className="rounded-lg border border-amber-300 bg-amber-50 px-5 py-2.5 text-sm font-semibold text-amber-800 disabled:opacity-60"
-                            >
-                                Resubmit off-chain
-                            </button>
-                        )}
                     </div>
                     {!isCampaignInProgress && (
                         <p className="text-sm text-amber-700">
                             Milestone chỉ được submit khi chiến dịch ở trạng thái In Progress.
+                        </p>
+                    )}
+
+                    {/* Rejection count display */}
+                    {rejectionCount > 0 && (
+                        <div className={`rounded-lg border px-4 py-3 text-sm ${
+                            rejectionCount >= maxRetries
+                                ? "border-rose-300 bg-rose-50 text-rose-800"
+                                : "border-amber-200 bg-amber-50 text-amber-800"
+                        }`}>
+                            <p className="font-semibold">
+                                ⚠️ Số lần bị từ chối: {rejectionCount}/{maxRetries}
+                            </p>
+                            {rejectionCount >= maxRetries ? (
+                                <p className="mt-1 font-bold text-rose-700">
+                                    🚫 Bạn đã hết số lần nộp lại. Milestone này sẽ bị đánh dấu thất bại.
+                                </p>
+                            ) : (
+                                <p className="mt-1">
+                                    Nếu bị từ chối đủ {maxRetries} lần, milestone sẽ bị đánh dấu <strong>thất bại</strong>.
+                                </p>
+                            )}
+                        </div>
+                    )}
+                    {rejectionCount === 0 && milestoneStatus === "resubmittable" && (
+                        <p className="text-sm text-rose-600 font-medium">
+                            ⚠️ Nếu bị từ chối đủ {maxRetries} lần, milestone sẽ bị đánh dấu <strong>thất bại</strong>.
                         </p>
                     )}
 
