@@ -25,7 +25,9 @@ export function NetworkStatusMonitor() {
   useEffect(() => {
     if (!isConnected) {
       wrongToastShownForChainRef.current = null;
-      showWalletDisconnected();
+      if (status?.type === 'wallet-disconnected' || status?.type === 'wrong-network') {
+        clearStatus();
+      }
       return;
     }
 

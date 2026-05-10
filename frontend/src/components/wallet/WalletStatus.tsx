@@ -2,6 +2,7 @@
 
 import { useAccount, useChainId, useBalance } from 'wagmi';
 import { formatUnits } from 'viem';
+import { useIsHydrated } from '@/lib/hooks/use-wallet';
 
 export default function WalletStatus() {
   const SEPOLIA_CHAIN_ID = 11155111;
@@ -11,18 +12,21 @@ export default function WalletStatus() {
     address: address as `0x${string}` | undefined,
     chainId: SEPOLIA_CHAIN_ID,
   });
-  const isSepoliaNetwork = chainId === SEPOLIA_CHAIN_ID;
+  const isHydrated = useIsHydrated();
+  const safeIsConnected = isHydrated ? isConnected : false;
+  const isSepoliaNetwork = isHydrated ? chainId === SEPOLIA_CHAIN_ID : false;
+  const safeAddress = isHydrated ? address : undefined;
+  const safeBalance = isHydrated ? balance : undefined;
+  
   const hasProvider =
     typeof window !== 'undefined' && Boolean((window as Window & { ethereum?: unknown }).ethereum);
 
-  if (!isConnected) {
+  if (!safeIsConnected) {
     return (
       <div className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg space-y-2">
         <p className="text-gray-700 text-sm font-semibold">Chế độ xem (read-only)</p>
         <p className="text-gray-600 text-xs">
-          {hasProvider
-            ? 'Bạn có thể xem dữ liệu on-chain mà không cần kết nối ví.'
-            : 'Chưa có MetaMask. Bạn vẫn có thể xem dữ liệu on-chain.'}
+          Bạn có thể xem dữ liệu on-chain mà không cần kết nối ví.
         </p>
       </div>
     );
@@ -40,14 +44,14 @@ export default function WalletStatus() {
           <div>
             <p className="text-xs text-gray-600 mb-1">Địa chỉ</p>
             <p className="font-mono text-sm font-bold text-blue-700">
-              {shortenAddress(address)}
+              {shortenAddress(safeAddress)}
             </p>
           </div>
           <div>
             <p className="text-xs text-gray-600 mb-1">Số dư</p>
             <p className="font-mono text-sm font-bold text-blue-700">
-              {balance
-                ? `${parseFloat(formatUnits(balance.value, balance.decimals)).toFixed(4)} ${balance.symbol}`
+              {safeBalance
+                ? `${parseFloat(formatUnits(safeBalance.value, safeBalance.decimals)).toFixed(4)} ${safeBalance.symbol}`
                 : '0 ETH'}
             </p>
           </div>

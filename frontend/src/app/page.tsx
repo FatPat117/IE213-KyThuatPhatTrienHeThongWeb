@@ -1,6 +1,6 @@
 "use client";
 
-import dynamic from "next/dynamic";
+
 import Link from "next/link";
 import {
     useCallback,
@@ -12,11 +12,10 @@ import {
 } from "react";
 import { formatEther } from "viem";
 import { useAccount, useChainId } from "wagmi";
+import { ContractStatsDisplay } from "@/components/contract/ContractReadComponent";
+import dynamic from "next/dynamic";
+const CampaignListDisplay = dynamic(() => import("@/components/contract/ContractReadComponent").then(m => m.CampaignListDisplay), { ssr: false });
 import WalletStatus from "@/components/wallet/WalletStatus";
-import {
-    ContractStatsDisplay,
-    CampaignListDisplay,
-} from "@/components/contract/ContractReadComponent";
 import {
     getReviewerAggregates,
     getUserProfile,
@@ -62,7 +61,7 @@ function useIsHydrated() {
     );
 }
 
-function HomeContent() {
+export default function Home() {
     const isHydrated = useIsHydrated();
     const { isConnected } = useAccount();
     const chainId = useChainId();
@@ -250,7 +249,7 @@ function HomeContent() {
                         </div>
 
                         <div className="space-y-5">
-                            <h1 className="text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl lg:text-[2.75rem] lg:leading-[1.15]">
+                            <h1 className="text-5xl font-extrabold tracking-tight text-slate-900 sm:text-6xl lg:text-[2.75rem] lg:leading-[1.15]">
                                 Quyên góp minh bạch trên Ethereum
                             </h1>
                             <p className="max-w-xl text-lg leading-relaxed text-slate-600">
@@ -379,7 +378,7 @@ function HomeContent() {
                 <section className="flex flex-col gap-10 rounded-2xl border border-emerald-200/80 bg-white p-6 shadow-lg shadow-slate-200/30 ring-1 ring-slate-900/5 md:p-8">
                     <div className="grid gap-5 md:grid-cols-2 md:items-end">
                         <div>
-                            <p className="mb-2 text-sm font-semibold uppercase tracking-wider text-emerald-600">
+                            <p className="mb-2 text-sm font-semibold uppercase tracking-wider text-emerald-700">
                                 Kiểm duyệt
                             </p>
                             <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
@@ -387,7 +386,7 @@ function HomeContent() {
                             </h2>
                         </div>
                         <div className="flex flex-col items-start gap-2 md:items-end md:text-right">
-                            <p className="text-sm font-semibold uppercase tracking-wider text-teal-600">
+                            <p className="text-sm font-semibold uppercase tracking-wider text-teal-700">
                                 Hội đồng quản lý quỹ
                             </p>
                             <button
@@ -464,7 +463,7 @@ function HomeContent() {
                                                 {reviewer.name}
                                             </h3>
                                             <div className="mx-auto h-0.5 w-14 rounded-full bg-gradient-to-r from-emerald-400 to-teal-500" />
-                                            <p className="text-base font-semibold text-emerald-600">
+                                            <p className="text-base font-semibold text-emerald-700">
                                                 {reviewer.role}
                                             </p>
                                             <p className="text-sm leading-relaxed text-slate-600 line-clamp-2">
@@ -476,7 +475,7 @@ function HomeContent() {
                                         </div>
 
                                         <div className="pointer-events-none absolute inset-3 z-20 rounded-2xl border border-emerald-200/90 bg-white/95 p-4 text-left opacity-0 shadow-xl shadow-emerald-100 backdrop-blur-sm transition duration-300 translate-y-3 group-hover:translate-y-0 group-hover:opacity-100">
-                                            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600">
+                                            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
                                                 Safe kiểm duyệt
                                             </p>
                                             <h4 className="mt-1 break-all text-sm font-bold text-slate-900">
@@ -738,8 +737,4 @@ function HomeContent() {
     );
 }
 
-const Home = dynamic(async () => HomeContent, {
-    ssr: false,
-});
 
-export default Home;
