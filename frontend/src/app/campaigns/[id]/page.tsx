@@ -1344,6 +1344,8 @@ export default function CampaignDetailPage() {
                                     />
                                     <DonatePanel
                                         amount={amount}
+                                        goal={campaign.goal.toString()}
+                                        raised={campaign.raised.toString()}
                                         canDonate={canDonate}
                                         isConnected={isConnected}
                                         isSepolia={isSepolia}

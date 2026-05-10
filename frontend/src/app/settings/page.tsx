@@ -214,78 +214,47 @@ export default function SettingsPage() {
     showSuccessToast(success);
   }, [success]);
 
-  const handleAvatarFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      setError('Vui lòng chọn file ảnh (png/jpg/webp...).');
-      return;
-    }
-    if (file.size > MAX_AVATAR_FILE_BYTES) {
-      setError('Ảnh đại diện tối đa 2MB.');
-      return;
-    }
-
-    setError(null);
-    try {
-      const dataUrl = await optimizeAvatarDataUrl(file);
-      if (dataUrlPayloadBytes(dataUrl) > MAX_AVATAR_PAYLOAD_BYTES) {
-        setError('Ảnh quá lớn sau khi xử lý. Vui lòng chọn ảnh nhỏ hơn hoặc đổi định dạng khác.');
-        return;
-      }
-      setAvatarDataUrl(dataUrl);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không thể đọc file ảnh.');
-    }
-  };
-
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!canEdit) return;
+    if (!token) return;
+
     setError(null);
     setReviewerProfileError(null);
     setSuccess(null);
+    setIsSaving(true);
 
-    if (!isMounted) {
-        return (
-            <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-                <main className="mx-auto w-full max-w-3xl px-6 py-12 md:px-10">
-                    <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-                        <h1 className="text-2xl font-bold text-slate-900">
-                            Hồ sơ &amp; cài đặt
-                        </h1>
-                        <p className="mt-3 text-sm text-slate-600">
-                            Đang tải...
-                        </p>
-                    </div>
-                </main>
-            </div>
-        );
+    try {
+      const normalizedWallet = walletAddress.trim().toLowerCase();
+      const normalizedDisplayName = displayName.trim();
+      const updatedUser = await updateUserProfile(token, normalizedWallet, {
+        displayName: normalizedDisplayName,
+        avatarUrl: avatarDataUrl,
+      });
+      setAuth(token, toAuthUserProfile(updatedUser));
+
+      if (isReviewer && !isReviewerRoleLoading) {
+        await updateReviewerProfile(token, {
+          organizationName: organizationName.trim(),
+          region: region.trim(),
+        });
+      }
+
+      setSuccess("Đã lưu thay đổi hồ sơ.");
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Không thể lưu thông tin hồ sơ.";
+      if (isReviewer && !isReviewerRoleLoading) {
+        setReviewerProfileError(message);
+      } else {
+        setError(message);
+      }
+    } finally {
+      setIsSaving(false);
     }
+  };
 
-    if (!isConnected || !address) {
-        return (
-            <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-                <main className="mx-auto w-full max-w-3xl px-6 py-12 md:px-10">
-                    <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-                        <h1 className="text-2xl font-bold text-slate-900">
-                            Hồ sơ &amp; cài đặt
-                        </h1>
-                        <p className="mt-3 text-sm text-slate-600">
-                            Bạn cần kết nối ví để quản lý hồ sơ cá nhân.
-                        </p>
-                        <Link
-                            href="/campaigns"
-                            className="mt-5 inline-flex rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                        >
-                            Xem chiến dịch công khai
-                        </Link>
-                    </div>
-                </main>
-            </div>
-        );
-    }
-
+  if (!isMounted) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
         <main className="mx-auto w-full max-w-3xl px-6 py-12 md:px-10">
@@ -446,5 +415,7 @@ export default function SettingsPage() {
             </form>
           )}
         </div>
+      </main>
+    </div>
     );
 }
