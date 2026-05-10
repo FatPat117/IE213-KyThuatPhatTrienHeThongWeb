@@ -250,14 +250,9 @@ export default function CampaignDetailPage() {
                         "event Donated(uint256 indexed campaignId, address indexed donor, uint256 amount, uint256 totalRaised)",
                     );
                     const latestBlock = await publicClient.getBlockNumber();
-<<<<<<< Updated upstream
-                    // Alchemy Free tier giới hạn 10 block/request → dùng chunk 9 block
-                    const maxBlocksToScan = 1000n;
-                    const chunkSize = 9n;
-=======
+
                     const maxBlocksToScan = 5000n;
                     const chunkSize = 5000n;
->>>>>>> Stashed changes
                     const fromBlock =
                         latestBlock > maxBlocksToScan
                             ? latestBlock - maxBlocksToScan + 1n
