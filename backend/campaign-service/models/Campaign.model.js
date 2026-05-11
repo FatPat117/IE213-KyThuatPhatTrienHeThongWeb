@@ -5,7 +5,6 @@ const CampaignSchema = new mongoose.Schema(
         onChainId: {
             type: Number,
             required: [true, "onChainId is required"],
-            unique: true,
         },
         title: {
             type: String,
@@ -107,7 +106,7 @@ const CampaignSchema = new mongoose.Schema(
     { timestamps: true },
 );
 
-CampaignSchema.index({ onChainId: 1 });
+CampaignSchema.index({ onChainId: 1 }, { unique: true });
 CampaignSchema.index({ creator: 1 });
 CampaignSchema.index({ beneficiary: 1 });
 CampaignSchema.index({ status: 1 });

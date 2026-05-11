@@ -6,14 +6,12 @@ const ReviewerSchema = new mongoose.Schema(
         reviewerCode: {
             type: String,
             required: [true, "reviewerCode là bắt buộc"],
-            unique: true,
             trim: true,
         },
         // Primary wallet address
         walletAddress: {
             type: String,
             required: [true, "walletAddress là bắt buộc"],
-            unique: true,
             lowercase: true,
             trim: true,
             match: [/^0x[a-fA-F0-9]{40}$/, "Địa chỉ ví không hợp lệ"],
