@@ -272,7 +272,7 @@ function normalizeCampaign(
         id,
         title: `Chiến dịch #${id}`,
         description:
-            "Dữ liệu chiến dịch hiện chỉ có on-chain, chưa có metadata off-chain.",
+            "Dữ liệu chiến dịch hiện chỉ đang được đồng bộ giữa on-chain và backend. Vui lòng kiểm tra lại sau.",
         creator: (raw?.creator ??
             "0x0000000000000000000000000000000000000000") as Address,
         beneficiary: (raw?.beneficiary ??
@@ -1137,7 +1137,7 @@ export function useSubmitMilestoneProof() {
             const rawMessage =
                 simulationError instanceof Error
                     ? simulationError.message
-                    : "Không thể mô phỏng giao dịch submit minh chứng.";
+                    : "Không thể mô phỏng giao dịch đăng tải minh chứng.";
             // Some RPCs return generic "gas limit too high" during estimation/simulation.
             // Continue and let the wallet send with a known-safe gas limit.
             if (message.includes("gas limit too high")) {

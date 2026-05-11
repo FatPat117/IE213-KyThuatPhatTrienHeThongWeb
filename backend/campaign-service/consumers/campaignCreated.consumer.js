@@ -2,6 +2,7 @@ const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const { ethers } = require("ethers");
 const { Milestone, Campaign } = require("../models");
 const notificationService = require("../services/notification.service");
+const { getSafeOwners } = require("../utils/safeUtils");
 
 const QUEUE = process.env.RABBITMQ_QUEUE_CAMP_CREATED || "campaign.created.queue";
 const ROUTING_KEY = process.env.RABBITMQ_RKEY_CAMP_CREATED || "campaign.created";
@@ -302,9 +303,9 @@ async function startCampaignCreatedConsumer() {
                         notificationService.createNotification({
                             recipientWallet: adminWallet,
                             type: "campaign_created",
-                            title: "Có campaign mới cần duyệt",
+                            title: "Có chiến dịch mới cần duyệt",
                             message:
-                                "Một campaign mới vừa được tạo và đang chờ phê duyệt.",
+                                "Một chiến dịch mới vừa được tạo và đang chờ phê duyệt.",
                             campaignOnChainId: onChainId,
                             txHash: payload.txHash || "",
                         }),
@@ -312,16 +313,23 @@ async function startCampaignCreatedConsumer() {
                 );
             }
 
+            // Gửi thông báo cho từng EOA owner của reviewerSafe (không phải Safe address)
             const reviewerWallet = normalizeWallet(reviewerSafe);
             if (reviewerWallet) {
-                await notificationService.createNotification({
-                    recipientWallet: reviewerWallet,
-                    type: "campaign_assigned",
-                    title: "New campaign assigned",
-                    message: "You have been assigned to review a new campaign.",
-                    campaignOnChainId: onChainId,
-                    txHash: payload.txHash || "",
-                });
+                const safeOwners = await getSafeOwners(reviewerWallet);
+                const notifyTargets = safeOwners.length > 0 ? safeOwners : [reviewerWallet];
+                await Promise.all(
+                    notifyTargets.map((ownerWallet) =>
+                        notificationService.createNotification({
+                            recipientWallet: ownerWallet,
+                            type: "campaign_assigned",
+                            title: "Chiến dịch mới được giao",
+                            message: `Bạn đã được giao nhiệm vụ kiểm duyệt chiến dịch #${onChainId} mới tạo.`,
+                            campaignOnChainId: onChainId,
+                            txHash: payload.txHash || "",
+                        }),
+                    ),
+                );
             }
 
             channel.ack(msg);

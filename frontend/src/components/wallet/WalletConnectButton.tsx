@@ -16,7 +16,9 @@ import { requestNonce, useAuth, verifyWalletSignature } from "@/lib";
 import {
     getBackendErrorMessage,
     getWalletErrorMessage,
+    isWalletUserRejectedMessage,
 } from "@/lib/errors/normalize";
+import { showErrorToast } from "@/lib/ui/toast";
 
 const SEPOLIA_CHAIN_ID = 11155111;
 const EMPTY_SUBSCRIBE = () => () => {};
@@ -39,7 +41,6 @@ export default function WalletConnectButton() {
     const { user, token, setAuth, clearAuth } = useAuth();
     const chainId = useChainId();
     const [hasProvider, setHasProvider] = useState<boolean | null>(null);
-    const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [isAuthenticating, setIsAuthenticating] = useState(false);
     const [isDisconnecting, setIsDisconnecting] = useState(false);
     const [authAttemptedWallet, setAuthAttemptedWallet] = useState<
@@ -79,7 +80,6 @@ export default function WalletConnectButton() {
     const authenticateWallet = async (walletAddress: string) => {
         try {
             setIsAuthenticating(true);
-            setErrorMessage(null);
             setAuthAttemptedWallet(walletAddress.toLowerCase());
 
             const { nonce } = await requestNonce(walletAddress);
@@ -93,7 +93,10 @@ export default function WalletConnectButton() {
                 // Ignore transient errors caused by user-initiated disconnect.
                 return;
             }
-            setErrorMessage(resolveAuthError(error));
+            const normalizedMessage = resolveAuthError(error);
+            showErrorToast(normalizedMessage, {
+                emphasis: !isWalletUserRejectedMessage(normalizedMessage),
+            });
         } finally {
             setIsAuthenticating(false);
         }
@@ -128,14 +131,11 @@ export default function WalletConnectButton() {
     useEffect(() => {
         if (isConnected) return;
         setAuthAttemptedWallet(null);
-        setErrorMessage(null);
         setIsDisconnecting(false);
     }, [isConnected]);
 
     const handleConnect = async () => {
         try {
-            setErrorMessage(null);
-
             if (isConnected && address) {
                 if (!isAuthenticated && !isAuthenticating) {
                     await authenticateWallet(address);
@@ -161,7 +161,7 @@ export default function WalletConnectButton() {
                 connectors.find((connector) => connector.id === "injected") ??
                 connectors[0];
             if (!injectedConnector) {
-                setErrorMessage(
+                showErrorToast(
                     "Không tìm thấy connector ví khả dụng. Vui lòng tải lại trang.",
                 );
                 return;
@@ -171,20 +171,19 @@ export default function WalletConnectButton() {
             console.error("Failed to connect wallet:", error);
             const rawMessage = error instanceof Error ? error.message : "";
             if (isIgnorableConnectorError(rawMessage)) {
-                setErrorMessage(null);
                 return;
             }
-            setErrorMessage(
-                getWalletErrorMessage(error, {
-                    fallback: "Kết nối ví thất bại. Vui lòng thử lại.",
-                }),
-            );
+            const normalizedMessage = getWalletErrorMessage(error, {
+                fallback: "Kết nối ví thất bại. Vui lòng thử lại.",
+            });
+            showErrorToast(normalizedMessage, {
+                emphasis: !isWalletUserRejectedMessage(normalizedMessage),
+            });
         }
     };
 
     const handleDisconnect = async () => {
         setIsDisconnecting(true);
-        setErrorMessage(null);
         setAuthAttemptedWallet(null);
         clearAuth();
         try {
@@ -197,7 +196,6 @@ export default function WalletConnectButton() {
     };
 
     const handleSwitchNetwork = () => {
-        setErrorMessage(null);
         switchChain({ chainId: SEPOLIA_CHAIN_ID });
     };
 
@@ -210,7 +208,6 @@ export default function WalletConnectButton() {
         return (
             <WalletDisconnectedCard
                 isPending={isPending || isAuthenticating}
-                errorMessage={errorMessage}
                 onConnect={handleConnect}
                 buttonLabel={isConnected ? "Ký xác thực ví" : "Kết nối ví"}
             />

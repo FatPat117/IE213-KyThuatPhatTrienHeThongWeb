@@ -1,7 +1,8 @@
 "use client";
 
 import NotificationBell from "@/components/layout/NotificationBell";
-import WalletConnectButton from "@/components/wallet/WalletConnectButton";
+import dynamic from "next/dynamic";
+const WalletConnectButton = dynamic(() => import("@/components/wallet/WalletConnectButton"), { ssr: false });
 import { useAuth, useIsReviewer, useReadContractOwner } from "@/lib";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -50,14 +51,23 @@ export default function Header() {
     // Only compute role-based links on client to avoid hydration mismatch
     if (isMounted) {
         if (isSignedIn && !isAdmin) {
-            roleLinks.push({ href: "/my-campaigns", label: "Campaign của tôi" });
+            roleLinks.push({
+                href: "/my-campaigns",
+                label: "Các chiến dịch của tôi",
+            });
         }
         if (isReviewer && !isAdmin) {
-            roleLinks.push({ href: "/reviewer", label: "Duyệt milestone" });
+            roleLinks.push({ href: "/reviewer", label: "Các mốc đang chờ duyệt" });
         }
         if (isAdmin) {
-            roleLinks.push({ href: "/admin/campaigns", label: "Duyệt campaign" });
-            roleLinks.push({ href: "/admin/reviewers", label: "Quản lý Reviewer" });
+            roleLinks.push({
+                href: "/admin/campaigns",
+                label: "Duyệt các chiến dịch mới",
+            });
+            roleLinks.push({
+                href: "/admin/reviewers",
+                label: "Quản lý danh sách kiểm duyệt viên",
+            });
         }
     }
 
@@ -65,21 +75,16 @@ export default function Header() {
 
     // Các trang cá nhân gom vào nhóm "Tài khoản" để header gọn hơn
     const accountLinks = [
-        { href: "/my-campaigns", label: "Campaign của tôi" },
-        { href: "/campaigns/create", label: "Tạo campaign mới" },
         { href: "/donations", label: "Quyên góp của tôi" },
         { href: "/settings", label: "Hồ sơ & cài đặt" },
     ];
     const visibleAccountLinks = isAdmin
         ? [
-              { href: "/admin/campaigns", label: "Duyệt campaign" },
-              { href: "/admin/reviewers", label: "Quản lý Reviewer" },
               { href: "/donations", label: "Quyên góp của tôi" },
               { href: "/settings", label: "Hồ sơ & cài đặt" },
           ]
-        : isReviewer
-          ? [...accountLinks, { href: "/reviewer", label: "Duyệt milestone (Reviewer)" }]
-          : accountLinks;
+        : accountLinks;
+
 
     return (
         <>
@@ -101,7 +106,7 @@ export default function Header() {
                                 href="https://metamask.io/download/"
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg bg-amber-600 text-white text-xs sm:text-sm font-semibold hover:bg-amber-700 transition"
+                                className="whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg bg-amber-700 text-white text-xs sm:text-sm font-semibold hover:bg-amber-800 transition"
                             >
                                 Cài đặt
                             </a>
@@ -122,9 +127,9 @@ export default function Header() {
                             <p className="text-xs font-semibold text-blue-600 tracking-widest uppercase leading-none">
                                 FundRaising
                             </p>
-                            <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent">
+                            <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent">
                                 dApp
-                            </h1>
+                            </span>
                         </div>
                     </Link>
 
@@ -153,43 +158,42 @@ export default function Header() {
                     </div>
 
                     {/* Right Section - Wallet Button + Account Dropdown */}
-                    <div className="flex items-center gap-3">
-                        {isSignedIn && <NotificationBell token={token} />}
-                        {isSignedIn ? (
+                    <div className="flex items-center gap-3 min-w-[140px] justify-end">
+                        <div className="flex items-center gap-3">
+                            {isSignedIn && <NotificationBell token={token} />}
                             <div className="relative hidden md:block group">
                                 <WalletConnectButton />
-                                {/* THE INVISIBLE BRIDGE FIX IS ADDED HERE */}
-                                <div className="invisible absolute right-0 top-full z-40 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 text-sm text-slate-700 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 before:absolute before:-top-2 before:left-0 before:h-2 before:w-full before:content-['']">
-                                    {visibleAccountLinks.map((link) => {
-                                        const active = isLinkActive(
-                                            link.href,
-                                            pathname ?? "",
-                                        );
-                                        return (
-                                            <Link
-                                                key={link.href}
-                                                href={link.href}
-                                                className={`block rounded-lg px-3 py-2 text-xs font-medium ${
-                                                    active
-                                                        ? "bg-blue-50 text-blue-700"
-                                                        : "hover:bg-slate-50 hover:text-blue-600"
-                                                }`}
-                                            >
-                                                {link.label}
-                                            </Link>
-                                        );
-                                    })}
-                                </div>
+                                {isSignedIn && (
+                                    <div className="invisible absolute right-0 top-full z-40 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 text-sm text-slate-700 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 before:absolute before:-top-2 before:left-0 before:h-2 before:w-full before:content-['']">
+                                        {visibleAccountLinks.map((link) => {
+                                            const active = isLinkActive(
+                                                link.href,
+                                                pathname ?? "",
+                                            );
+                                            return (
+                                                <Link
+                                                    key={link.href}
+                                                    href={link.href}
+                                                    className={`block rounded-lg px-3 py-2 text-xs font-medium ${
+                                                        active
+                                                            ? "bg-blue-50 text-blue-700"
+                                                            : "hover:bg-slate-50 hover:text-blue-600"
+                                                    }`}
+                                                >
+                                                    {link.label}
+                                                </Link>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
-                        ) : (
-                            <WalletConnectButton />
-                        )}
 
-                        {isSignedIn && (
-                            <div className="md:hidden">
-                                <WalletConnectButton />
-                            </div>
-                        )}
+                            {isSignedIn && (
+                                <div className="md:hidden">
+                                    <WalletConnectButton />
+                                </div>
+                            )}
+                        </div>
 
                         <button
                             onClick={() =>

@@ -26,12 +26,23 @@ function normalizeAllocationBps(raw, goalWei, financialTargetWei) {
     return Number((target * BigInt(BPS_DENOMINATOR)) / goal);
 }
 
-async function getAllCampaigns(filter = {}) {
+async function getAllCampaigns(filter = {}, pagination = {}) {
     const query = {};
     if (filter.status) query.status = filter.status;
     if (filter.creator) query.creator = filter.creator.toLowerCase();
 
-    return Campaign.find(query).sort({ createdAt: -1 });
+    const page = Math.max(Number(pagination.page) || 1, 1);
+    const limit = Math.min(Math.max(Number(pagination.limit) || 0, 0), 200);
+
+    const total = await Campaign.countDocuments(query);
+
+    let queryBuilder = Campaign.find(query).sort({ createdAt: -1 });
+    if (limit > 0) {
+        queryBuilder = queryBuilder.skip((page - 1) * limit).limit(limit);
+    }
+
+    const campaigns = await queryBuilder;
+    return { campaigns, total, page, limit };
 }
 
 async function getCampaignById(onChainId) {

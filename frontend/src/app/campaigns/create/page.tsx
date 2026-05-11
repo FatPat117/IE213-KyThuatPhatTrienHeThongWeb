@@ -13,6 +13,7 @@ import {
     contractConfig,
     createTransaction,
     getCampaignIndexStatus,
+    getAdminReviewerProfiles,
     saveCampaignMetadataToCache,
     updateCampaignMetadata,
     useAuth,
@@ -181,6 +182,46 @@ export default function CreateCampaignPage() {
                             : "idle";
     const isFormBusy = isPending || isConfirming;
 
+    const [reviewerProfileByWallet, setReviewerProfileByWallet] = useState<
+        Map<string, { organizationName: string; region: string }>
+    >(new Map());
+
+    useEffect(() => {
+        let cancelled = false;
+        if (!token) {
+            setReviewerProfileByWallet(new Map());
+            return;
+        }
+
+        getAdminReviewerProfiles(token)
+            .then((profiles) => {
+                if (cancelled) return;
+                const next = new Map<
+                    string,
+                    { organizationName: string; region: string }
+                >();
+                for (const profile of profiles) {
+                    const wallet = (profile.walletAddress || "")
+                        .trim()
+                        .toLowerCase();
+                    if (!/^0x[a-f0-9]{40}$/.test(wallet)) continue;
+                    next.set(wallet, {
+                        organizationName: (profile.organizationName || "").trim(),
+                        region: (profile.region || "").trim(),
+                    });
+                }
+                setReviewerProfileByWallet(next);
+            })
+            .catch(() => {
+                if (cancelled) return;
+                setReviewerProfileByWallet(new Map());
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [token]);
+
     useEffect(() => {
         const options = Array.from(
             new Set(
@@ -188,12 +229,17 @@ export default function CreateCampaignPage() {
                     .map((safe) => safe.toLowerCase().trim())
                     .filter((safe) => /^0x[a-f0-9]{40}$/.test(safe)),
             ),
-        ).map((safe) => ({
-            value: safe,
-            label: `${safe.slice(0, 10)}...${safe.slice(-6)}`,
-        }));
+        ).map((safe) => {
+            const profile = reviewerProfileByWallet.get(safe);
+            const organization = profile?.organizationName || "Chưa rõ tổ chức";
+            const region = profile?.region || "Chưa rõ địa phương";
+            return {
+                value: safe,
+                label: `${safe.slice(0, 10)}...${safe.slice(-6)} - ${organization} - ${region}`,
+            };
+        });
         setReviewerOptions(options);
-    }, [reviewerSafesQuery.reviewerSafes]);
+    }, [reviewerProfileByWallet, reviewerSafesQuery.reviewerSafes]);
 
     useEffect(() => {
         if (!formData.reviewerSafe && reviewerOptions.length > 0) {
@@ -357,13 +403,17 @@ export default function CreateCampaignPage() {
 
         if (metadataSynced) {
             // Metadata đã được sync → chuyển hướng ngay
-            showSuccessToast("Tạo chiến dịch thành công! Đang chuyển tới trang chi tiết...");
+            showSuccessToast(
+                "Chiến dịch đã được tạo thành công và đang chờ được duyệt.",
+            );
             const timer = setTimeout(() => router.push(target), 800);
             return () => clearTimeout(timer);
         }
 
         // Hard timeout: chờ tối đa 15s rồi redirect dù chưa sync xong
-        showSuccessToast("Tạo chiến dịch thành công! Đang đồng bộ dữ liệu...");
+        showSuccessToast(
+            "Chiến dịch đã được tạo thành công và đang chờ được duyệt.",
+        );
         const timer = setTimeout(() => router.push(target), 15_000);
         return () => clearTimeout(timer);
     }, [createdCampaignId, metadataSynced, router, transactionStatus]);

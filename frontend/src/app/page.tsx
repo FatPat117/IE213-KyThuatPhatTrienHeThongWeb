@@ -1,6 +1,6 @@
 "use client";
 
-import dynamic from "next/dynamic";
+
 import Link from "next/link";
 import {
     useCallback,
@@ -12,11 +12,10 @@ import {
 } from "react";
 import { formatEther } from "viem";
 import { useAccount, useChainId } from "wagmi";
+import { ContractStatsDisplay } from "@/components/contract/ContractReadComponent";
+import dynamic from "next/dynamic";
+const CampaignListDisplay = dynamic(() => import("@/components/contract/ContractReadComponent").then(m => m.CampaignListDisplay), { ssr: false });
 import WalletStatus from "@/components/wallet/WalletStatus";
-import {
-    ContractStatsDisplay,
-    CampaignListDisplay,
-} from "@/components/contract/ContractReadComponent";
 import {
     getReviewerAggregates,
     getUserProfile,
@@ -62,7 +61,7 @@ function useIsHydrated() {
     );
 }
 
-function HomeContent() {
+export default function Home() {
     const isHydrated = useIsHydrated();
     const { isConnected } = useAccount();
     const chainId = useChainId();
@@ -250,7 +249,7 @@ function HomeContent() {
                         </div>
 
                         <div className="space-y-5">
-                            <h1 className="text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl lg:text-[2.75rem] lg:leading-[1.15]">
+                            <h1 className="text-5xl font-extrabold tracking-tight text-slate-900 sm:text-6xl lg:text-[2.75rem] lg:leading-[1.15]">
                                 Quyên góp minh bạch trên Ethereum
                             </h1>
                             <p className="max-w-xl text-lg leading-relaxed text-slate-600">
@@ -271,7 +270,7 @@ function HomeContent() {
                                 href="/campaigns"
                                 className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-6 py-3.5 text-base font-semibold text-slate-700 transition hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50/50"
                             >
-                                Duyệt chiến dịch
+                                Danh sách các chiến dịch
                             </Link>
                         </div>
 
@@ -379,7 +378,7 @@ function HomeContent() {
                 <section className="flex flex-col gap-10 rounded-2xl border border-emerald-200/80 bg-white p-6 shadow-lg shadow-slate-200/30 ring-1 ring-slate-900/5 md:p-8">
                     <div className="grid gap-5 md:grid-cols-2 md:items-end">
                         <div>
-                            <p className="mb-2 text-sm font-semibold uppercase tracking-wider text-emerald-600">
+                            <p className="mb-2 text-sm font-semibold uppercase tracking-wider text-emerald-700">
                                 Kiểm duyệt
                             </p>
                             <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
@@ -387,7 +386,7 @@ function HomeContent() {
                             </h2>
                         </div>
                         <div className="flex flex-col items-start gap-2 md:items-end md:text-right">
-                            <p className="text-sm font-semibold uppercase tracking-wider text-teal-600">
+                            <p className="text-sm font-semibold uppercase tracking-wider text-teal-700">
                                 Hội đồng quản lý quỹ
                             </p>
                             <button
@@ -464,7 +463,7 @@ function HomeContent() {
                                                 {reviewer.name}
                                             </h3>
                                             <div className="mx-auto h-0.5 w-14 rounded-full bg-gradient-to-r from-emerald-400 to-teal-500" />
-                                            <p className="text-base font-semibold text-emerald-600">
+                                            <p className="text-base font-semibold text-emerald-700">
                                                 {reviewer.role}
                                             </p>
                                             <p className="text-sm leading-relaxed text-slate-600 line-clamp-2">
@@ -476,7 +475,7 @@ function HomeContent() {
                                         </div>
 
                                         <div className="pointer-events-none absolute inset-3 z-20 rounded-2xl border border-emerald-200/90 bg-white/95 p-4 text-left opacity-0 shadow-xl shadow-emerald-100 backdrop-blur-sm transition duration-300 translate-y-3 group-hover:translate-y-0 group-hover:opacity-100">
-                                            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600">
+                                            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
                                                 Safe kiểm duyệt
                                             </p>
                                             <h4 className="mt-1 break-all text-sm font-bold text-slate-900">
@@ -559,7 +558,7 @@ function HomeContent() {
                         </Link>
                     </div>
                     <div>
-                        <CampaignListDisplay />
+                        <CampaignListDisplay limit={3} onlyActive={true} />
                     </div>
                 </section>
 
@@ -596,8 +595,8 @@ function HomeContent() {
                             },
                             {
                                 step: 4,
-                                title: "Rút tiền",
-                                desc: "Rút tiền an toàn khi chiến dịch đạt mục tiêu.",
+                                title: "Giải ngân an toàn",
+                                desc: "Tiền được giải ngân vào ví escrow, đảm bảo sử dụng đúng mục đích.",
                             },
                         ].map(({ step, title, desc }) => (
                             <div key={step} className="flex flex-col">
@@ -612,57 +611,6 @@ function HomeContent() {
                                 </p>
                             </div>
                         ))}
-                    </div>
-                </section>
-
-                {/* Network Info Section */}
-                <section className="flex flex-col gap-10 rounded-2xl border border-slate-200/80 bg-white p-8 shadow-lg shadow-slate-200/30 ring-1 ring-slate-900/5 md:p-10">
-                    <div className="text-center">
-                        <p className="mb-2 text-sm font-semibold uppercase tracking-wider text-indigo-600">
-                            Hạ tầng
-                        </p>
-                        <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-                            Xây dựng trên Ethereum Sepolia
-                        </h2>
-                        <p className="mx-auto mt-3 max-w-2xl text-lg text-slate-600">
-                            Mọi chiến dịch, quyên góp và cột mốc được ghi vĩnh
-                            viễn trên blockchain — minh bạch hoàn toàn.
-                        </p>
-                    </div>
-                    <div className="grid gap-8 sm:grid-cols-3">
-                        <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-6">
-                            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                                Mạng
-                            </p>
-                            <p className="mt-2 text-xl font-bold text-slate-900">
-                                Ethereum Sepolia
-                            </p>
-                            <p className="mt-1 text-sm text-slate-600">
-                                Mạng thử nghiệm để phát triển và kiểm tra
-                            </p>
-                        </div>
-                        <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-6">
-                            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                                Chain ID
-                            </p>
-                            <p className="mt-2 text-xl font-bold text-slate-900 font-mono">
-                                11155111
-                            </p>
-                            <p className="mt-1 text-sm text-slate-600">
-                                Định danh mạng duy nhất
-                            </p>
-                        </div>
-                        <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-6">
-                            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                                Công nghệ
-                            </p>
-                            <p className="mt-2 text-xl font-bold text-slate-900">
-                                Hợp đồng thông minh
-                            </p>
-                            <p className="mt-1 text-sm text-slate-600">
-                                Tự động hóa trên Solidity
-                            </p>
-                        </div>
                     </div>
                 </section>
 
@@ -700,7 +648,7 @@ function HomeContent() {
                             href="/campaigns"
                             className="inline-flex items-center justify-center rounded-xl border-2 border-white/80 px-8 py-3.5 text-base font-bold text-white transition hover:bg-white/10"
                         >
-                            Duyệt chiến dịch
+                            Danh sách các chiến dịch
                         </Link>
                     </div>
                 </section>
@@ -725,7 +673,7 @@ function HomeContent() {
                                 href="/campaigns"
                                 className="text-sm text-slate-600 transition hover:text-indigo-600"
                             >
-                                Duyệt chiến dịch
+                                Danh sách các chiến dịch
                             </Link>
                             <Link
                                 href="/leaderboard"
@@ -734,28 +682,10 @@ function HomeContent() {
                                 Bảng xếp hạng
                             </Link>
                             <Link
-                                href="/transparency"
-                                className="text-sm text-slate-600 transition hover:text-indigo-600"
-                            >
-                                Minh bạch
-                            </Link>
-                            <Link
                                 href="/campaigns/create"
                                 className="text-sm text-slate-600 transition hover:text-indigo-600"
                             >
                                 Tạo chiến dịch
-                            </Link>
-                            <Link
-                                href="/dashboard"
-                                className="text-sm text-slate-600 transition hover:text-indigo-600"
-                            >
-                                Tổng quan
-                            </Link>
-                            <Link
-                                href="/donations"
-                                className="text-sm text-slate-600 transition hover:text-indigo-600"
-                            >
-                                Quyên góp của tôi
                             </Link>
                             <Link
                                 href="/status"
@@ -790,35 +720,15 @@ function HomeContent() {
                                 Về chúng tôi
                             </p>
                             <p className="text-sm text-slate-600">
-                                Dự án IE213 — Công nghệ Phát triển Web, UIT
+                                Dự án IE213 — Kỹ thuật phát triển hệ thống web
                             </p>
                         </div>
                     </div>
                     <div className="mt-12 border-t border-slate-200/80 pt-8">
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                            <p className="text-sm text-slate-500">
+                        <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
+                            <p className="text-sm text-slate-500 text-center">
                                 © 2024 FundRaising. Bảo lưu mọi quyền.
                             </p>
-                            <div className="flex gap-6 text-sm text-slate-500">
-                                <a
-                                    href="#"
-                                    className="transition hover:text-indigo-600"
-                                >
-                                    Riêng tư
-                                </a>
-                                <a
-                                    href="#"
-                                    className="transition hover:text-indigo-600"
-                                >
-                                    Điều khoản
-                                </a>
-                                <a
-                                    href="#"
-                                    className="transition hover:text-indigo-600"
-                                >
-                                    Liên hệ
-                                </a>
-                            </div>
                         </div>
                     </div>
                 </footer>
@@ -827,8 +737,4 @@ function HomeContent() {
     );
 }
 
-const Home = dynamic(async () => HomeContent, {
-    ssr: false,
-});
 
-export default Home;

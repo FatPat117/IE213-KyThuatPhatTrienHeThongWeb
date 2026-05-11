@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useConnect } from 'wagmi';
-import { getWalletErrorMessage } from '@/lib/errors/normalize';
+import {
+  getWalletErrorMessage,
+  isWalletUserRejectedMessage,
+} from '@/lib/errors/normalize';
 import { showErrorToast } from '@/lib/ui/toast';
 
 const isIgnorableConnectorError = (message: string) => {
@@ -56,11 +59,12 @@ export function WalletBannerConnectButton({ className = '' }: Props) {
       console.error('[WalletBannerConnectButton]', error);
       const rawMessage = error instanceof Error ? error.message : '';
       if (isIgnorableConnectorError(rawMessage)) return;
-      showErrorToast(
-        getWalletErrorMessage(error, {
-          fallback: 'Kết nối ví thất bại. Vui lòng thử lại.',
-        }),
-      );
+      const normalizedMessage = getWalletErrorMessage(error, {
+        fallback: 'Kết nối ví thất bại. Vui lòng thử lại.',
+      });
+      showErrorToast(normalizedMessage, {
+        emphasis: !isWalletUserRejectedMessage(normalizedMessage),
+      });
     }
   };
 

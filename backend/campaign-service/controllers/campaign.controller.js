@@ -273,8 +273,21 @@ async function getAllCampaigns(req, res, next) {
         if (req.query.status) filter.status = req.query.status;
         if (req.query.creator) filter.creator = req.query.creator;
 
-        const campaigns = await campaignService.getAllCampaigns(filter);
-        return successRes(res, campaigns);
+        const pagination = {};
+        if (req.query.page) pagination.page = req.query.page;
+        if (req.query.limit) pagination.limit = req.query.limit;
+
+        const { campaigns, total, page, limit } = await campaignService.getAllCampaigns(filter, pagination);
+
+        return successRes(res, {
+            campaigns,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: limit > 0 ? Math.max(Math.ceil(total / limit), 1) : 1,
+            },
+        });
     } catch (err) {
         return next(err);
     }
@@ -282,16 +295,15 @@ async function getAllCampaigns(req, res, next) {
 
 async function getCampaignById(req, res, next) {
     try {
-        const campaign = await campaignService.getCampaignById(
-            Number(req.params.id),
-        );
+        const onChainId = Number(req.params.onChainId ?? req.params.id);
+        const campaign = await campaignService.getCampaignById(onChainId);
         if (!campaign) {
             return errorRes(res, "Campaign not found", 404);
         }
 
         // Fetch milestones for this campaign
         const milestones = await Milestone.find({ 
-            campaignOnChainId: Number(req.params.id) 
+            campaignOnChainId: onChainId 
         }).sort({ milestoneId: 1 }).lean();
 
         const responseData = {
@@ -650,6 +662,9 @@ async function getPublicCampaignMilestones(req, res, next) {
                     approvedAt: milestone.approvedAt,
                     approvedBy: milestone.approvedBy || "",
                     disbursedAt: milestone.disbursedAt,
+                    lastRejectionReason: milestone.lastRejectionReason || null,
+                    rejectionCount: Number(milestone.rejectionCount || 0),
+                    maxRetries: Number(milestone.maxRetries || 3),
                 };
             }),
         });

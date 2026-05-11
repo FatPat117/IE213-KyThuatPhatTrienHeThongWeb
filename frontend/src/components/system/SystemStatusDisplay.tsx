@@ -6,7 +6,7 @@ import { WalletBannerConnectButton } from './WalletBannerConnectButton';
 export function SystemStatusDisplay() {
   const { status, clearStatus } = useSystemStatus();
 
-  if (!status) {
+  if (!status || status.type === 'wallet-disconnected') {
     return null;
   }
 
@@ -15,13 +15,11 @@ export function SystemStatusDisplay() {
   };
 
   const isHighAttention =
-    status.type === 'wrong-network' || status.type === 'wallet-disconnected';
+    status.type === 'wrong-network';
 
   // Banner styles based on status type
   const getBannerColors = () => {
     switch (status.type) {
-      case 'wallet-disconnected':
-        return 'bg-amber-100 border-amber-400 text-amber-950 shadow-[0_8px_30px_-6px_rgba(180,83,9,0.35)] ring-2 ring-amber-300/70';
       case 'wrong-network':
         return 'bg-red-100 border-red-600 text-red-950 shadow-[0_10px_40px_-8px_rgba(185,28,28,0.45)] ring-2 ring-red-500/60';
       case 'rpc-error':
@@ -37,8 +35,6 @@ export function SystemStatusDisplay() {
 
   const getIconColor = () => {
     switch (status.type) {
-      case 'wallet-disconnected':
-        return 'text-yellow-600';
       case 'wrong-network':
         return 'text-red-600';
       case 'rpc-error':
@@ -54,17 +50,6 @@ export function SystemStatusDisplay() {
 
   const getIcon = () => {
     switch (status.type) {
-      case 'wallet-disconnected':
-        return (
-          <svg className="h-7 w-7 sm:h-8 sm:w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-        );
       case 'wrong-network':
         return (
           <svg className="h-7 w-7 sm:h-8 sm:w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -160,12 +145,6 @@ export function SystemStatusDisplay() {
                 </button>
               )}
             </div>
-
-            {status.type === 'wallet-disconnected' && (
-              <div className="pointer-events-auto relative z-10 flex w-full shrink-0 justify-stretch sm:w-auto sm:justify-end sm:pl-2">
-                <WalletBannerConnectButton className="relative w-full sm:-mt-1 sm:w-auto sm:shadow-2xl" />
-              </div>
-            )}
           </div>
         </div>
       </div>

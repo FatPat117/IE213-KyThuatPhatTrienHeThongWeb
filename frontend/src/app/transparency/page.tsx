@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { formatEther } from "viem";
 import { getPublicCampaigns, usePublicStats } from "@/lib";
 import { type PublicCampaignItem } from "@/lib/api/campaigns";
+import { showErrorToast } from "@/lib/ui/toast";
 
 function formatEthFromWei(wei: string): string {
     try {
@@ -110,6 +111,16 @@ export default function TransparencyPage() {
         };
     }, []);
 
+    useEffect(() => {
+        if (!statsQuery.error) return;
+        showErrorToast(statsQuery.error);
+    }, [statsQuery.error]);
+
+    useEffect(() => {
+        if (!campaignsError) return;
+        showErrorToast(campaignsError);
+    }, [campaignsError]);
+
     const stats = statsQuery.data;
 
     const statusCards = useMemo(
@@ -177,11 +188,6 @@ export default function TransparencyPage() {
                     </div>
                 </header>
 
-                {statsQuery.error && (
-                    <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                        {statsQuery.error}
-                    </div>
-                )}
 
                 <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -259,12 +265,6 @@ export default function TransparencyPage() {
                             <div className="h-16 rounded-xl bg-slate-100" />
                             <div className="h-16 rounded-xl bg-slate-100" />
                         </div>
-                    )}
-
-                    {campaignsError && (
-                        <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                            {campaignsError}
-                        </p>
                     )}
 
                     {!statsQuery.isLoading &&

@@ -36,6 +36,8 @@ function formatDate(value: Date) {
         day: "2-digit",
         month: "2-digit",
         year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
     }).format(value);
 }
 
@@ -114,7 +116,7 @@ export default function MilestonePreviewCard({
     const [isLoading, setIsLoading] = useState(propMilestones.length === 0);
     const [isAwaitingIndex, setIsAwaitingIndex] = useState(false);
     const expectedMilestoneCount = Math.max(0, Number(milestoneCount || 0));
-    
+
     const fallbackMilestones = buildTimelineMilestones({
         campaignId,
         campaignDeadline,
@@ -194,7 +196,7 @@ export default function MilestonePreviewCard({
 
     const hasMilestones =
         apiMilestones.length > 0 || fallbackMilestones.length > 0;
-    
+
     const milestonesToRender =
         apiMilestones.length > 0
             ? apiMilestones
@@ -218,7 +220,7 @@ export default function MilestonePreviewCard({
                             Các mốc giải ngân dự kiến
                         </h3>
                         <span className="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100">
-                            Xem timeline chi tiết →
+                            Xem tiến độ chi tiết →
                         </span>
                     </div>
                     <p className="mt-2 text-sm text-slate-600">
@@ -275,13 +277,13 @@ export default function MilestonePreviewCard({
                                          const rawWei = "amountWei" in milestone ? milestone.amountWei : undefined;
                                          const wei = BigInt(rawWei || "0");
                                          const eth = Number(formatEther(wei));
-                                         
+
                                          if (eth <= 0) return "";
-                                         
+
                                          const formatted = (eth % 0.01 !== 0)
                                            ? eth.toFixed(4).replace(/\.?0+$/, "")
                                            : eth.toFixed(2);
-                                         
+
                                          return `${formatted} ETH`;
                                      } catch { return ""; }
                                  })();
@@ -306,7 +308,7 @@ export default function MilestonePreviewCard({
                                         const formatted = refundEth % 0.01 !== 0
                                             ? refundEth.toFixed(4).replace(/\.?0+$/, "")
                                             : refundEth.toFixed(2);
-                                        
+
                                         let userRefundText = null;
                                         if (userDonatedWei > 0n && raisedWei > 0n) {
                                             const userRefundWei = (userDonatedWei * raisedForMilestone) / raisedWei;

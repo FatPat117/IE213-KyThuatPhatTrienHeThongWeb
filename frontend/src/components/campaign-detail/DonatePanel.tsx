@@ -1,5 +1,7 @@
 "use client";
 
+import { formatEther, parseEther } from "viem";
+
 interface DonatePanelProps {
     amount: string;
     canDonate: boolean;
@@ -18,6 +20,8 @@ interface DonatePanelProps {
     isConfirmed: boolean;
     txHash?: string;
     donateError?: string | null;
+    goal: string;
+    raised: string;
     onAmountChange: (value: string) => void;
     onDonate: () => void;
 }
@@ -36,9 +40,18 @@ export default function DonatePanel({
     isConfirmed,
     txHash,
     donateError,
+    goal,
+    raised,
     onAmountChange,
     onDonate,
 }: DonatePanelProps) {
+    const goalWei = BigInt(goal || "0");
+    const remainingGoalWei = goalWei > 0n ? goalWei - BigInt(raised || "0") : 0n;
+    const remainingGoalEth = Number(formatEther(remainingGoalWei));
+    const amountEth = parseFloat(amount) || 0;
+    // Only flag as exceed when goal is actually set AND amount really exceeds remaining
+    const isExceedGoal = goalWei > 0n && remainingGoalWei >= 0n && amountEth > remainingGoalEth;
+
     return (
         <div className="rounded-2xl bg-gradient-to-br from-blue-600 to-blue-700 p-8 shadow-xl text-white">
             <h3 className="text-2xl font-bold mb-2">Ủng hộ chiến dịch</h3>
@@ -101,7 +114,8 @@ export default function DonatePanel({
                         !canDonate ||
                         isPending ||
                         isConfirming ||
-                        parseFloat(amount) <= 0
+                        parseFloat(amount) <= 0 ||
+                        isExceedGoal
                     }
                     className="w-full rounded-lg bg-white text-blue-600 px-6 py-4 text-lg font-bold shadow-lg hover:bg-blue-50 transition disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -114,16 +128,18 @@ export default function DonatePanel({
                             : !isSepolia
                               ? "Sai mạng"
                               : campaignStatusLabel &&
-                                  campaignStatusLabel !== "active"
-                                ? campaignStatusLabel === "pending_approval"
-                                    ? "Chiến dịch đang chờ duyệt"
-                                    : campaignStatusLabel === "in_progress"
-                                    ? "Chiến dịch đang triển khai milestone"
-                                    : campaignStatusLabel === "partial_failed"
-                                      ? "Chiến dịch thất bại một phần"
-                                      : campaignStatusLabel === "failed"
-                                        ? "Chiến dịch đã thất bại"
-                                        : "Chiến dịch đã kết thúc"
+                                campaignStatusLabel !== "active"
+                              ? campaignStatusLabel === "pending_approval"
+                                  ? "Chiến dịch đang chờ duyệt"
+                                  : campaignStatusLabel === "in_progress"
+                                  ? "Chiến dịch đang triển khai các mốc"
+                                  : campaignStatusLabel === "partial_failed"
+                                    ? "Chiến dịch thất bại một phần"
+                                    : campaignStatusLabel === "failed"
+                                      ? "Chiến dịch đã thất bại"
+                                      : "Chiến dịch đã kết thúc"
+                              : isExceedGoal
+                                ? `Vượt mục tiêu ${remainingGoalEth.toFixed(4)} ETH`
                                 : "💝 Quyên góp"}
                 </button>
 

@@ -169,8 +169,8 @@ async function handleFundingCompleteEvent(event) {
         await notificationService.createNotification({
             recipientWallet: campaign.creator,
             type: "funding_complete",
-            title: "Campaign đã đủ vốn",
-            message: "Campaign của bạn đã đủ vốn.",
+            title: "Chiến dịch đã đủ vốn",
+            message: "Chiến dịch của bạn đã đủ vốn.",
             campaignOnChainId,
             txHash: transactionHash || "",
         });

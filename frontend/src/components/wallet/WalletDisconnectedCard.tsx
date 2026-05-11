@@ -2,7 +2,6 @@
 
 interface WalletDisconnectedCardProps {
   isPending: boolean;
-  errorMessage: string | null;
   onConnect: () => void;
   buttonLabel?: string;
 }
@@ -12,15 +11,9 @@ interface WalletDisconnectedCardProps {
  */
 export default function WalletDisconnectedCard({
   isPending,
-  errorMessage,
   onConnect,
   buttonLabel,
 }: WalletDisconnectedCardProps) {
-  const visibleError =
-    errorMessage && errorMessage.toLowerCase().includes('connector not connected')
-      ? null
-      : errorMessage;
-
   return (
     <div className="flex flex-col gap-3 max-w-xs">
       <button
@@ -30,11 +23,6 @@ export default function WalletDisconnectedCard({
       >
         {isPending ? 'Đang xử lý...' : buttonLabel ?? 'Kết nối ví'}
       </button>
-      {visibleError && (
-        <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
-          ⚠️ {visibleError}
-        </div>
-      )}
     </div>
   );
 }

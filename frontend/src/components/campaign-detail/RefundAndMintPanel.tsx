@@ -11,12 +11,10 @@ interface RefundAndMintPanelProps {
   refundConfirming: boolean;
   refundConfirmed: boolean;
   refundHash?: string;
-  refundError?: string | null;
   mintPending: boolean;
   mintConfirming: boolean;
   mintConfirmed: boolean;
   mintHash?: string;
-  mintError?: string | null;
   mintProfileSaving?: boolean;
   defaultDisplayName?: string;
   onRefund: () => void;
@@ -34,12 +32,10 @@ export default function RefundAndMintPanel({
   refundConfirming,
   refundConfirmed,
   refundHash,
-  refundError,
   mintPending,
   mintConfirming,
   mintConfirmed,
   mintHash,
-  mintError,
   mintProfileSaving = false,
   defaultDisplayName = '',
   onRefund,
@@ -82,9 +78,6 @@ export default function RefundAndMintPanel({
             <div className="rounded-lg bg-green-500 px-4 py-3 text-sm font-medium text-white">
               ✓ Hoàn tiền thành công! Vui lòng kiểm tra ví.
             </div>
-          )}
-          {refundError && (
-            <div className="rounded-lg bg-red-500 px-4 py-3 text-sm font-medium text-white">⚠️ {refundError}</div>
           )}
         </div>
       )}
@@ -154,9 +147,6 @@ export default function RefundAndMintPanel({
                 Xem chứng chỉ của tôi →
               </Link>
             </>
-          )}
-          {mintError && (
-            <div className="rounded-lg bg-red-500 px-4 py-3 text-sm font-medium text-white mt-4">⚠️ {mintError}</div>
           )}
         </div>
       )}

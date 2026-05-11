@@ -22,6 +22,8 @@ function formatDate(value: Date) {
         day: "2-digit",
         month: "2-digit",
         year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
     }).format(value);
 }
 
@@ -317,11 +319,11 @@ export default function MilestoneTimeline({
                                             href={`/campaigns/${campaignId}/milestones/upload?milestone=${milestone.milestoneId}`}
                                             className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 font-semibold text-blue-700 hover:bg-blue-100"
                                         >
-                                            Upload minh chứng
+                                            Đăng tải bằng chứng thi công
                                         </Link>
                                     ) : (
                                         <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-100 px-3 py-1.5 font-semibold text-slate-500">
-                                            Chỉ creator được upload
+                                            Chỉ người tạo mới có thể đăng tải các minh chứng thi công
                                         </span>
                                     )}
                                     <a

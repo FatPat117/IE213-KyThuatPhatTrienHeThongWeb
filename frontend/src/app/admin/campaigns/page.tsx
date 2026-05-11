@@ -5,7 +5,10 @@ import Link from "next/link";
 import { formatEther } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
 import { useAuth, useBackendCampaigns } from "@/lib";
-import { getWalletErrorMessage } from "@/lib/errors/normalize";
+import {
+    getWalletErrorMessage,
+    isWalletUserRejectedMessage,
+} from "@/lib/errors/normalize";
 import {
     useReadAllCampaigns,
     useReadCampaignReviewersBatch,
@@ -14,6 +17,7 @@ import {
 import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 import { useOwnerSafes } from "@/lib/hooks/use-owner-safes";
 import { useAdminApprove } from "@/lib/contracts/hooks";
+import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
 
 function formatEthFromWei(wei: bigint | number | string) {
     try {
@@ -64,9 +68,6 @@ export default function AdminCampaignApprovalsPage() {
     const { reviewersByCampaignId } = useReadCampaignReviewersBatch(campaigns.length);
 
     const [mounted, setMounted] = useState(false);
-    const [actionError, setActionError] = useState<string | null>(null);
-    const [actionMessage, setActionMessage] = useState<string | null>(null);
-    const [isCancelMessage, setIsCancelMessage] = useState(false);
     const [activeCampaignId, setActiveCampaignId] = useState<number | null>(null);
     const [lastApprovedCampaignId, setLastApprovedCampaignId] = useState<number | null>(null);
 
@@ -182,24 +183,6 @@ export default function AdminCampaignApprovalsPage() {
                     <p className="mt-2 text-xs text-slate-500">
                         Đang kiểm tra quyền Safe...
                     </p>
-                )}
-
-                {actionMessage && !isCancelMessage && (
-                    <div className="mt-4 rounded-lg bg-emerald-50 border border-emerald-200 p-4 text-emerald-800">
-                        {actionMessage}
-                    </div>
-                )}
-
-                {actionError && (
-                    <div
-                        className={`mt-4 rounded-lg border p-4 ${
-                            isCancelMessage
-                                ? "border-amber-200 bg-amber-50 text-amber-800"
-                                : "border-red-200 bg-red-50 text-red-700"
-                        }`}
-                    >
-                        {actionError}
-                    </div>
                 )}
 
                 {activeCampaignId !== null && (
@@ -357,15 +340,14 @@ export default function AdminCampaignApprovalsPage() {
                                     className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                     onClick={async () => {
                                         try {
-                                            setIsCancelMessage(false);
-                                            setActionError(null);
-                                            setActionMessage(null);
                                             setActiveCampaignId(item.id);
                                             setLastApprovedCampaignId(null);
 
                                             if (isAdminOnChain) {
                                                 const txHash = await directApprove(item.id);
-                                                setActionMessage("Đã gửi giao dịch duyệt. Đang chờ xác nhận on-chain...");
+                                                showSuccessToast(
+                                                    "Đã gửi giao dịch duyệt. Đang chờ xác nhận on-chain...",
+                                                );
                                                 if (publicClient) {
                                                     await publicClient.waitForTransactionReceipt({
                                                         hash: txHash,
@@ -377,7 +359,9 @@ export default function AdminCampaignApprovalsPage() {
                                                     backendRefetch(),
                                                 ]);
                                                 setLastApprovedCampaignId(item.id);
-                                                setActionMessage(`✅ Duyệt campaign #${item.id} thành công!`);
+                                                showSuccessToast(
+                                                    `✅ Duyệt campaign #${item.id} thành công!`,
+                                                );
                                             } else {
                                                 throw new Error("Ví của bạn không có quyền ADMIN_ROLE trực tiếp. Vui lòng sử dụng ví Admin hoặc Safe Admin.");
                                             }
@@ -388,9 +372,12 @@ export default function AdminCampaignApprovalsPage() {
                                                 { fallback: "Không thể duyệt campaign." },
                                             );
                                             const isCancelledByUser =
-                                                normalizedMessage === "Bạn đã hủy thao tác trong MetaMask.";
-                                            setIsCancelMessage(isCancelledByUser);
-                                            setActionError(normalizedMessage);
+                                                isWalletUserRejectedMessage(
+                                                    normalizedMessage,
+                                                );
+                                            showErrorToast(normalizedMessage, {
+                                                emphasis: !isCancelledByUser,
+                                            });
                                         } finally {
                                             setActiveCampaignId(null);
                                         }
@@ -400,7 +387,7 @@ export default function AdminCampaignApprovalsPage() {
                                         ? "Đang xử lý..."
                                         : lastApprovedCampaignId === item.id
                                             ? "Đã duyệt ✓"
-                                            : "Duyệt campaign"}
+                                            : "Duyệt chiến dịch"}
                                 </button>
                             </div>
                         ))}

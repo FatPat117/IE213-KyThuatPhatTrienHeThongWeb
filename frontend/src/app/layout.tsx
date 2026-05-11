@@ -10,11 +10,13 @@ import { Toaster } from "react-hot-toast";
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+  display: "optional",
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  display: "optional",
 });
 
 export const metadata: Metadata = {
@@ -29,6 +31,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://rpc.sepolia.org" />
+        <link rel="preconnect" href="http://localhost:4000" />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
@@ -40,9 +46,10 @@ export default function RootLayout({
               <NetworkAccessGuard />
               <Header />
               <Toaster
-                position="top-center"
+                position="top-right"
                 containerStyle={{
-                  top: "7.5rem",
+                  top: "0.5rem",
+                  right: "0.5rem",
                   zIndex: 10000,
                 }}
                 toastOptions={{

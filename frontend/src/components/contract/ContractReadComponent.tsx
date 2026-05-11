@@ -90,12 +90,18 @@ export function ContractStatsDisplay() {
 
     if (isLoading) {
         return (
-            <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-6">
-                <div className="flex items-center gap-3">
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
-                    <p className="text-sm text-indigo-700">
-                        Đang tải thống kê contract...
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="rounded-xl border border-indigo-200/80 bg-indigo-50/80 p-6">
+                    <p className="text-sm font-medium text-indigo-600 mb-2">
+                        📊 Tổng chiến dịch
                     </p>
+                    <div className="h-9 w-16 bg-indigo-200/50 rounded animate-pulse" />
+                </div>
+                <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/80 p-6">
+                    <p className="text-sm text-green-600 mb-2 font-medium">
+                        💰 Tổng huy động
+                    </p>
+                    <div className="h-9 w-24 bg-emerald-200/50 rounded animate-pulse" />
                 </div>
             </div>
         );
@@ -155,43 +161,22 @@ export function ContractStatsDisplay() {
                     Tổng hợp tất cả chiến dịch
                 </p>
             </div>
-
-            {/* Disbursed Milestones */}
-            <div className="md:col-span-2 rounded-xl border border-cyan-200/80 bg-cyan-50/80 p-6">
-                <div className="mb-2 flex items-start justify-between gap-3">
-                    <p className="text-sm font-medium text-cyan-700">
-                        🎯 Số mốc đã giải ngân
-                    </p>
-                    <button
-                        type="button"
-                        onClick={refreshMilestones}
-                        disabled={isRefreshingMilestones}
-                        className="rounded-md border border-cyan-300 bg-white px-3 py-1 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-70"
-                    >
-                        {isRefreshingMilestones ? "Đang làm mới..." : "Làm mới"}
-                    </button>
-                </div>
-                <p className="text-3xl font-bold text-cyan-900">
-                    {disbursedMilestones}
-                </p>
-                <p className="mt-2 text-xs text-cyan-700">
-                    Dữ liệu thật từ API milestones
-                    {lastUpdatedAt ? ` • Cập nhật lúc ${lastUpdatedAt}` : ""}
-                </p>
-                {milestoneError && (
-                    <p className="mt-1 text-xs text-red-600">
-                        {milestoneError}
-                    </p>
-                )}
-            </div>
         </div>
     );
 }
 
 /**
  * Danh sách chiến dịch (read-only)
+ * @param limit - Số lượng chiến dịch tối đa hiển thị (0 = không giới hạn)
+ * @param onlyActive - Chỉ hiển thị chiến dịch đang hoạt động (chưa completed)
  */
-export function CampaignListDisplay() {
+export function CampaignListDisplay({
+    limit = 0,
+    onlyActive = false,
+}: {
+    limit?: number;
+    onlyActive?: boolean;
+} = {}) {
     const {
         campaigns: onChainCampaigns,
         isLoading: isOnChainLoading,
@@ -216,6 +201,7 @@ export function CampaignListDisplay() {
                 goal: bigint;
                 raised: bigint;
                 completed: boolean;
+                status?: string;
             }
         >();
 
@@ -227,6 +213,7 @@ export function CampaignListDisplay() {
                 goal: BigInt(campaign.goal || "0"),
                 raised: BigInt(campaign.raised || "0"),
                 completed: Boolean(campaign.status === "completed"),
+                status: campaign.status,
             });
         });
 
@@ -238,7 +225,9 @@ export function CampaignListDisplay() {
                     creator: campaign.creator || existing.creator,
                     goal: campaign.goal,
                     raised: campaign.raised,
-                    completed: campaign.completed,
+                    completed: existing.status
+                        ? existing.completed
+                        : campaign.completed,
                 });
                 return;
             }
@@ -253,8 +242,23 @@ export function CampaignListDisplay() {
             });
         });
 
-        return Array.from(campaignMap.values()).sort((a, b) => b.id - a.id);
-    }, [backendCampaigns, onChainCampaigns]);
+        let result = Array.from(campaignMap.values()).sort(
+            (a, b) => b.id - a.id,
+        );
+
+        // Lọc chỉ chiến dịch đang hoạt động nếu cần
+        if (onlyActive) {
+            result = result.filter((c) => !c.completed);
+        }
+
+        // Giới hạn số lượng hiển thị
+        if (limit > 0) {
+            result = result.slice(0, limit);
+        }
+
+        return result;
+    }, [backendCampaigns, onChainCampaigns, limit, onlyActive]);
+
 
     const isLoading = isOnChainLoading || isBackendLoading;
     const isError = isOnChainError || Boolean(backendError);
@@ -264,9 +268,10 @@ export function CampaignListDisplay() {
     };
 
     if (isLoading) {
+        const skeletonCount = limit > 0 ? limit : 6;
         return (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {[1, 2, 3, 4, 5, 6].map((idx) => (
+                {Array.from({ length: skeletonCount }).map((_, idx) => (
                     <div
                         key={idx}
                         className="bg-white border border-slate-200 rounded-xl p-5 animate-pulse shadow-sm"
@@ -311,17 +316,20 @@ export function CampaignListDisplay() {
 
     return (
         <div className="space-y-5">
-            <div className="flex justify-between items-center">
-                <h3 className="text-lg font-semibold text-slate-900">
-                    Chiến dịch ({campaigns.length})
-                </h3>
-                <button
-                    onClick={() => refetch()}
-                    className="text-sm px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-medium transition-colors"
-                >
-                    Tải lại
-                </button>
-            </div>
+            {/* Chỉ hiện header nội bộ khi không giới hạn số lượng */}
+            {limit === 0 && (
+                <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-semibold text-slate-900">
+                        Chiến dịch ({campaigns.length})
+                    </h3>
+                    <button
+                        onClick={() => refetch()}
+                        className="text-sm px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-medium transition-colors"
+                    >
+                        Tải lại
+                    </button>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                 {campaigns.map((campaign) => {

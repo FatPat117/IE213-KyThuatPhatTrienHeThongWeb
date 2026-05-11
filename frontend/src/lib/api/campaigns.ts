@@ -103,6 +103,8 @@ interface CampaignMilestoneRecord {
     approvedBy?: string;
     disbursedAt?: string | null;
     lastRejectionReason?: string;
+    rejectionCount?: number;
+    maxRetries?: number;
 }
 
 interface MilestoneServiceResponse {
@@ -113,16 +115,16 @@ interface MilestoneServiceResponse {
     message?: string;
 }
 
-const CAMPAIGN_INDEX_STATUS_CACHE_TTL_MS = 15_000;
+const CAMPAIGN_INDEX_STATUS_CACHE_TTL_MS = 60_000; // Increased from 15s
 const campaignIndexStatusCache = new Map<
     number,
     { indexed: boolean; expiresAt: number }
 >();
-const DISBURSED_MILESTONE_COUNT_CACHE_TTL_MS = 45_000;
+const DISBURSED_MILESTONE_COUNT_CACHE_TTL_MS = 300_000; // Increased to 5 mins
 let disbursedMilestoneCountCache: { value: number; expiresAt: number } | null =
     null;
 let disbursedMilestoneCountInFlight: Promise<number> | null = null;
-const PUBLIC_MILESTONES_CACHE_TTL_MS = 20_000;
+const PUBLIC_MILESTONES_CACHE_TTL_MS = 60_000; // Increased from 20s
 const publicMilestonesCache = new Map<
     number,
     { data: PublicCampaignMilestonesResponse; expiresAt: number }
@@ -131,6 +133,18 @@ const publicMilestonesInFlight = new Map<
     number,
     Promise<PublicCampaignMilestonesResponse>
 >();
+
+// Global cache for expensive aggregations
+const AGGREGATES_CACHE_TTL_MS = 300_000; // 5 minutes
+let reviewerAggregatesCache: { data: ReviewerAggregate[]; expiresAt: number } | null = null;
+let reviewerAggregatesInFlight: Promise<ReviewerAggregate[]> | null = null;
+
+const PUBLIC_CAMPAIGNS_CACHE_TTL_MS = 60_000;
+const publicCampaignsCache = new Map<string, { data: PublicCampaignsResponse; expiresAt: number }>();
+const publicCampaignsInFlight = new Map<string, Promise<PublicCampaignsResponse>>();
+
+let allPublicCampaignsCache: { data: PublicCampaignItem[]; expiresAt: number } | null = null;
+let allPublicCampaignsInFlight: Promise<PublicCampaignItem[]> | null = null;
 
 function readCachedCampaignIndexStatus(id: number): boolean | null {
     const cached = campaignIndexStatusCache.get(id);
@@ -191,26 +205,72 @@ function mapMilestoneRecord(
         approvedAt: item.approvedAt || null,
         approvedBy: item.approvedBy || "",
         disbursedAt: item.disbursedAt || null,
+        lastRejectionReason: item.lastRejectionReason,
+        rejectionCount: typeof (item as Record<string, unknown>).rejectionCount === 'number'
+            ? (item as Record<string, unknown>).rejectionCount as number
+            : undefined,
+        maxRetries: typeof (item as Record<string, unknown>).maxRetries === 'number'
+            ? (item as Record<string, unknown>).maxRetries as number
+            : undefined,
     };
 }
 
 async function getAllPublicCampaigns(): Promise<PublicCampaignItem[]> {
-    const allItems: PublicCampaignItem[] = [];
-    let page = 1;
-    let totalPages = 1;
+    if (allPublicCampaignsCache && Date.now() <= allPublicCampaignsCache.expiresAt) {
+        return allPublicCampaignsCache.data;
+    }
+    if (allPublicCampaignsInFlight) return allPublicCampaignsInFlight;
 
-    do {
-        const response = await getPublicCampaigns({ page, limit: 100 });
-        allItems.push(...response.items);
-        totalPages = response.pagination.totalPages;
-        page += 1;
-    } while (page <= totalPages);
+    allPublicCampaignsInFlight = (async () => {
+        const allItems: PublicCampaignItem[] = [];
+        let page = 1;
+        let totalPages = 1;
 
-    return allItems;
+        do {
+            const response = await getPublicCampaigns({ page, limit: 100 });
+            allItems.push(...response.items);
+            totalPages = response.pagination.totalPages;
+            page += 1;
+        } while (page <= totalPages);
+
+        allPublicCampaignsCache = {
+            data: allItems,
+            expiresAt: Date.now() + PUBLIC_CAMPAIGNS_CACHE_TTL_MS
+        };
+        return allItems;
+    })();
+
+    try {
+        return await allPublicCampaignsInFlight;
+    } finally {
+        allPublicCampaignsInFlight = null;
+    }
 }
 
-export async function getCampaigns() {
-    return apiRequest<CampaignRecord[]>("/campaigns");
+export interface PaginatedCampaignsResponse {
+    campaigns: CampaignRecord[];
+    pagination: {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+    };
+}
+
+export async function getCampaigns(params?: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    creator?: string;
+}) {
+    const query = new URLSearchParams();
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.limit) query.set("limit", String(params.limit));
+    if (params?.status) query.set("status", params.status);
+    if (params?.creator) query.set("creator", params.creator);
+
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return apiRequest<PaginatedCampaignsResponse>(`/campaigns${suffix}`);
 }
 
 export async function getCampaignById(id: number) {
@@ -294,9 +354,26 @@ export async function getPublicCampaigns(params?: {
     if (params?.order) query.set("order", params.order);
 
     const suffix = query.toString() ? `?${query.toString()}` : "";
-    return apiRequest<PublicCampaignsResponse>(
-        `/campaigns/public/campaigns${suffix}`,
-    );
+    const cacheKey = `/campaigns/public/campaigns${suffix}`;
+
+    const cached = publicCampaignsCache.get(cacheKey);
+    if (cached && Date.now() <= cached.expiresAt) return cached.data;
+
+    const inFlight = publicCampaignsInFlight.get(cacheKey);
+    if (inFlight) return inFlight;
+
+    const task = apiRequest<PublicCampaignsResponse>(cacheKey).then(data => {
+        publicCampaignsCache.set(cacheKey, {
+            data,
+            expiresAt: Date.now() + PUBLIC_CAMPAIGNS_CACHE_TTL_MS
+        });
+        return data;
+    }).finally(() => {
+        publicCampaignsInFlight.delete(cacheKey);
+    });
+
+    publicCampaignsInFlight.set(cacheKey, task);
+    return task;
 }
 
 export async function getPublicStats() {
@@ -483,51 +560,69 @@ export async function getDisbursedMilestoneCount(): Promise<number> {
 }
 
 export async function getReviewerAggregates(): Promise<ReviewerAggregate[]> {
-    const campaigns = await getAllPublicCampaigns();
-    const aggregates = new Map<string, ReviewerAggregate>();
-
-    for (const campaign of campaigns) {
-        const reviewerSafe = (campaign.reviewerSafe || "").trim().toLowerCase();
-        if (!/^0x[a-f0-9]{40}$/.test(reviewerSafe)) continue;
-
-        const existing = aggregates.get(reviewerSafe);
-        if (!existing) {
-            aggregates.set(reviewerSafe, {
-                reviewerSafe,
-                campaignCount: 1,
-                totalDisbursedWei: campaign.totalDisbursedWei || "0",
-                campaignIds: [campaign.onChainId],
-            });
-            continue;
-        }
-
-        existing.campaignCount += 1;
-        existing.campaignIds.push(campaign.onChainId);
-
-        try {
-            const nextTotal =
-                BigInt(existing.totalDisbursedWei || "0") +
-                BigInt(campaign.totalDisbursedWei || "0");
-            existing.totalDisbursedWei = nextTotal.toString();
-        } catch {
-            // Ignore malformed wei values from upstream and keep previous aggregate.
-        }
+    if (reviewerAggregatesCache && Date.now() <= reviewerAggregatesCache.expiresAt) {
+        return reviewerAggregatesCache.data;
     }
+    if (reviewerAggregatesInFlight) return reviewerAggregatesInFlight;
 
-    return Array.from(aggregates.values()).sort(
-        (a, b) => b.campaignCount - a.campaignCount,
-    );
+    reviewerAggregatesInFlight = (async () => {
+        const campaigns = await getAllPublicCampaigns();
+        const aggregates = new Map<string, ReviewerAggregate>();
+
+        for (const campaign of campaigns) {
+            const reviewerSafe = (campaign.reviewerSafe || "").trim().toLowerCase();
+            if (!/^0x[a-f0-9]{40}$/.test(reviewerSafe)) continue;
+
+            const existing = aggregates.get(reviewerSafe);
+            if (!existing) {
+                aggregates.set(reviewerSafe, {
+                    reviewerSafe,
+                    campaignCount: 1,
+                    totalDisbursedWei: campaign.totalDisbursedWei || "0",
+                    campaignIds: [campaign.onChainId],
+                });
+                continue;
+            }
+
+            existing.campaignCount += 1;
+            existing.campaignIds.push(campaign.onChainId);
+
+            try {
+                const nextTotal =
+                    BigInt(existing.totalDisbursedWei || "0") +
+                    BigInt(campaign.totalDisbursedWei || "0");
+                existing.totalDisbursedWei = nextTotal.toString();
+            } catch {
+                // Ignore malformed wei values from upstream and keep previous aggregate.
+            }
+        }
+
+        const data = Array.from(aggregates.values()).sort(
+            (a, b) => b.campaignCount - a.campaignCount,
+        );
+
+        reviewerAggregatesCache = {
+            data,
+            expiresAt: Date.now() + AGGREGATES_CACHE_TTL_MS
+        };
+        return data;
+    })();
+
+    try {
+        return await reviewerAggregatesInFlight;
+    } finally {
+        reviewerAggregatesInFlight = null;
+    }
 }
 
 export async function getRefundStatus(
     onChainId: number,
     address: string,
 ): Promise<RefundStatusResponse> {
-    const url = `${API_BASE_URL}/public/campaigns/${onChainId}/refund-status?address=${address}`;
     const response = await apiRequest<{
         success: boolean;
         data: RefundStatusResponse;
-    }>(url);
+    }>(`/campaigns/public/campaigns/${onChainId}/refund-status?address=${encodeURIComponent(address)}`);
     if (!response.success || !response.data) {
         throw new Error("Không thể lấy trạng thái hoàn tiền.");
     }
