@@ -125,6 +125,10 @@ const MilestoneSchema = new mongoose.Schema(
             type: Number,
             default: 3,
         },
+        failureReason: {
+            type: String,
+            default: null,
+        },
     },
     { timestamps: true },
 );
