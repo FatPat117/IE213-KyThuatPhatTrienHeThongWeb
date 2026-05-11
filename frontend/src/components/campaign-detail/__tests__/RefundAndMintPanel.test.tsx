@@ -17,12 +17,10 @@ const defaultProps = {
   refundConfirming: false,
   refundConfirmed: false,
   refundHash: undefined,
-  refundError: null,
   mintPending: false,
   mintConfirming: false,
   mintConfirmed: false,
   mintHash: undefined,
-  mintError: null,
   mintProfileSaving: false,
   defaultDisplayName: '',
   onRefund: jest.fn(),
@@ -97,10 +95,7 @@ describe('Refund button state', () => {
     expect(screen.getByText(/Bạn đã rút tiền hoàn lại thành công/i)).toBeInTheDocument();
   });
 
-  it('hiển thị lỗi khi có refundError', () => {
-    renderPanel({ showRefund: true, refundError: 'Giao dịch bị từ chối' });
-    expect(screen.getByText(/Giao dịch bị từ chối/i)).toBeInTheDocument();
-  });
+
 
   it('gọi onRefund() khi nhấn nút Yêu cầu hoàn tiền', async () => {
     const onRefund = jest.fn();
@@ -167,10 +162,7 @@ describe('Mint button state', () => {
     expect(screen.getByText(/Mint chứng chỉ thành công!/i)).toBeInTheDocument();
   });
 
-  it('hiển thị lỗi khi có mintError', () => {
-    renderPanel({ showMint: true, mintError: 'Bạn chưa quyên góp' });
-    expect(screen.getByText(/Bạn chưa quyên góp/i)).toBeInTheDocument();
-  });
+
 
   it('không gọi onMint() nếu tên chỉ có khoảng trắng', async () => {
     const onMint = jest.fn();

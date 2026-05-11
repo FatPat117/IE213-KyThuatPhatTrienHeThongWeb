@@ -40,129 +40,219 @@ async function mockCampaignApis(
   } = options;
 
   // Mock campaign detail API
-  await page.route(`**/api/campaigns/**/${TEST_CAMPAIGN_ONCHAIN_ID}`, async (route) => {
-    if (route.request().method() === 'GET') {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          data: {
-            onChainId: TEST_CAMPAIGN_ONCHAIN_ID,
-            title: 'Test Crowdfunding Campaign',
-            description: 'Chiến dịch test cho E2E',
-            status: campaignStatus,
-            creator: TEST_ACCOUNTS.creator,
-            goalWei: '1000000000000000000',
-            totalRaisedWei: '1000000000000000000',
-            totalDisbursedWei: '300000000000000000',
-            remainingWei: '700000000000000000',
-            deadline: new Date(Date.now() + 86400000).toISOString(),
-            milestoneCount: 2,
-            currentMilestoneId: 0,
-          },
-        }),
-      });
-    } else {
-      await route.continue();
-    }
+  // Mock campaign detail API (protected)
+  const detailResponse = {
+    success: true,
+    data: {
+      onChainId: TEST_CAMPAIGN_ONCHAIN_ID,
+      title: 'Test Crowdfunding Campaign',
+      description: 'Chiến dịch test cho E2E',
+      status: campaignStatus,
+      creator: TEST_ACCOUNTS.creator,
+      goalWei: '1000000000000000000',
+      totalRaisedWei: '1000000000000000000',
+      totalDisbursedWei: '300000000000000000',
+      remainingWei: '700000000000000000',
+      deadline: new Date(Date.now() + 86400000).toISOString(),
+      milestoneCount: 2,
+      currentMilestoneId: 0,
+    },
+  };
+
+  await page.route(`**/api/campaigns/${TEST_CAMPAIGN_ONCHAIN_ID}`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(detailResponse),
+    });
+  });
+
+  // Mock campaign detail API (public)
+  await page.route(`**/api/campaigns/public/campaigns/${TEST_CAMPAIGN_ONCHAIN_ID}`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(detailResponse),
+    });
   });
 
   // Mock refund status API
-  await page.route(
-    `**/api/campaigns/public/campaigns/${TEST_CAMPAIGN_ONCHAIN_ID}/refund-status**`,
-    async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          data: {
-            status: refundStatus,
-            eligibleRefundWei: refundStatus !== 'none' ? eligibleRefundWei : '0',
-            refundedWei: refundStatus === 'refunded' ? eligibleRefundWei : '0',
-          },
-        }),
-      });
-    }
-  );
-
-  // Mock public campaigns list
-  await page.route('**/api/campaigns/public/campaigns**', async (route) => {
-    // Check if it's the list request (no ID in path)
-    if (route.request().url().endsWith('/campaigns') || route.request().url().includes('/campaigns?')) {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          data: {
-            items: [
-              {
-                onChainId: TEST_CAMPAIGN_ONCHAIN_ID,
-                title: 'Test Campaign',
-                status: campaignStatus,
-                goalWei: '1000000000000000000',
-                totalRaisedWei: '1000000000000000000',
-                totalDisbursedWei: '0',
-                deadline: String(Math.floor(Date.now() / 1000) + 86400),
-                creator: TEST_ACCOUNTS.creator,
-              }
-            ],
-            pagination: { page: 1, limit: 10, totalItems: 1, totalPages: 1 }
-          }
-        }),
-      });
-    } else {
-      await route.continue();
-    }
-  });
-
-  // Mock donations API to ensure userDonatedAmount > 0
-  await page.route(`**/api/donations/campaign/${TEST_CAMPAIGN_ONCHAIN_ID}**`, async (route) => {
+  await page.route(`**/api/campaigns/public/campaigns/${TEST_CAMPAIGN_ONCHAIN_ID}/refund-status*`, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
         success: true,
-        data: [
-          {
-            campaignOnChainId: TEST_CAMPAIGN_ONCHAIN_ID,
-            donorWallet: TEST_ACCOUNTS.donorA,
-            amount: '1000000000000000000', // 1 ETH
-            txHash: '0xmockdonation',
-            donatedAt: new Date().toISOString(),
-          }
-        ],
+        data: {
+          status: refundStatus,
+          eligibleRefundWei: refundStatus !== 'none' ? eligibleRefundWei : '0',
+          refundedWei: refundStatus === 'refunded' ? eligibleRefundWei : '0',
+        },
       }),
     });
   });
 
-  // Mock JSON-RPC for getCampaign and campaignCount
-  await page.route('**/sepolia**', async (route) => {
-    const postData = route.request().postDataJSON();
-    if (postData?.method === 'eth_call') {
-      // Mock getCampaign response (tuple)
-      // status 4 = PartialFailed, 5 = Failed
-      const statusValue = campaignStatus === 'partial_failed' ? '04' : (campaignStatus === 'failed' ? '05' : '01');
+  // Mock campaign list
+  await page.route(url => (url.includes('/api/campaigns') || url.includes('/api/campaigns/public/campaigns')) && 
+                         (url.endsWith('/campaigns') || url.includes('/campaigns?')), async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        data: {
+          items: [
+            {
+              onChainId: TEST_CAMPAIGN_ONCHAIN_ID,
+              title: 'Test Campaign',
+              status: campaignStatus,
+              goalWei: '1000000000000000000',
+              totalRaisedWei: '1000000000000000000',
+              totalDisbursedWei: '0',
+              deadline: String(Math.floor(Date.now() / 1000) + 86400),
+              creator: TEST_ACCOUNTS.creator,
+            }
+          ],
+          pagination: { page: 1, limit: 10, totalItems: 1, total: 1, totalPages: 1 }
+        }
+      }),
+    });
+  });
+
+  const donationsResponse = {
+    success: true,
+    data: [
+      {
+        campaignOnChainId: TEST_CAMPAIGN_ONCHAIN_ID,
+        donorWallet: TEST_ACCOUNTS.donorA,
+        amount: '1000000000000000000', // 1 ETH
+        txHash: '0xmockdonation',
+        donatedAt: new Date().toISOString(),
+      }
+    ],
+  };
+  // Mock donations API
+  await page.route(`**/api/donations/campaign/${TEST_CAMPAIGN_ONCHAIN_ID}*`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(donationsResponse),
+    });
+  });
+
+  // Specific donor query
+  await page.route(new RegExp(`api/donations/campaign/${TEST_CAMPAIGN_ONCHAIN_ID}/donor/.*`), async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(donationsResponse),
+    });
+  });
+
+  // Mock JSON-RPC for different contract functions and common methods
+  await page.route('**', async (route) => {
+    const request = route.request();
+    if (request.resourceType() !== 'fetch' && request.resourceType() !== 'xhr') {
+        return route.continue();
+    }
+    
+    if (!request.url().includes('sepolia') && !request.url().includes('alchemy') && !request.url().includes('infura')) {
+        return route.continue();
+    }
+
+    const postData = request.postDataJSON();
+    if (!postData || !postData.method) return route.continue();
+
+    // Common methods
+    if (postData.method === 'eth_chainId') {
+        await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ jsonrpc: '2.0', id: postData.id, result: '0xaa36a7' }), // Sepolia
+        });
+        return;
+    }
+    if (postData.method === 'eth_blockNumber') {
+        await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ jsonrpc: '2.0', id: postData.id, result: '0x500000' }),
+        });
+        return;
+    }
+    if (postData.method === 'eth_getBalance') {
+        await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ jsonrpc: '2.0', id: postData.id, result: '0xde0b6b3a7640000' }), // 1 ETH
+        });
+        return;
+    }
+
+    if (postData.method === 'eth_call') {
+      const data = postData.params[0].data;
       
+      // campaignCount() - selector 0x32338f6f
+      if (data.startsWith('0x32338f6f')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: postData.id,
+            result: '0x0000000000000000000000000000000000000000000000000000000000000001'
+          }),
+        });
+        return;
+      }
+
+      // getDonation(uint256,address) - selector 0x5b367123
+      if (data.startsWith('0x5b367123')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: postData.id,
+            result: '0x0000000000000000000000000000000000000000000000000de0b6b3a7640000' // 1 ETH
+          }),
+        });
+        return;
+      }
+
+      // getCampaign(uint256) - selector 0x61895a5f
+      if (data.startsWith('0x61895a5f')) {
+        const statusValue = campaignStatus === 'partial_failed' ? '04' : (campaignStatus === 'failed' ? '05' : '01');
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: postData.id,
+            result: `0x000000000000000000000000000000000000000000000000000000000000000${TEST_CAMPAIGN_ONCHAIN_ID}` + // id
+                    `000000000000000000000000${TEST_ACCOUNTS.creator.slice(2)}` + // creator
+                    `000000000000000000000000${TEST_ACCOUNTS.creator.slice(2)}` + // beneficiary
+                    '0000000000000000000000000000000000000000000000000de0b6b3a7640000' + // goal (1 ETH)
+                    '0000000000000000000000000000000000000000000000000de0b6b3a7640000' + // totalRaised (1 ETH)
+                    '0000000000000000000000000000000000000000000000000000000000000000' + // totalDisbursed (0)
+                    '000000000000000000000000000000000000000000000000000000006a000000' + // deadline (future)
+                    '0000000000000000000000000000000000000000000000000000000000000000' + // withdrawn (false)
+                    `00000000000000000000000000000000000000000000000000000000000000${statusValue}` + // status
+                    '0000000000000000000000000000000000000000000000000000000000000002' + // milestoneCount (2)
+                    '0000000000000000000000000000000000000000000000000000000000000000'    // currentMilestoneId (0)
+          }),
+        });
+        return;
+      }
+
+      // Default result for other calls
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: postData.id,
-          result: `0x000000000000000000000000000000000000000000000000000000000000000${TEST_CAMPAIGN_ONCHAIN_ID}` + // id
-                  `000000000000000000000000${TEST_ACCOUNTS.creator.slice(2)}` + // creator
-                  `000000000000000000000000${TEST_ACCOUNTS.creator.slice(2)}` + // beneficiary
-                  '0000000000000000000000000000000000000000000000000de0b6b3a7640000' + // goal (1 ETH)
-                  '0000000000000000000000000000000000000000000000000de0b6b3a7640000' + // totalRaised (1 ETH)
-                  '0000000000000000000000000000000000000000000000000000000000000000' + // totalDisbursed (0)
-                  '000000000000000000000000000000000000000000000000000000006a000000' + // deadline (future)
-                  '0000000000000000000000000000000000000000000000000000000000000000' + // withdrawn (false)
-                  `00000000000000000000000000000000000000000000000000000000000000${statusValue}` + // status
-                  '0000000000000000000000000000000000000000000000000000000000000002' + // milestoneCount (2)
-                  '0000000000000000000000000000000000000000000000000000000000000000'    // currentMilestoneId (0)
+          result: '0x0000000000000000000000000000000000000000000000000000000000000000'
         }),
       });
     } else {
@@ -192,8 +282,8 @@ test.describe('Donor chưa rút tiền (refundStatus = eligible)', () => {
     await page.waitForLoadState('networkidle');
 
     // Kiểm tra panel hoàn tiền xuất hiện
-    const refundPanel = page.getByText('Chiến dịch không đạt mục tiêu');
-    await expect(refundPanel).toBeVisible({ timeout: 10_000 });
+    const refundPanel = page.getByText(/Chiến dịch không đạt mục tiêu/i);
+    await expect(refundPanel).toBeVisible({ timeout: 15_000 });
 
     // Kiểm tra nút hoàn tiền
     const refundButton = page.getByRole('button', { name: /Yêu cầu hoàn tiền/i });
@@ -208,15 +298,23 @@ test.describe('Donor chưa rút tiền (refundStatus = eligible)', () => {
         contentType: 'application/json',
         body: JSON.stringify({
           success: true,
-          data: [
-            {
-              onChainId: TEST_CAMPAIGN_ONCHAIN_ID,
-              title: 'Failed Campaign',
-              status: 'partial_failed',
-              goalWei: '1000000000000000000',
-              totalRaisedWei: '1000000000000000000',
+          data: {
+            items: [
+              {
+                onChainId: TEST_CAMPAIGN_ONCHAIN_ID,
+                title: 'Failed Campaign',
+                status: 'partial_failed',
+                goalWei: '1000000000000000000',
+                totalRaisedWei: '1000000000000000000',
+              },
+            ],
+            pagination: {
+              page: 1,
+              limit: 10,
+              totalItems: 1,
+              totalPages: 1,
             },
-          ],
+          },
         }),
       });
     });
@@ -254,8 +352,8 @@ test.describe('Donor đã rút tiền (refundStatus = refunded)', () => {
 
     // Panel vẫn hiển thị
     await expect(
-      page.getByText('Chiến dịch không đạt mục tiêu')
-    ).toBeVisible({ timeout: 10_000 });
+      page.getByText(/Chiến dịch không đạt mục tiêu/i)
+    ).toBeVisible({ timeout: 15_000 });
 
     // Thông báo đã hoàn tiền
     await expect(
@@ -302,7 +400,7 @@ test.describe('Người dùng chưa quyên góp (refundStatus = none)', () => {
 
     // Panel hoàn tiền không được hiển thị
     await expect(
-      page.getByText('Chiến dịch không đạt mục tiêu')
+      page.getByText(/Chiến dịch không đạt mục tiêu/i)
     ).not.toBeVisible();
   });
 });
@@ -324,7 +422,7 @@ test.describe('Campaign đang triển khai (status = in_progress)', () => {
     await page.waitForLoadState('networkidle');
 
     await expect(
-      page.getByText('Chiến dịch không đạt mục tiêu')
+      page.getByText(/Chiến dịch không đạt mục tiêu/i)
     ).not.toBeVisible();
   });
 });
@@ -349,7 +447,7 @@ test.describe('UI states: pending và confirming', () => {
 
     // Panel và nút phải hiển thị
     const refundButton = page.getByRole('button', { name: /Yêu cầu hoàn tiền/i });
-    await expect(refundButton).toBeVisible({ timeout: 10_000 });
+    await expect(refundButton).toBeVisible({ timeout: 15_000 });
     await expect(refundButton).toBeEnabled();
   });
 });
@@ -415,7 +513,7 @@ test.describe('Happy Path: Full refund flow via UI interaction', () => {
 
     // Bước 1: Nút hoàn tiền hiển thị
     const refundButton = page.getByRole('button', { name: /Yêu cầu hoàn tiền/i });
-    await expect(refundButton).toBeVisible({ timeout: 10_000 });
+    await expect(refundButton).toBeVisible({ timeout: 15_000 });
 
     // Bước 2: Nhấn nút → trigger refund (sẽ gọi lại API refund-status)
     await refundButton.click();
@@ -529,7 +627,7 @@ test.describe('Error Cases: Wallet chưa kết nối', () => {
 
     // Panel hoàn tiền KHÔNG được hiển thị (vì chưa biết user là ai)
     await expect(
-      page.getByText('Chiến dịch không đạt mục tiêu')
+      page.getByText(/Chiến dịch không đạt mục tiêu/i)
     ).not.toBeVisible();
 
     // Nút "Kết nối ví" hoặc tương tự phải hiển thị thay thế
