@@ -131,7 +131,7 @@ function CampaignsPageContent() {
                     raised: campaign.raised,
                     status: isBackendTerminal ? existing.status : (campaign.statusLabel || existing.status),
                     completed: isBackendTerminal ? true : campaign.completed,
-                    thumbnailUrl: existing.thumbnailUrl || campaign.thumbnailUrl,
+                    thumbnailUrl: existing.thumbnailUrl,
                 });
             } else {
                 const cached = getCampaignMetadataFromCache(campaign.id);
@@ -144,7 +144,7 @@ function CampaignsPageContent() {
                     raised: campaign.raised,
                     status: campaign.statusLabel,
                     completed: campaign.completed,
-                    thumbnailUrl: campaign.thumbnailUrl,
+                    thumbnailUrl: undefined,
                 });
             }
         });
