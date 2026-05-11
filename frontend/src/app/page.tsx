@@ -632,17 +632,19 @@ export default function Home() {
                                 Bắt đầu chiến dịch
                             </Link>
                         ) : (
-                            <button
-                                className="inline-flex cursor-not-allowed items-center justify-center rounded-xl bg-white/20 px-8 py-3.5 text-base font-bold text-white"
-                                disabled
-                                title={
-                                    !isConnected
-                                        ? "Kết nối ví để tạo chiến dịch"
-                                        : "Chuyển sang mạng Sepolia"
-                                }
-                            >
-                                Bắt đầu chiến dịch
-                            </button>
+                            isHydrated && (
+                                <button
+                                    className="inline-flex cursor-not-allowed items-center justify-center rounded-xl bg-white/20 px-8 py-3.5 text-base font-bold text-white"
+                                    disabled
+                                    title={
+                                        !isConnected
+                                            ? "Kết nối ví để tạo chiến dịch"
+                                            : "Chuyển sang mạng Sepolia"
+                                    }
+                                >
+                                    Bắt đầu chiến dịch
+                                </button>
+                            )
                         )}
                         <Link
                             href="/campaigns"

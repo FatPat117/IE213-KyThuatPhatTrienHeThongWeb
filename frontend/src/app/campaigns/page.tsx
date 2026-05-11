@@ -51,6 +51,19 @@ function CampaignCardSkeleton() {
 
 const ITEMS_PER_PAGE = 9;
 
+// Định nghĩa type mở rộng cho campaign để luôn có thumbnailUrl
+type CampaignWithThumbnail = {
+    id: number;
+    title: string;
+    description: string;
+    creator: string;
+    goal: bigint;
+    raised: bigint;
+    status?: string;
+    completed: boolean;
+    thumbnailUrl?: string;
+};
+
 function CampaignsPageContent() {
     const { data: campaigns, isLoading, error, refetch } = useBackendCampaigns();
     const {
@@ -75,7 +88,7 @@ function CampaignsPageContent() {
         showErrorToast(message);
     }, [error, onChainError]);
 
-    const backendCampaigns = useMemo(
+    const backendCampaigns: CampaignWithThumbnail[] = useMemo(
         () =>
             campaigns.map((campaign) => {
                 const cached = getCampaignMetadataFromCache(campaign.onChainId);
@@ -94,27 +107,15 @@ function CampaignsPageContent() {
                     completed: TERMINAL_STATUSES.has(
                         (campaign.status || "").toLowerCase(),
                     ),
+                    thumbnailUrl: campaign.thumbnailUrl,
                 };
             }),
         [campaigns]
     );
 
-    const normalizedCampaigns = useMemo(() => {
-        const campaignMap = new Map<
-            number,
-            {
-                id: number;
-                title: string;
-                description: string;
-                creator: string;
-                goal: bigint;
-                raised: bigint;
-                status?: string;
-                completed: boolean;
-            }
-        >();
+    const normalizedCampaigns: CampaignWithThumbnail[] = useMemo(() => {
+        const campaignMap = new Map<number, CampaignWithThumbnail>();
 
-        // Backend-first for metadata (title/description), then on-chain overrides numeric fields for freshness.
         backendCampaigns.forEach((campaign) => {
             campaignMap.set(campaign.id, campaign);
         });
@@ -122,9 +123,7 @@ function CampaignsPageContent() {
         onChainCampaigns.forEach((campaign) => {
             const existing = campaignMap.get(campaign.id);
             if (existing) {
-                // Prioritize backend terminal statuses over on-chain status
                 const isBackendTerminal = TERMINAL_STATUSES.has(existing.status || "");
-
                 campaignMap.set(campaign.id, {
                     ...existing,
                     creator: campaign.creator || existing.creator,
@@ -132,6 +131,7 @@ function CampaignsPageContent() {
                     raised: campaign.raised,
                     status: isBackendTerminal ? existing.status : (campaign.statusLabel || existing.status),
                     completed: isBackendTerminal ? true : campaign.completed,
+                    thumbnailUrl: existing.thumbnailUrl,
                 });
             } else {
                 const cached = getCampaignMetadataFromCache(campaign.id);
@@ -144,6 +144,7 @@ function CampaignsPageContent() {
                     raised: campaign.raised,
                     status: campaign.statusLabel,
                     completed: campaign.completed,
+                    thumbnailUrl: undefined,
                 });
             }
         });
@@ -456,6 +457,16 @@ function CampaignsPageContent() {
                                     href={`/campaigns/${campaign.id}`}
                                     className="group relative flex h-full flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:border-blue-300"
                                 >
+                                    {/* Thumbnail Image */}
+                                    {campaign.thumbnailUrl && (
+                                        <div className="mb-4 -mx-5 -mt-5">
+                                            <img
+                                                src={campaign.thumbnailUrl}
+                                                alt={campaign.title}
+                                                className="w-full h-40 object-cover rounded-t-xl border-b"
+                                            />
+                                        </div>
+                                    )}
                                     {/* Campaign Header */}
                                     <div className="mb-4">
                                         <div className="flex items-start gap-3">
