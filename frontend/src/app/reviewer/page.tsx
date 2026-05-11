@@ -956,7 +956,7 @@ export default function ReviewerWorkspacePage() {
                                     Duyệt chiến dịch
                                 </button>
                                 <button
-                                    onClick={refresh}
+                                    onClick={() => refresh()}
                                     disabled={isLoading}
                                     className="rounded-2xl border border-slate-300 bg-white px-6 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
                                 >
