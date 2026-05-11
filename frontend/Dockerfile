@@ -15,7 +15,7 @@ ENV NEXT_PUBLIC_SEPOLIA_RPC_URL=$NEXT_PUBLIC_SEPOLIA_RPC_URL
 COPY package.json package-lock.json ./
 
 # Install dependencies
-RUN npm ci
+RUN npm install
 COPY . .
 RUN npm run build
 
@@ -26,7 +26,7 @@ WORKDIR /app
 
 # Install only production dependencies
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm install sharp
+RUN npm install --omit=dev && npm install sharp
 
 COPY --from=builder /app/next.config.ts ./
 
