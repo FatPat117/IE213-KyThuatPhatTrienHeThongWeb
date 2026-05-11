@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useMemo, useState, useRef, type FormEvent } from "react";
 import { useWaitForTransactionReceipt } from "wagmi";
 import { useAccount } from "wagmi";
 import {
@@ -96,6 +96,7 @@ function MilestoneEvidenceUploadContent() {
     const [rejectionCount, setRejectionCount] = useState<number>(0);
     const [maxRetries, setMaxRetries] = useState<number>(3);
     const [hasSubmittedOnChain, setHasSubmittedOnChain] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const apiBaseUrl = useMemo(
         () => normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_URL),
@@ -232,6 +233,8 @@ function MilestoneEvidenceUploadContent() {
             showSuccessToast(
                 `Upload IPFS thành công ${newCids.length} file. Xác nhận để submit on-chain.`,
             );
+            setFiles([]);
+            if (fileInputRef.current) fileInputRef.current.value = "";
         } catch (error) {
             const message =
                 error instanceof Error ? error.message : "Không thể upload minh chứng";
@@ -346,6 +349,7 @@ function MilestoneEvidenceUploadContent() {
                         </span>
                         <input
                             type="file"
+                            ref={fileInputRef}
                             accept="image/*,application/pdf,video/*"
                             multiple
                             onChange={(event) =>
@@ -404,7 +408,7 @@ function MilestoneEvidenceUploadContent() {
                     <div className="flex flex-wrap gap-3">
                         <button
                             type="submit"
-                            disabled={!canUpload || isUploadingFile || hasSubmittedOnChain}
+                            disabled={!canUpload || isUploadingFile || hasSubmittedOnChain || files.length === 0}
                             className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
                         >
                             {isUploadingFile ? "Đang upload..." : hasSubmittedOnChain ? "Đã hoàn tất" : "1) Upload file lấy CID"}

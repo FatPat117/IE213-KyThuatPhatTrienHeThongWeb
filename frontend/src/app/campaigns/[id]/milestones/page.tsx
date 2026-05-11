@@ -10,6 +10,7 @@ import {
     useBackendCampaign,
     useAuth,
     useReadCampaign,
+    mapMilestoneRecord,
 } from "@/lib";
 import {
     getPublicCampaignMilestones,
@@ -22,7 +23,7 @@ import {
     MilestoneTimeline,
 } from "@/components/campaign-milestones";
 import BackButton from "@/components/navigation/BackButton";
-import { useAccount, useReadContract } from "wagmi";
+import { useAccount, useReadContract, useWatchContractEvent } from "wagmi";
 import { showErrorToast } from "@/lib/ui/toast";
 
 export default function CampaignMilestonesPage() {
@@ -175,13 +176,110 @@ export default function CampaignMilestonesPage() {
         });
     }, [backendCampaign.data?.createdAt, campaign, progress]);
 
+    const campaignStatusLabel = backendCampaign.data?.status || campaign?.statusLabel || "active";
+
+    const resolvedMilestones = useMemo(() => {
+        if (!backendCampaign.data?.milestones || backendCampaign.data.milestones.length === 0) {
+            return undefined;
+        }
+        return backendCampaign.data.milestones.map((m) => {
+            const mapped = mapMilestoneRecord(m);
+            if (
+                (campaignStatusLabel === "failed" || campaignStatusLabel === "partial_failed") &&
+                ["in_progress", "pending_funding", "resubmittable", "pending_verification"].includes(mapped.status)
+            ) {
+                mapped.status = "failed";
+            }
+            return mapped;
+        });
+    }, [backendCampaign.data?.milestones, campaignStatusLabel]);
+
     const milestonesToRender =
-        milestones.length > 0 ? milestones : fallbackMilestones;
+        resolvedMilestones || (milestones.length > 0 ? milestones : fallbackMilestones);
     const canUploadEvidence =
         Boolean(token) &&
         Boolean(address) &&
         Boolean(campaign?.creator) &&
         campaign?.creator.toLowerCase() === address?.toLowerCase();
+
+    // Determine if the milestone page should refresh backend data after changes
+    const campaignOnChainStatus = campaign?.statusLabel;
+
+    useEffect(() => {
+        // When campaign is in_progress, poll backend milestones to get fresh status
+        if (campaignOnChainStatus === "in_progress" || campaignOnChainStatus === "partial_failed" || campaignOnChainStatus === "completed") {
+            loadMilestones();
+            backendCampaign.refetch();
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [campaignOnChainStatus]);
+
+    useWatchContractEvent({
+        ...contractConfig,
+        eventName: "Donated",
+        onLogs: (logs) => {
+            const relevant = logs.some(
+                (log) => Number((log as any).args?.campaignId ?? 0n) === id,
+            );
+            if (!relevant) return;
+            refetch();
+        },
+    });
+
+    useWatchContractEvent({
+        ...contractConfig,
+        eventName: "FundingComplete",
+        onLogs: (logs) => {
+            const relevant = logs.some(
+                (log) => Number((log as any).args?.campaignId ?? 0n) === id,
+            );
+            if (!relevant) return;
+            refetch();
+            let attempts = 0;
+            const timer = window.setInterval(() => {
+                attempts += 1;
+                backendCampaign.refetch();
+                if (attempts >= 3) window.clearInterval(timer);
+            }, 4000);
+        },
+    });
+
+    useWatchContractEvent({
+        ...contractConfig,
+        eventName: "CampaignFailed",
+        onLogs: (logs) => {
+            const relevant = logs.some(
+                (log) => Number((log as any).args?.campaignId ?? 0n) === id,
+            );
+            if (!relevant) return;
+            refetch();
+            let attempts = 0;
+            const timer = window.setInterval(() => {
+                attempts += 1;
+                backendCampaign.refetch();
+                if (attempts >= 3) window.clearInterval(timer);
+            }, 4000);
+        },
+    });
+
+    useWatchContractEvent({
+        ...contractConfig,
+        eventName: "MilestoneFailed",
+        onLogs: (logs) => {
+            const relevant = logs.some(
+                (log) => Number((log as any).args?.campaignId ?? 0n) === id,
+            );
+            if (!relevant) return;
+            refetch();
+            let attempts = 0;
+            const timer = window.setInterval(() => {
+                attempts += 1;
+                backendCampaign.refetch();
+                if (attempts >= 3) window.clearInterval(timer);
+            }, 4000);
+        },
+    });
+
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
@@ -275,6 +373,8 @@ export default function CampaignMilestonesPage() {
                                 raisedWei={campaign.raised}
                                 goalWei={campaign.goal}
                                 userDonatedWei={userDonatedWei as bigint}
+                                currentMilestoneId={campaign.currentMilestoneId}
+                                campaignStatusLabel={campaignStatusLabel}
                             />
                         </div>
                     )}

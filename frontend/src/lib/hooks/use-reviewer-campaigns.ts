@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useOwnerSafes } from "./use-owner-safes";
 import { useReadReviewerSafesOnChain } from "@/lib";
-import { getPublicCampaigns, getPublicCampaignMilestones } from "@/lib/api/campaigns";
+import { getPublicCampaigns, getPublicCampaignMilestones, invalidatePublicCampaignsCache, invalidatePublicMilestonesCache } from "@/lib/api/campaigns";
 
 interface ReviewerCampaignRow {
   campaign: {
@@ -157,11 +157,16 @@ export function useReviewerCampaigns() {
     };
   }, []);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (force = false) => {
     if (myReviewerSafes.length === 0) {
       setRows([]);
       setLastUpdatedAt(new Date().toLocaleTimeString("vi-VN"));
       return;
+    }
+
+    if (force) {
+        invalidatePublicCampaignsCache();
+        invalidatePublicMilestonesCache();
     }
 
     setIsLoading(true);

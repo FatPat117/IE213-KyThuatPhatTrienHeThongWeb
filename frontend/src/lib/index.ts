@@ -94,12 +94,14 @@ export {
     getPublicCampaignMilestones,
     getPublicCampaigns,
     getPublicStats,
+    rejectCampaign,
     rejectMilestone,
     resubmitMilestone,
     getReviewerAggregates,
     updateCampaignMetadata,
     updateCampaignStatus,
     getRefundStatus,
+    mapMilestoneRecord,
 } from "./api/campaigns";
 export {
     getDonationsByCampaign,

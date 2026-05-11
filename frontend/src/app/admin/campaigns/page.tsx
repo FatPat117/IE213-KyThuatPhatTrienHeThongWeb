@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { formatEther } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
-import { useAuth, useBackendCampaigns } from "@/lib";
+import { useAuth, useBackendCampaigns, rejectCampaign } from "@/lib";
 import {
     getWalletErrorMessage,
     isWalletUserRejectedMessage,
@@ -70,6 +70,11 @@ export default function AdminCampaignApprovalsPage() {
     const [mounted, setMounted] = useState(false);
     const [activeCampaignId, setActiveCampaignId] = useState<number | null>(null);
     const [lastApprovedCampaignId, setLastApprovedCampaignId] = useState<number | null>(null);
+    // Rejection state
+    const [rejectingCampaignId, setRejectingCampaignId] = useState<number | null>(null);
+    const [rejectionReason, setRejectionReason] = useState("");
+    const [showRejectModal, setShowRejectModal] = useState(false);
+    const [isSubmittingRejection, setIsSubmittingRejection] = useState(false);
 
     useEffect(() => { setMounted(true); }, []);
 
@@ -332,63 +337,77 @@ export default function AdminCampaignApprovalsPage() {
                                     </p>
                                 </div>
 
-                                <button
-                                    type="button"
-                                    disabled={
-                                        activeCampaignId === item.id
-                                    }
-                                    className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                    onClick={async () => {
-                                        try {
-                                            setActiveCampaignId(item.id);
-                                            setLastApprovedCampaignId(null);
-
-                                            if (isAdminOnChain) {
-                                                const txHash = await directApprove(item.id);
-                                                showSuccessToast(
-                                                    "Đã gửi giao dịch duyệt. Đang chờ xác nhận on-chain...",
-                                                );
-                                                if (publicClient) {
-                                                    await publicClient.waitForTransactionReceipt({
-                                                        hash: txHash,
-                                                        confirmations: 1,
-                                                    });
-                                                }
-                                                await Promise.all([
-                                                    refetch(),
-                                                    backendRefetch(),
-                                                ]);
-                                                setLastApprovedCampaignId(item.id);
-                                                showSuccessToast(
-                                                    `✅ Duyệt campaign #${item.id} thành công!`,
-                                                );
-                                            } else {
-                                                throw new Error("Ví của bạn không có quyền ADMIN_ROLE trực tiếp. Vui lòng sử dụng ví Admin hoặc Safe Admin.");
-                                            }
-                                        } catch (error) {
-                                            console.error("Admin approve error:", error);
-                                            const normalizedMessage = getWalletErrorMessage(
-                                                error,
-                                                { fallback: "Không thể duyệt campaign." },
-                                            );
-                                            const isCancelledByUser =
-                                                isWalletUserRejectedMessage(
-                                                    normalizedMessage,
-                                                );
-                                            showErrorToast(normalizedMessage, {
-                                                emphasis: !isCancelledByUser,
-                                            });
-                                        } finally {
-                                            setActiveCampaignId(null);
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        type="button"
+                                        disabled={
+                                            activeCampaignId === item.id
                                         }
-                                    }}
-                                >
-                                    {activeCampaignId === item.id
-                                        ? "Đang xử lý..."
-                                        : lastApprovedCampaignId === item.id
-                                            ? "Đã duyệt ✓"
-                                            : "Duyệt chiến dịch"}
-                                </button>
+                                        className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                        onClick={async () => {
+                                            try {
+                                                setActiveCampaignId(item.id);
+                                                setLastApprovedCampaignId(null);
+
+                                                if (isAdminOnChain) {
+                                                    const txHash = await directApprove(item.id);
+                                                    showSuccessToast(
+                                                        "Đã gửi giao dịch duyệt. Đang chờ xác nhận on-chain...",
+                                                    );
+                                                    if (publicClient) {
+                                                        await publicClient.waitForTransactionReceipt({
+                                                            hash: txHash,
+                                                            confirmations: 1,
+                                                        });
+                                                    }
+                                                    await Promise.all([
+                                                        refetch(),
+                                                        backendRefetch(),
+                                                    ]);
+                                                    setLastApprovedCampaignId(item.id);
+                                                    showSuccessToast(
+                                                        `✅ Duyệt campaign #${item.id} thành công!`,
+                                                    );
+                                                } else {
+                                                    throw new Error("Ví của bạn không có quyền ADMIN_ROLE trực tiếp. Vui lòng sử dụng ví Admin hoặc Safe Admin.");
+                                                }
+                                            } catch (error) {
+                                                console.error("Admin approve error:", error);
+                                                const normalizedMessage = getWalletErrorMessage(
+                                                    error,
+                                                    { fallback: "Không thể duyệt campaign." },
+                                                );
+                                                const isCancelledByUser =
+                                                    isWalletUserRejectedMessage(
+                                                        normalizedMessage,
+                                                    );
+                                                showErrorToast(normalizedMessage, {
+                                                    emphasis: !isCancelledByUser,
+                                                });
+                                            } finally {
+                                                setActiveCampaignId(null);
+                                            }
+                                        }}
+                                    >
+                                        {activeCampaignId === item.id
+                                            ? "Đang xử lý..."
+                                            : lastApprovedCampaignId === item.id
+                                                ? "Đã duyệt ✓"
+                                                : "Duyệt chiến dịch"}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={activeCampaignId === item.id || isSubmittingRejection}
+                                        className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                        onClick={() => {
+                                            setRejectingCampaignId(item.id);
+                                            setRejectionReason("");
+                                            setShowRejectModal(true);
+                                        }}
+                                    >
+                                        Từ chối
+                                    </button>
+                                </div>
                             </div>
                         ))}
                         {!isLoadingCampaigns && pendingItems.length === 0 && (
@@ -397,6 +416,80 @@ export default function AdminCampaignApprovalsPage() {
                     </div>
                 )}
             </main>
+
+            {/* Rejection Modal */}
+            {showRejectModal && rejectingCampaignId !== null && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+                    <div className="mx-4 w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+                        <h3 className="text-lg font-bold text-slate-900">
+                            Từ chối Campaign #{rejectingCampaignId}
+                        </h3>
+                        <p className="mt-1 text-sm text-slate-600">
+                            Nhập lý do từ chối để thông báo cho người tạo chiến dịch.
+                        </p>
+                        <div className="mt-4">
+                            <label
+                                htmlFor="rejection-reason"
+                                className="block text-sm font-semibold text-slate-700 mb-1"
+                            >
+                                Lý do từ chối <span className="text-red-500">*</span>
+                            </label>
+                            <textarea
+                                id="rejection-reason"
+                                value={rejectionReason}
+                                onChange={(e) => setRejectionReason(e.target.value)}
+                                rows={4}
+                                placeholder="Ví dụ: Chiến dịch thiếu thông tin về mục tiêu sử dụng quỹ, vui lòng bổ sung..."
+                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-100 resize-none"
+                            />
+                            <p className="mt-1 text-xs text-slate-400">{rejectionReason.length}/500 ký tự</p>
+                        </div>
+                        <div className="mt-5 flex gap-3 justify-end">
+                            <button
+                                type="button"
+                                disabled={isSubmittingRejection}
+                                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                                onClick={() => {
+                                    setShowRejectModal(false);
+                                    setRejectingCampaignId(null);
+                                    setRejectionReason("");
+                                }}
+                            >
+                                Huỷ
+                            </button>
+                            <button
+                                type="button"
+                                disabled={isSubmittingRejection || rejectionReason.trim().length < 10}
+                                className="rounded-lg bg-red-600 px-5 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                onClick={async () => {
+                                    if (!token || !rejectingCampaignId) return;
+                                    const trimmedReason = rejectionReason.trim();
+                                    if (trimmedReason.length < 10) {
+                                        showErrorToast("Lý do từ chối phải có ít nhất 10 ký tự.");
+                                        return;
+                                    }
+                                    try {
+                                        setIsSubmittingRejection(true);
+                                        await rejectCampaign(rejectingCampaignId, token, trimmedReason);
+                                        showSuccessToast(`✅ Đã từ chối campaign #${rejectingCampaignId}.`);
+                                        setShowRejectModal(false);
+                                        setRejectingCampaignId(null);
+                                        setRejectionReason("");
+                                        await Promise.all([refetch(), backendRefetch()]);
+                                    } catch (err) {
+                                        const msg = err instanceof Error ? err.message : "Không thể từ chối campaign.";
+                                        showErrorToast(msg);
+                                    } finally {
+                                        setIsSubmittingRejection(false);
+                                    }
+                                }}
+                            >
+                                {isSubmittingRejection ? "Đang gửi..." : "Xác nhận từ chối"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
