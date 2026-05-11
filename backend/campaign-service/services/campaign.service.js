@@ -1,4 +1,5 @@
 const { Campaign, Milestone } = require("../models");
+const { clearPrefix, delCache } = require("../utils/cache");
 
 const BPS_DENOMINATOR = 10000;
 
@@ -141,23 +142,35 @@ async function upsertCampaign(data) {
         totalDisbursedWei: (rest.totalDisbursedWei || "0").toString(),
     };
 
-    return Campaign.findOneAndUpdate(
+    const updated = await Campaign.findOneAndUpdate(
         { onChainId: Number(onChainId) },
         { $set: { onChainId: Number(onChainId), ...normalized } },
         { upsert: true, new: true, runValidators: true },
     );
+
+    // Invalidate cache
+    await delCache(`campaign:detail:${onChainId}`);
+    await clearPrefix("campaign:list:*");
+
+    return updated;
 }
 
 async function updateCampaignStatus(onChainId, status) {
-    return Campaign.findOneAndUpdate(
+    const updated = await Campaign.findOneAndUpdate(
         { onChainId: Number(onChainId) },
         { $set: { status } },
         { new: true },
     );
+
+    // Invalidate cache
+    await delCache(`campaign:detail:${onChainId}`);
+    await clearPrefix("campaign:list:*");
+
+    return updated;
 }
 
 async function updateRaised(onChainId, raisedWei) {
-    return Campaign.findOneAndUpdate(
+    const updated = await Campaign.findOneAndUpdate(
         { onChainId: Number(onChainId) },
         {
             $set: {
@@ -167,6 +180,12 @@ async function updateRaised(onChainId, raisedWei) {
         },
         { new: true },
     );
+
+    // Invalidate cache
+    await delCache(`campaign:detail:${onChainId}`);
+    await clearPrefix("campaign:list:*");
+
+    return updated;
 }
 async function updateMetadata(onChainId, updates = {}) {
     const payload = { ...updates };
@@ -179,11 +198,17 @@ async function updateMetadata(onChainId, updates = {}) {
         payload.raised = payload.totalRaisedWei.toString();
     }
 
-    return Campaign.findOneAndUpdate(
+    const updated = await Campaign.findOneAndUpdate(
         { onChainId: Number(onChainId) },
         { $set: payload },
         { new: true, runValidators: true },
     );
+
+    // Invalidate cache
+    await delCache(`campaign:detail:${onChainId}`);
+    await clearPrefix("campaign:list:*");
+
+    return updated;
 }
 
 async function createCampaignWithMilestones(payload) {
@@ -308,6 +333,9 @@ async function createCampaignWithMilestones(payload) {
         await Campaign.deleteOne({ _id: campaign._id });
         throw error;
     }
+
+    // Invalidate list cache as a new campaign was added
+    await clearPrefix("campaign:list:*");
 
     return { campaign, milestones: createdMilestones };
 }

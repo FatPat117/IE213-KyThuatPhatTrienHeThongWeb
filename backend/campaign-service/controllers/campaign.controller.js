@@ -3,6 +3,7 @@ const { getAddress, ethers } = require("ethers");
 const campaignService = require("../services/campaign.service");
 const { Campaign, Milestone, Donation } = require("../models");
 const { successRes, errorRes } = require("../utils/response");
+const { getCache, setCache } = require("../utils/cache");
 
 // Approval status cache (for getMilestoneApprovalStatus)
 const approvalStatusCache = new Map();
@@ -545,16 +546,20 @@ async function getPublicCampaigns(req, res, next) {
             ? req.query.sort
             : "createdAt";
         const order = req.query.order === "asc" ? 1 : -1;
+        const status = req.query.status || "";
+        const reviewerSafe = req.query.reviewerSafe || "";
+
+        const cacheKey = `campaign:list:p${page}:l${limit}:s${sortField}:o${order}:st${status}:rs${reviewerSafe}`;
+        const cachedData = await getCache(cacheKey);
+        if (cachedData) {
+            console.log(`[Cache Hit] getPublicCampaigns ${cacheKey}`);
+            return successRes(res, cachedData);
+        }
+        console.log(`[Cache Miss] getPublicCampaigns ${cacheKey}`);
 
         const query = {};
-        if (req.query.status) {
-            query.status = req.query.status;
-        }
-        if (req.query.reviewerSafe) {
-            query.reviewerSafe = String(req.query.reviewerSafe)
-                .trim()
-                .toLowerCase();
-        }
+        if (status) query.status = status;
+        if (reviewerSafe) query.reviewerSafe = String(reviewerSafe).trim().toLowerCase();
 
         const totalItems = await Campaign.countDocuments(query);
         const totalPages = Math.max(Math.ceil(totalItems / limit), 1);
@@ -565,7 +570,7 @@ async function getPublicCampaigns(req, res, next) {
             .limit(limit)
             .lean();
 
-        return successRes(res, {
+        const responseData = {
             items: campaigns.map(normalizeCampaignItem),
             pagination: {
                 page,
@@ -573,7 +578,10 @@ async function getPublicCampaigns(req, res, next) {
                 totalItems,
                 totalPages,
             },
-        });
+        };
+
+        await setCache(cacheKey, responseData, 300); // 5 minutes cache
+        return successRes(res, responseData);
     } catch (err) {
         return next(err);
     }
@@ -585,6 +593,14 @@ async function getPublicCampaignByOnChainId(req, res, next) {
         if (!Number.isFinite(onChainId)) {
             return errorRes(res, "Invalid campaign id", 400);
         }
+
+        const cacheKey = `campaign:detail:${onChainId}`;
+        const cachedData = await getCache(cacheKey);
+        if (cachedData) {
+            console.log(`[Cache Hit] getPublicCampaignByOnChainId ${cacheKey}`);
+            return successRes(res, cachedData);
+        }
+        console.log(`[Cache Miss] getPublicCampaignByOnChainId ${cacheKey}`);
 
         const campaign = await Campaign.findOne({ onChainId }).lean();
         if (!campaign) {
@@ -604,7 +620,7 @@ async function getPublicCampaignByOnChainId(req, res, next) {
             campaignOnChainId: onChainId 
         }).sort({ milestoneId: 1 }).lean();
 
-        return successRes(res, {
+        const responseData = {
             ...normalizeCampaignItem(campaign),
             milestones: milestones || [],
             beneficiary: campaign.beneficiary,
@@ -613,7 +629,10 @@ async function getPublicCampaignByOnChainId(req, res, next) {
                 disbursedPercent: percentOf(totalDisbursed, goal),
                 remainingWei: remaining.toString(),
             },
-        });
+        };
+
+        await setCache(cacheKey, responseData, 300); // 5 minutes cache
+        return successRes(res, responseData);
     } catch (err) {
         return next(err);
     }
