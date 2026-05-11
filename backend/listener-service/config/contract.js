@@ -119,8 +119,10 @@ function createContractInstance() {
         const provider = withGetLogsChunking(
             new ethers.JsonRpcProvider(url, 11155111, {
                 staticNetwork: true,
+                batchMaxCount: 50, // Enable JSON-RPC batching to reduce Alchemy API calls
             }),
         );
+        provider.pollingInterval = 15000; // 15 seconds to reduce RPC load on Alchemy
 
         return {
             provider,

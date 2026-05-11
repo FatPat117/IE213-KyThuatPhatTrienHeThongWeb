@@ -1,5 +1,6 @@
 const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const donationService = require("../services/donation.service");
+const { delCache, clearPrefix } = require("../utils/cache");
 
 const QUEUE = process.env.RABBITMQ_QUEUE_DONATED_SVC || "donation.received.queue";
 const ROUTING_KEY = process.env.RABBITMQ_RKEY_DONATED || "donation.received";
@@ -33,6 +34,13 @@ async function startDonatedConsumer() {
                 message: payload.message || "",
                 donatedAt: payload.donatedAt ? new Date(payload.donatedAt) : new Date(),
             });
+
+            // Invalidate cache
+            await delCache(`donation:campaign:${payload.campaignOnChainId}`);
+            if (payload.donorWallet) {
+                await delCache(`donation:donor:${payload.donorWallet.toLowerCase()}`);
+            }
+            await clearPrefix("donation:leaderboard:*");
 
             console.log(`[donation-service] Successfully recorded donation: txHash=${payload.txHash}`);
             channel.ack(msg);

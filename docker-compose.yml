@@ -34,6 +34,19 @@ services:
             timeout: 5s
             retries: 5
 
+    redis:
+        image: redis:7-alpine
+        ports:
+            - "6379:6379"
+        volumes:
+            - redis_data:/data
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+
     # ─────────────────────────────────────────────────────────
     # API Gateway – single entrypoint cho Frontend
     # ─────────────────────────────────────────────────────────
@@ -138,6 +151,7 @@ services:
             - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}
             - CROWDFUNDING_CONTRACT_ADDRESS=${CROWDFUNDING_CONTRACT_ADDRESS}
             - ADMIN_WALLETS=${ADMIN_WALLETS}
+            - REDIS_URL=${REDIS_URL}
         volumes:
             - ./backend/campaign-service:/app
             - /app/node_modules
@@ -145,6 +159,8 @@ services:
             mongodb:
                 condition: service_healthy
             rabbitmq:
+                condition: service_healthy
+            redis:
                 condition: service_healthy
         restart: unless-stopped
 
@@ -168,6 +184,7 @@ services:
             - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE}
             - RABBITMQ_QUEUE_DONATED_SVC=${RABBITMQ_QUEUE_DONATED_SVC}
             - RABBITMQ_RKEY_DONATED=${RABBITMQ_RKEY_DONATED}
+            - REDIS_URL=${REDIS_URL}
         volumes:
             - ./backend/donation-service:/app
             - /app/node_modules
@@ -175,6 +192,8 @@ services:
             mongodb:
                 condition: service_healthy
             rabbitmq:
+                condition: service_healthy
+            redis:
                 condition: service_healthy
         restart: unless-stopped
 
@@ -298,6 +317,7 @@ services:
 volumes:
     mongo_data:
     rabbitmq_data:
+    redis_data:
     shared_data:
     caddy_data:
     caddy_config:
