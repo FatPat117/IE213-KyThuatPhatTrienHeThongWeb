@@ -627,7 +627,7 @@ contract FundingPlatformTest is Test {
         vm.prank(donor);
         platform.donate{value: 0.6 ether}(campaignId);
         vm.prank(donor2);
-        platform.donate{value: 0.4 ether}(campaignId);
+        platform.donate{value: 0.3 ether}(campaignId);
 
         // Fail the campaign
         vm.warp(block.timestamp + 8 days);
@@ -642,7 +642,7 @@ contract FundingPlatformTest is Test {
         platform.claimFundingRefund(campaignId);
 
         assertEq(donor.balance, donorBefore + 0.6 ether);
-        assertEq(donor2.balance, donor2Before + 0.4 ether);
+        assertEq(donor2.balance, donor2Before + 0.3 ether);
     }
 
     function test_ClaimFundingRefund_RevertsIfAlreadyClaimed() public {
