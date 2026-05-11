@@ -201,13 +201,13 @@ export function mapMilestoneRecord(
             if (!Array.isArray(item.reportCids)) return [];
             const seenCids = new Set<string>();
             return item.reportCids
-                .filter((entry) => {
+                .filter((entry: { cid: string; submittedAt: string }) => {
                     const cid = (entry?.cid || "").trim();
                     if (!cid || seenCids.has(cid)) return false;
                     seenCids.add(cid);
                     return true;
                 })
-                .map((entry) => ({
+                .map((entry: { cid: string; submittedAt: string }) => ({
                     cid: (entry.cid || "").trim(),
                     submittedAt: entry.submittedAt || "",
                 }));
