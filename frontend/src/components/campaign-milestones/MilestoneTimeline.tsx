@@ -15,6 +15,10 @@ interface MilestoneTimelineProps {
     /** Mục tiêu gây quỹ — dùng để tính mục tiêu mốc khi chưa có ai donate */
     goalWei?: bigint;
     userDonatedWei?: bigint;
+    /** ID mốc hiện tại đang hoạt động (0-indexed) — dùng để disable upload cho mốc chưa đến lượt */
+    currentMilestoneId?: number;
+    /** Trạng thái chiến dịch — dùng để disable upload khi campaign không đang in_progress */
+    campaignStatusLabel?: string;
 }
 
 function formatDate(value: Date) {
@@ -49,6 +53,14 @@ function normalizeIpfsUrl(value: string) {
 
 function getStatusMeta(status: string) {
     switch (status) {
+        case "pending_funding":
+            return {
+                label: "Chờ đủ vốn",
+                badgeClass:
+                    "bg-emerald-100 text-emerald-700 border-emerald-200",
+                dotClass: "bg-emerald-500 ring-emerald-100",
+                cardClass: "border-emerald-100",
+            };
         case "disbursed":
             return {
                 label: "Đã giải ngân chờ xác nhận bằng chứng",
@@ -73,12 +85,18 @@ function getStatusMeta(status: string) {
             };
         case "submitted":
         case "review_timeout":
-        case "approved":
             return {
-                label: "Đã hoàn thành",
+                label: "Đã nộp bằng chứng",
                 badgeClass: "bg-blue-100 text-blue-700 border-blue-200",
                 dotClass: "bg-blue-500 ring-blue-100",
                 cardClass: "border-blue-100",
+            };
+        case "approved":
+            return {
+                label: "Đã phê duyệt",
+                badgeClass: "bg-teal-100 text-teal-700 border-teal-200",
+                dotClass: "bg-teal-500 ring-teal-100",
+                cardClass: "border-teal-100",
             };
         case "deadline_exceeded":
             return {
@@ -101,6 +119,13 @@ function getStatusMeta(status: string) {
                     "bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200",
                 dotClass: "bg-fuchsia-500 ring-fuchsia-100",
                 cardClass: "border-fuchsia-100",
+            };
+        case "in_progress":
+            return {
+                label: "Đang thực hiện",
+                badgeClass: "bg-blue-100 text-blue-700 border-blue-200",
+                dotClass: "bg-blue-500 ring-blue-100",
+                cardClass: "border-blue-100",
             };
         default:
             return {
@@ -126,11 +151,26 @@ export default function MilestoneTimeline({
     raisedWei = 0n,
     goalWei = 0n,
     userDonatedWei,
+    currentMilestoneId,
+    campaignStatusLabel,
 }: MilestoneTimelineProps) {
     const { proofCidsByIndex } = useReadMilestonesOnChain(
         campaignId,
         milestones.length,
     );
+
+    const isCampaignInProgress = campaignStatusLabel === "in_progress" || campaignStatusLabel === "completed";
+
+    // Helper to determine if a specific milestone's evidence upload should be enabled
+    const canUploadForMilestone = (milestoneId: number, milestoneStatus: string): boolean => {
+        if (!canUploadEvidence) return false;
+        if (!isCampaignInProgress) return false;
+        
+        const allowedStatuses = ["in_progress", "resubmittable", "disbursed"];
+        if (allowedStatuses.includes(milestoneStatus)) return true;
+        
+        return false;
+    };
 
     return (
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -210,6 +250,9 @@ export default function MilestoneTimeline({
                             Boolean(item.url),
                         );
 
+                    // Check if this milestone allows evidence upload
+                    const milestoneCanUpload = canUploadForMilestone(milestone.milestoneId, milestone.status);
+
                     return (
                         <article
                             key={milestone.milestoneId}
@@ -284,7 +327,7 @@ export default function MilestoneTimeline({
                                 </div>
                             </div>
 
-                            {milestone.status === "resubmittable" && (
+                                     {milestone.status === "resubmittable" && (
                                 <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 p-4 shadow-sm animate-pulse">
                                     <div className="flex items-center gap-2 mb-2 text-orange-800">
                                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -298,7 +341,7 @@ export default function MilestoneTimeline({
                                     <p className="text-sm text-orange-700 leading-relaxed mb-3">
                                         <strong>Lý do từ chối:</strong> {milestone.lastRejectionReason || "Reviewer yêu cầu bổ sung thông tin."}
                                     </p>
-                                    {canUploadEvidence && (
+                                    {milestoneCanUpload && (
                                         <Link
                                             href={`/campaigns/${campaignId}/milestones/upload?milestone=${milestone.milestoneId}`}
                                             className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-xs font-bold text-white hover:bg-orange-700 transition shadow-md shadow-orange-200"
@@ -314,13 +357,21 @@ export default function MilestoneTimeline({
                                     Đường dẫn bằng chứng
                                 </p>
                                 <div className="flex flex-wrap items-center gap-2 text-sm">
-                                    {canUploadEvidence ? (
+                                    {milestoneCanUpload ? (
                                         <Link
                                             href={`/campaigns/${campaignId}/milestones/upload?milestone=${milestone.milestoneId}`}
                                             className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 font-semibold text-blue-700 hover:bg-blue-100"
                                         >
                                             Đăng tải bằng chứng thi công
                                         </Link>
+                                    ) : canUploadEvidence && !isCampaignInProgress ? (
+                                        <span className="inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 font-semibold text-amber-700">
+                                            Chiến dịch chưa ở giai đoạn thực hiện
+                                        </span>
+                                    ) : canUploadEvidence && isCampaignInProgress && !["in_progress", "resubmittable", "disbursed"].includes(milestone.status) ? (
+                                        <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-100 px-3 py-1.5 font-semibold text-slate-500">
+                                            {["approved", "disbursed_done"].includes(milestone.status) ? "Mốc đã hoàn thành" : "Mốc chưa đến lượt thực hiện"}
+                                        </span>
                                     ) : (
                                         <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-100 px-3 py-1.5 font-semibold text-slate-500">
                                             Chỉ người tạo mới có thể đăng tải các minh chứng thi công
@@ -348,7 +399,7 @@ export default function MilestoneTimeline({
                                                 </svg>
                                                 IPFS: {item.cid.slice(0, 8)}...{item.cid.slice(-4)}
                                             </a>
-                                            {canUploadEvidence && (
+                                            {milestoneCanUpload && (
                                                 <Link
                                                     href={`/campaigns/${campaignId}/milestones/upload?milestone=${milestone.milestoneId}&sourceCid=${encodeURIComponent(item.cid)}`}
                                                     className="text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline"

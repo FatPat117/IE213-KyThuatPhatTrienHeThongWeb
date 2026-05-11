@@ -60,7 +60,7 @@ function getStatusBadge(
         case "completed":
             return {
                 className: "bg-green-100 text-green-700",
-                label: "Đã hoàn thành",
+                label: "Đã hoàn thành kêu gọi",
             };
         case "partial_failed":
             return {

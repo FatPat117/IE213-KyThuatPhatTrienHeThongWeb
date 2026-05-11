@@ -129,6 +129,13 @@ const publicMilestonesCache = new Map<
     number,
     { data: PublicCampaignMilestonesResponse; expiresAt: number }
 >();
+export function invalidatePublicMilestonesCache(onChainId?: number) {
+    if (onChainId !== undefined) {
+        publicMilestonesCache.delete(onChainId);
+    } else {
+        publicMilestonesCache.clear();
+    }
+}
 const publicMilestonesInFlight = new Map<
     number,
     Promise<PublicCampaignMilestonesResponse>
@@ -141,8 +148,11 @@ let reviewerAggregatesInFlight: Promise<ReviewerAggregate[]> | null = null;
 
 const PUBLIC_CAMPAIGNS_CACHE_TTL_MS = 60_000;
 const publicCampaignsCache = new Map<string, { data: PublicCampaignsResponse; expiresAt: number }>();
+export function invalidatePublicCampaignsCache() {
+    publicCampaignsCache.clear();
+    allPublicCampaignsCache = null;
+}
 const publicCampaignsInFlight = new Map<string, Promise<PublicCampaignsResponse>>();
-
 let allPublicCampaignsCache: { data: PublicCampaignItem[]; expiresAt: number } | null = null;
 let allPublicCampaignsInFlight: Promise<PublicCampaignItem[]> | null = null;
 
@@ -172,8 +182,8 @@ async function ensureCampaignIndexed(onChainId: number): Promise<void> {
     }
 }
 
-function mapMilestoneRecord(
-    item: CampaignMilestoneRecord,
+export function mapMilestoneRecord(
+    item: CampaignMilestoneRecord | any,
 ): PublicCampaignMilestone {
     return {
         milestoneId: Number(item.milestoneId ?? item.milestoneIndex ?? 0),
@@ -316,6 +326,22 @@ export async function updateCampaignStatus(
         method: "PATCH",
         token,
         body: JSON.stringify({ status }),
+    });
+}
+
+export async function rejectCampaign(
+    id: number,
+    token: string,
+    reason: string,
+) {
+    return apiRequest<{
+        campaignOnChainId: number;
+        campaignStatus: string;
+        reason: string;
+    }>(`/campaigns/${id}/reject`, {
+        method: "POST",
+        token,
+        body: JSON.stringify({ reason }),
     });
 }
 

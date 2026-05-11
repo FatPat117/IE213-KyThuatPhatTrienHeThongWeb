@@ -200,6 +200,7 @@ interface ReviewerMilestoneActionsProps {
     handleReject: (cid: number, mid: number) => void;
     handleExecute: (cid: number, mid: number) => void;
     hasSigned: boolean;
+    isFocusRefreshing: boolean;
 }
 
 function ReviewerMilestoneActions({
@@ -216,6 +217,7 @@ function ReviewerMilestoneActions({
     handleReject,
     handleExecute,
     hasSigned,
+    isFocusRefreshing,
 }: ReviewerMilestoneActionsProps) {
     // Fetch on-chain data to check for proof existence
     const { proofCidsByIndex, isLoading: isLoadingOnChain } = useReadMilestonesOnChain(
@@ -332,12 +334,13 @@ function ReviewerMilestoneActions({
                                     disabled={
                                         isApproving ||
                                         isRejecting ||
+                                        isFocusRefreshing ||
                                         !hasOnChainProof ||
                                         !canWalletApproveMilestone ||
                                         isLoadingOnChain
                                     }
                                     title={
-                                        isLoadingOnChain
+                                        isLoadingOnChain || isFocusRefreshing
                                             ? "Đang kiểm tra dữ liệu on-chain..."
                                             : !hasOnChainProof
                                                 ? "Chưa có minh chứng trên Smart Contract"
@@ -352,6 +355,11 @@ function ReviewerMilestoneActions({
                                             <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                                             Đang xử lý...
                                         </>
+                                    ) : isFocusRefreshing ? (
+                                        <>
+                                            <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                                            Đang đồng bộ...
+                                        </>
                                     ) : (
                                         "Phê duyệt mốc"
                                     )}
@@ -362,6 +370,7 @@ function ReviewerMilestoneActions({
                                     disabled={
                                         isApproving ||
                                         isRejecting ||
+                                        isFocusRefreshing ||
                                         !canWalletRejectMilestone
                                     }
                                     title={
@@ -375,7 +384,7 @@ function ReviewerMilestoneActions({
                                     }
                                     className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-6 py-2.5 text-sm font-bold text-rose-700 transition hover:bg-rose-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                    {isRejecting ? "Đang xử lý..." : "Từ chối mốc"}
+                                    {isRejecting ? "Đang xử lý..." : isFocusRefreshing ? "Đang đồng bộ..." : "Từ chối mốc"}
                                 </button>
                             </>
                         )}
@@ -388,11 +397,12 @@ function ReviewerMilestoneActions({
                                     isApproving ||
                                     isRejecting ||
                                     isExecuting ||
+                                    isFocusRefreshing ||
                                     !canExecute ||
                                     isLoadingOnChain
                                 }
                                 title={
-                                    isLoadingOnChain
+                                    isLoadingOnChain || isFocusRefreshing
                                         ? "Đang kiểm tra..."
                                         : !hasOnChainProof
                                         ? "Chưa có minh chứng on-chain"
@@ -412,6 +422,11 @@ function ReviewerMilestoneActions({
                                     <>
                                         <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                                         Đang thực thi...
+                                    </>
+                                ) : isFocusRefreshing ? (
+                                    <>
+                                        <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                                        Đang đồng bộ...
                                     </>
                                 ) : (
                                     <>
@@ -453,6 +468,7 @@ export default function ReviewerWorkspacePage() {
     const [approvingKey, setApprovingKey] = useState<string | null>(null);
     const [rejectingKey, setRejectingKey] = useState<string | null>(null);
     const [executingKey, setExecutingKey] = useState<string | null>(null);
+    const [isFocusRefreshing, setIsFocusRefreshing] = useState(false);
     const [actionMessage, setActionMessage] = useState<string | null>(null);
     const [actionIsSuccess, setActionIsSuccess] = useState(false);
     const [rejectModalTarget, setRejectModalTarget] = useState<{ campaignId: number; milestoneId: number } | null>(null);
@@ -571,13 +587,19 @@ export default function ReviewerWorkspacePage() {
     // Force refresh when window regains focus (useful after signing in Safe tab)
     useEffect(() => {
         if (!hasReviewerAccess) return;
-        const handleFocus = () => {
+        const handleFocus = async () => {
             console.log('[ReviewerPage] Window focused, triggering refresh...');
-            refreshApprovalStatuses(true);
+            setIsFocusRefreshing(true);
+            try {
+                await refreshApprovalStatuses(true);
+                await refresh(true);
+            } finally {
+                setIsFocusRefreshing(false);
+            }
         };
         window.addEventListener('focus', handleFocus);
         return () => window.removeEventListener('focus', handleFocus);
-    }, [hasReviewerAccess, refreshApprovalStatuses]);
+    }, [hasReviewerAccess, refreshApprovalStatuses, refresh]);
 
     // Listen for SSE notifications
     useEffect(() => {
@@ -589,6 +611,10 @@ export default function ReviewerWorkspacePage() {
             "milestone_disbursed",
             "campaign_created",
             "campaign_approved",
+            "milestone_approved",
+            "milestone_rejected",
+            "milestone_failed",
+            "campaign_failed"
         ]);
         const connect = async () => {
             try {
@@ -597,7 +623,7 @@ export default function ReviewerWorkspacePage() {
                     (notification) => {
                         if (!active) return;
                         if (RELOAD_TYPES.has(notification.type)) {
-                            refresh();
+                            refresh(true);
                         }
                     },
                     undefined,
@@ -627,9 +653,12 @@ export default function ReviewerWorkspacePage() {
             setActionIsSuccess(true);
             setActionMessage("✅ Giao dịch đã được thực thi thành công!");
             refreshApprovalStatuses(true);
-            // Refetch campaigns after delay to show updated milestone status
-            setTimeout(() => {
-                refresh();
+            // Poll campaigns to show updated milestone status from Indexer
+            let attempts = 0;
+            const timer = window.setInterval(() => {
+                attempts += 1;
+                refresh(true);
+                if (attempts >= 5) window.clearInterval(timer);
             }, 3000);
             setTxHash(undefined);
             setExecutingKey(null);
@@ -789,7 +818,7 @@ export default function ReviewerWorkspacePage() {
                 setActionMessage(successMsg);
                 // Show toast directly to ensure it fires even when message text is unchanged
                 showSuccessToast(successMsg);
-                await refresh();
+                await refresh(true);
                 await refreshApprovalStatuses();
                 return true;
             } catch (error) {
@@ -1149,6 +1178,7 @@ export default function ReviewerWorkspacePage() {
                                                     handleReject={openRejectModal}
                                                     handleExecute={handleExecute}
                                                     hasSigned={hasSigned}
+                                                    isFocusRefreshing={isFocusRefreshing}
                                                 />
                                             </article>
                                         );

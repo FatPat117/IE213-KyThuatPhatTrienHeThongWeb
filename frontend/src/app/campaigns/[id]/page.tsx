@@ -6,6 +6,7 @@ import {
     getCampaignMetadataFromCache,
     getDonationsByCampaign,
     getDonationsByCampaignAndWallet,
+    getPublicCampaignMilestones,
     getPublicStats,
     getRefundStatus,
     isPlaceholderCampaignDescription,
@@ -22,6 +23,7 @@ import {
     useMarkMilestoneFailed,
     useMintCertificate,
     useReadCampaign,
+    mapMilestoneRecord,
 } from "@/lib";
 import {
     getChainErrorMessage,
@@ -89,6 +91,7 @@ export default function CampaignDetailPage() {
     const lastDisburseSuccessTxRef = useRef<string | null>(null);
     const lastRefundSuccessTxRef = useRef<string | null>(null);
     const lastMarkAsFailedSuccessTxRef = useRef<string | null>(null);
+    const lastMilestoneFailedSuccessTxRef = useRef<string | null>(null);
     const {
         donate,
         hash,
@@ -157,8 +160,14 @@ export default function CampaignDetailPage() {
     } = useWaitForTransactionReceipt({
         hash: markAsFailedHash,
     });
-    const isActive = isPending || isConfirming || disbursePending || disburseConfirming || fundingRefundPending || milestoneRefundPending || refundConfirming || mintPending || mintConfirming || markAsFailedPending || markAsFailedConfirming || milestoneFailedPending;
-    const isAnyConfirming = isConfirming || disburseConfirming || refundConfirming || mintConfirming || markAsFailedConfirming;
+    const {
+        isLoading: milestoneFailedConfirming,
+        isSuccess: milestoneFailedConfirmed,
+    } = useWaitForTransactionReceipt({
+        hash: milestoneFailedHash,
+    });
+    const isActive = isPending || isConfirming || disbursePending || disburseConfirming || fundingRefundPending || milestoneRefundPending || refundConfirming || mintPending || mintConfirming || markAsFailedPending || markAsFailedConfirming || milestoneFailedPending || milestoneFailedConfirming;
+    const isAnyConfirming = isConfirming || disburseConfirming || refundConfirming || mintConfirming || markAsFailedConfirming || milestoneFailedConfirming;
     const isAnyPending = isPending || disbursePending || fundingRefundPending || milestoneRefundPending || mintPending || markAsFailedPending || milestoneFailedPending;
     const stage = isAnyConfirming ? "confirming" : isAnyPending ? "signing" : "preparing";
     const currentHash = hash || disburseHash || fundingRefundHash || milestoneRefundHash || mintHash || markAsFailedHash || milestoneFailedHash || undefined;
@@ -336,9 +345,15 @@ export default function CampaignDetailPage() {
         // Only load when campaign is ready to prevent double-fetching on mount
     }, [loadDonationHistory]);
 
-    const fetchRefundStatus = useCallback(async () => {
+    const fetchRefundStatus = useCallback(async (statusOverride?: string) => {
         if (!Number.isFinite(id) || !address) {
             setRefundStatus(null);
+            return;
+        }
+        // Only call refund status API when campaign is in a refundable state
+        // to avoid 400 errors from backend when campaign is active/in_progress
+        const effectiveStatus = statusOverride || campaignStatusLabel;
+        if (effectiveStatus !== "failed" && effectiveStatus !== "partial_failed") {
             return;
         }
         try {
@@ -347,6 +362,7 @@ export default function CampaignDetailPage() {
         } catch (err) {
             console.error("Failed to fetch refund status:", err);
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [id, address]);
 
     useEffect(() => {
@@ -487,6 +503,22 @@ export default function CampaignDetailPage() {
         isCampaignPartialFailed,
     ]);
 
+    const resolvedMilestones = useMemo(() => {
+        if (!backendCampaign.data?.milestones || backendCampaign.data.milestones.length === 0) {
+            return undefined;
+        }
+        return backendCampaign.data.milestones.map((m) => {
+            const mapped = mapMilestoneRecord(m);
+            if (
+                (campaignStatusLabel === "failed" || campaignStatusLabel === "partial_failed") &&
+                ["in_progress", "pending_funding", "resubmittable", "pending_verification"].includes(mapped.status)
+            ) {
+                mapped.status = "failed";
+            }
+            return mapped;
+        });
+    }, [backendCampaign.data?.milestones, campaignStatusLabel]);
+
     // Watch for donation events
     useWatchContractEvent({
         ...contractConfig,
@@ -543,10 +575,53 @@ export default function CampaignDetailPage() {
         },
     });
 
-    // Watch for CampaignApproved: admin duyệt campaign → cập nhật trạng thái ngay
     useWatchContractEvent({
         ...contractConfig,
         eventName: "CampaignApproved",
+        onLogs: (logs) => {
+            const relevant = logs.some(
+                (log) =>
+                    Number(
+                        (log as { args?: { campaignId?: bigint } }).args
+                            ?.campaignId ?? 0n,
+                    ) === id,
+            );
+            if (!relevant) return;
+            refetch();
+            let attempts = 0;
+            const timer = window.setInterval(() => {
+                attempts += 1;
+                backendCampaign.refetch();
+                if (attempts >= 3) window.clearInterval(timer);
+            }, 4_000);
+        },
+    });
+
+    useWatchContractEvent({
+        ...contractConfig,
+        eventName: "CampaignFailed",
+        onLogs: (logs) => {
+            const relevant = logs.some(
+                (log) =>
+                    Number(
+                        (log as { args?: { campaignId?: bigint } }).args
+                            ?.campaignId ?? 0n,
+                    ) === id,
+            );
+            if (!relevant) return;
+            refetch();
+            let attempts = 0;
+            const timer = window.setInterval(() => {
+                attempts += 1;
+                backendCampaign.refetch();
+                if (attempts >= 3) window.clearInterval(timer);
+            }, 4_000);
+        },
+    });
+
+    useWatchContractEvent({
+        ...contractConfig,
+        eventName: "MilestoneFailed",
         onLogs: (logs) => {
             const relevant = logs.some(
                 (log) =>
@@ -746,7 +821,11 @@ export default function CampaignDetailPage() {
         if (!campaign) return;
         try {
             if (isCampaignPartialFailed) {
-                claimMilestoneRefund(id, campaign.currentMilestoneId);
+                // For partial_failed, the failed milestone is currentMilestoneId - 1
+                // because currentMilestoneId has already advanced past the failed one.
+                // Fallback to 0 if somehow currentMilestoneId is 0 (shouldn't happen in partial_failed).
+                const failedMilestoneId = Math.max(campaign.currentMilestoneId - 1, 0);
+                claimMilestoneRefund(id, failedMilestoneId);
             } else {
                 claimFundingRefund(id);
             }
@@ -842,19 +921,28 @@ export default function CampaignDetailPage() {
         }
     }, [markAsFailedConfirmed, markAsFailedHash, refetch]);
 
-    const {
-        isLoading: milestoneFailedConfirming,
-        isSuccess: milestoneFailedConfirmed,
-    } = useWaitForTransactionReceipt({
-        hash: milestoneFailedHash,
-    });
 
     useEffect(() => {
-        if (milestoneFailedConfirmed) {
+        if (
+            milestoneFailedConfirmed &&
+            milestoneFailedHash &&
+            lastMilestoneFailedSuccessTxRef.current !== milestoneFailedHash
+        ) {
+            lastMilestoneFailedSuccessTxRef.current = milestoneFailedHash;
             refetch();
             showSuccessToast("Đã cập nhật mốc thất bại trên Blockchain.");
+            // Invalidate milestone cache and poll backend until status updates
+            if (Number.isFinite(id)) {
+                let pollAttempts = 0;
+                const pollTimer = window.setInterval(() => {
+                    pollAttempts += 1;
+                    backendCampaign.refetch();
+                    if (pollAttempts >= 5) window.clearInterval(pollTimer);
+                }, 3_000);
+            }
         }
-    }, [milestoneFailedConfirmed, refetch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [milestoneFailedConfirmed, milestoneFailedHash, refetch, id]);
 
     useEffect(() => {
         if (
@@ -866,6 +954,14 @@ export default function CampaignDetailPage() {
         lastDisburseSuccessTxRef.current = disburseHash;
         refetch();
         showSuccessToast("Giải ngân milestone thành công.");
+        // Poll backend until milestone status updates after disburse
+        let pollAttempts = 0;
+        const pollTimer = window.setInterval(() => {
+            pollAttempts += 1;
+            backendCampaign.refetch();
+            if (pollAttempts >= 5) window.clearInterval(pollTimer);
+        }, 3_000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [disburseConfirmed, disburseHash, refetch]);
 
     useEffect(() => {
@@ -878,14 +974,23 @@ export default function CampaignDetailPage() {
             return;
         lastRefundSuccessTxRef.current = refundTxHash;
         refetch();
-        fetchRefundStatus();
+        // After refund confirmed, poll backend status
+        let pollAttempts = 0;
+        const pollTimer = window.setInterval(() => {
+            pollAttempts += 1;
+            backendCampaign.refetch();
+            fetchRefundStatus(isCampaignFailed ? "failed" : "partial_failed");
+            if (pollAttempts >= 5) window.clearInterval(pollTimer);
+        }, 3_000);
         showSuccessToast("Hoàn tiền thành công.");
+        return () => window.clearInterval(pollTimer);
     }, [
         fundingRefundHash,
         milestoneRefundHash,
         refundConfirmed,
         refetch,
         fetchRefundStatus,
+        isCampaignFailed,
     ]);
 
     useEffect(() => {
@@ -1016,13 +1121,13 @@ export default function CampaignDetailPage() {
                         {/* Left Column - Main Content */}
                         <div className="space-y-6">
                             {isStatusOutOfSync && (
-                                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-4 text-amber-900">
-                                    <p className="text-sm font-semibold">
-                                        Trạng thái đang đồng bộ
-                                    </p>
-                                    <p className="text-xs text-amber-800">
-                                        Trạng thái on-chain khác backend. Dữ
-                                        liệu sẽ tự cập nhật sau khi đồng bộ.
+                                <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800 flex items-center gap-3">
+                                    <svg className="h-4 w-4 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                    </svg>
+                                    <p className="text-sm">
+                                        Đang cập nhật trạng thái chiến dịch...
                                     </p>
                                 </div>
                             )}
@@ -1040,6 +1145,7 @@ export default function CampaignDetailPage() {
                                 milestoneCount={campaign.milestoneCount}
                                 campaignStatusLabel={campaignStatusLabel}
                                 currentMilestoneId={campaign.currentMilestoneId}
+                                milestones={resolvedMilestones}
                             />
 
                             <CampaignInfoPanel
@@ -1296,7 +1402,10 @@ export default function CampaignDetailPage() {
                                         showRefund={Boolean(
                                             (isCampaignFailed ||
                                                 isCampaignPartialFailed) &&
-                                            userDonatedAmount > 0n,
+                                            userDonatedAmount > 0n &&
+                                            campaign &&
+                                            campaign.raised > campaign.totalDisbursed &&
+                                            refundStatus?.status !== "none",
                                         )}
                                         showMint={Boolean(
                                             canMintCertificate &&
