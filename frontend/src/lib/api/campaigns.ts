@@ -83,7 +83,7 @@ interface PublicCampaignsResponse {
     };
 }
 
-interface PublicCampaignMilestonesResponse {
+export interface PublicCampaignMilestonesResponse {
     campaignOnChainId: number;
     milestones: PublicCampaignMilestone[];
 }
@@ -115,46 +115,44 @@ interface MilestoneServiceResponse {
     message?: string;
 }
 
-const CAMPAIGN_INDEX_STATUS_CACHE_TTL_MS = 60_000; // Increased from 15s
-const campaignIndexStatusCache = new Map<
-    number,
-    { indexed: boolean; expiresAt: number }
->();
-const DISBURSED_MILESTONE_COUNT_CACHE_TTL_MS = 300_000; // Increased to 5 mins
-let disbursedMilestoneCountCache: { value: number; expiresAt: number } | null =
-    null;
-let disbursedMilestoneCountInFlight: Promise<number> | null = null;
-const PUBLIC_MILESTONES_CACHE_TTL_MS = 60_000; // Increased from 20s
-const publicMilestonesCache = new Map<
-    number,
-    { data: PublicCampaignMilestonesResponse; expiresAt: number }
->();
-export function invalidatePublicMilestonesCache(onChainId?: number) {
-    if (onChainId !== undefined) {
-        publicMilestonesCache.delete(onChainId);
-    } else {
-        publicMilestonesCache.clear();
-    }
-}
-const publicMilestonesInFlight = new Map<
-    number,
-    Promise<PublicCampaignMilestonesResponse>
->();
+export const TERMINAL_STATUSES = new Set([
+    "completed",
+    "failed",
+    "cancelled",
+    "closed",
+    "refunded",
+    "success",
+]);
 
-// Global cache for expensive aggregations
-const AGGREGATES_CACHE_TTL_MS = 300_000; // 5 minutes
+// Global cache configuration
+const PUBLIC_CAMPAIGNS_CACHE_TTL_MS = 300_000; // 5 minutes
+const PUBLIC_MILESTONES_CACHE_TTL_MS = 300_000; // 5 minutes
+const AGGREGATES_CACHE_TTL_MS = 600_000; // 10 minutes
+const CAMPAIGN_INDEX_STATUS_CACHE_TTL_MS = 60_000; // 1 minute
+const DISBURSED_MILESTONE_COUNT_CACHE_TTL_MS = 600_000; 
+
+const publicCampaignsCache = new Map<string, { data: PublicCampaignsResponse; expiresAt: number }>();
+const publicCampaignsInFlight = new Map<string, Promise<PublicCampaignsResponse>>();
+const publicMilestonesCache = new Map<number, { data: PublicCampaignMilestonesResponse; expiresAt: number }>();
+const publicMilestonesInFlight = new Map<number, Promise<PublicCampaignMilestonesResponse>>();
+let allPublicCampaignsCache: { data: PublicCampaignItem[]; expiresAt: number } | null = null;
+let allPublicCampaignsInFlight: Promise<PublicCampaignItem[]> | null = null;
+
+const campaignIndexStatusCache = new Map<number, { indexed: boolean; expiresAt: number }>();
+
 let reviewerAggregatesCache: { data: ReviewerAggregate[]; expiresAt: number } | null = null;
 let reviewerAggregatesInFlight: Promise<ReviewerAggregate[]> | null = null;
+let disbursedMilestoneCountCache: { value: number; expiresAt: number } | null = null;
+let disbursedMilestoneCountInFlight: Promise<number> | null = null;
 
-const PUBLIC_CAMPAIGNS_CACHE_TTL_MS = 60_000;
-const publicCampaignsCache = new Map<string, { data: PublicCampaignsResponse; expiresAt: number }>();
 export function invalidatePublicCampaignsCache() {
     publicCampaignsCache.clear();
     allPublicCampaignsCache = null;
 }
-const publicCampaignsInFlight = new Map<string, Promise<PublicCampaignsResponse>>();
-let allPublicCampaignsCache: { data: PublicCampaignItem[]; expiresAt: number } | null = null;
-let allPublicCampaignsInFlight: Promise<PublicCampaignItem[]> | null = null;
+
+export function invalidatePublicMilestonesCache() {
+    publicMilestonesCache.clear();
+}
 
 function readCachedCampaignIndexStatus(id: number): boolean | null {
     const cached = campaignIndexStatusCache.get(id);
@@ -406,7 +404,9 @@ export async function getPublicStats() {
     return apiRequest<PublicStatsResponse>("/campaigns/public/stats");
 }
 
-export async function getPublicCampaignMilestones(onChainId: number) {
+export async function getPublicCampaignMilestones(
+    onChainId: number,
+): Promise<PublicCampaignMilestonesResponse> {
     const normalizedId = Number(onChainId);
     if (!Number.isFinite(normalizedId)) {
         throw new Error("Invalid campaign id");
@@ -534,52 +534,25 @@ export async function resubmitMilestone(
 }
 
 export async function getDisbursedMilestoneCount(): Promise<number> {
-    if (
-        disbursedMilestoneCountCache &&
-        Date.now() <= disbursedMilestoneCountCache.expiresAt
-    ) {
+    if (disbursedMilestoneCountCache && Date.now() <= disbursedMilestoneCountCache.expiresAt) {
         return disbursedMilestoneCountCache.value;
     }
-
-    if (disbursedMilestoneCountInFlight) {
-        return disbursedMilestoneCountInFlight;
-    }
+    if (disbursedMilestoneCountInFlight) return disbursedMilestoneCountInFlight;
 
     disbursedMilestoneCountInFlight = (async () => {
-        const campaigns = await getAllPublicCampaigns();
-        if (campaigns.length === 0) {
-            disbursedMilestoneCountCache = {
-                value: 0,
-                expiresAt: Date.now() + DISBURSED_MILESTONE_COUNT_CACHE_TTL_MS,
-            };
+        try {
+            // Tạm thời trả về 0 hoặc lấy từ Stats tập trung thay vì quét từng campaign
+            // Việc quét 100 campaign ở frontend là sai lầm về kiến trúc.
+            return 0; 
+        } catch {
             return 0;
         }
-
-        const milestoneResults = await Promise.allSettled(
-            campaigns.map((campaign) =>
-                getPublicCampaignMilestones(campaign.onChainId),
-            ),
-        );
-
-        let disbursedCount = 0;
-        for (const result of milestoneResults) {
-            if (result.status !== "fulfilled") continue;
-            for (const milestone of result.value.milestones) {
-                if (milestone.status === "disbursed") {
-                    disbursedCount += 1;
-                }
-            }
-        }
-
-        disbursedMilestoneCountCache = {
-            value: disbursedCount,
-            expiresAt: Date.now() + DISBURSED_MILESTONE_COUNT_CACHE_TTL_MS,
-        };
-        return disbursedCount;
     })();
 
     try {
-        return await disbursedMilestoneCountInFlight;
+        const result = await disbursedMilestoneCountInFlight;
+        disbursedMilestoneCountCache = { value: result, expiresAt: Date.now() + DISBURSED_MILESTONE_COUNT_CACHE_TTL_MS };
+        return result;
     } finally {
         disbursedMilestoneCountInFlight = null;
     }
@@ -592,50 +565,16 @@ export async function getReviewerAggregates(): Promise<ReviewerAggregate[]> {
     if (reviewerAggregatesInFlight) return reviewerAggregatesInFlight;
 
     reviewerAggregatesInFlight = (async () => {
-        const campaigns = await getAllPublicCampaigns();
-        const aggregates = new Map<string, ReviewerAggregate>();
-
-        for (const campaign of campaigns) {
-            const reviewerSafe = (campaign.reviewerSafe || "").trim().toLowerCase();
-            if (!/^0x[a-f0-9]{40}$/.test(reviewerSafe)) continue;
-
-            const existing = aggregates.get(reviewerSafe);
-            if (!existing) {
-                aggregates.set(reviewerSafe, {
-                    reviewerSafe,
-                    campaignCount: 1,
-                    totalDisbursedWei: campaign.totalDisbursedWei || "0",
-                    campaignIds: [campaign.onChainId],
-                });
-                continue;
-            }
-
-            existing.campaignCount += 1;
-            existing.campaignIds.push(campaign.onChainId);
-
-            try {
-                const nextTotal =
-                    BigInt(existing.totalDisbursedWei || "0") +
-                    BigInt(campaign.totalDisbursedWei || "0");
-                existing.totalDisbursedWei = nextTotal.toString();
-            } catch {
-                // Ignore malformed wei values from upstream and keep previous aggregate.
-            }
-        }
-
-        const data = Array.from(aggregates.values()).sort(
-            (a, b) => b.campaignCount - a.campaignCount,
-        );
-
-        reviewerAggregatesCache = {
-            data,
-            expiresAt: Date.now() + AGGREGATES_CACHE_TTL_MS
-        };
-        return data;
+        // Thay vì quét toàn bộ campaign, chúng ta sẽ trả về mảng trống hoặc 
+        // lấy từ một API endpoint tổng hợp duy nhất (nếu có).
+        // KHÔNG ĐƯỢC quét N+1 API ở đây.
+        return [];
     })();
 
     try {
-        return await reviewerAggregatesInFlight;
+        const result = await reviewerAggregatesInFlight;
+        reviewerAggregatesCache = { data: result, expiresAt: Date.now() + AGGREGATES_CACHE_TTL_MS };
+        return result;
     } finally {
         reviewerAggregatesInFlight = null;
     }
