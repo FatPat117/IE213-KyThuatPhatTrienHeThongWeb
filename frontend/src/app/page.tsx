@@ -75,25 +75,6 @@ export default function Home() {
     const [reviewerUpdatedAt, setReviewerUpdatedAt] = useState<string | null>(
         null,
     );
-    const { campaigns } = useReadAllCampaigns();
-    const { reviewersByCampaignId } = useReadCampaignReviewersBatch(
-        campaigns.length,
-    );
-    const reviewerSafesRef = useRef<string[]>([]);
-
-    const onChainAssignedReviewerSafes = useMemo(() => {
-        return Array.from(
-            new Set(
-                Array.from(reviewersByCampaignId.values())
-                    .map((item) => item.trim().toLowerCase())
-                    .filter((item) => /^0x[a-f0-9]{40}$/.test(item)),
-            ),
-        );
-    }, [reviewersByCampaignId]);
-
-    useEffect(() => {
-        reviewerSafesRef.current = onChainAssignedReviewerSafes;
-    }, [onChainAssignedReviewerSafes]);
 
     const buildCardsFromSafes = useCallback(
         async (safes: string[]): Promise<ReviewerCard[]> => {
@@ -140,72 +121,48 @@ export default function Home() {
             setReviewerError(null);
 
             const aggregates = await getReviewerAggregates();
-            const onChainSet = new Set(reviewerSafesRef.current);
-            let reviewerCards = await Promise.all(
-                aggregates
-                    .filter((aggregate) =>
-                        onChainSet.size > 0
-                            ? onChainSet.has(
-                                  aggregate.reviewerSafe.trim().toLowerCase(),
-                              )
-                            : true,
-                    )
-                    .map(async (aggregate) => {
-                        let profile: Awaited<
-                            ReturnType<typeof getUserProfile>
-                        > | null = null;
-                        try {
-                            profile = await getUserProfile(
-                                aggregate.reviewerSafe,
-                            );
-                        } catch {
-                            profile = null;
-                        }
+            const reviewerCards = await Promise.all(
+                aggregates.map(async (aggregate) => {
+                    let profile: Awaited<
+                        ReturnType<typeof getUserProfile>
+                    > | null = null;
+                    try {
+                        profile = await getUserProfile(
+                            aggregate.reviewerSafe,
+                        );
+                    } catch {
+                        profile = null;
+                    }
 
-                        return {
-                            id: aggregate.reviewerSafe,
-                            name:
-                                profile?.displayName?.trim() ||
-                                shortenAddress(aggregate.reviewerSafe),
-                            role: "Kiểm duyệt viên đa chữ ký",
-                            org: `${aggregate.campaignCount} chiến dịch đang dùng ví kiểm duyệt này`,
-                            image: profile?.avatarUrl?.trim() || "",
-                            board: "Hội đồng kiểm duyệt on-chain",
-                            safeAddress: aggregate.reviewerSafe,
-                            campaignCount: aggregate.campaignCount,
-                            totalDisbursedEth: weiToEthText(
-                                aggregate.totalDisbursedWei,
-                            ),
-                        } as ReviewerCard;
-                    }),
+                    return {
+                        id: aggregate.reviewerSafe,
+                        name:
+                            profile?.displayName?.trim() ||
+                            shortenAddress(aggregate.reviewerSafe),
+                        role: "Kiểm duyệt viên đa chữ ký",
+                        org: `${aggregate.campaignCount} chiến dịch đang dùng ví kiểm duyệt này`,
+                        image: profile?.avatarUrl?.trim() || "",
+                        board: "Hội đồng kiểm duyệt on-chain",
+                        safeAddress: aggregate.reviewerSafe,
+                        campaignCount: aggregate.campaignCount,
+                        totalDisbursedEth: weiToEthText(
+                            aggregate.totalDisbursedWei,
+                        ),
+                    } as ReviewerCard;
+                }),
             );
-            if (reviewerCards.length === 0) {
-                reviewerCards = await buildCardsFromSafes(
-                    reviewerSafesRef.current,
-                );
-            }
 
             setReviewers(reviewerCards);
             setReviewerUpdatedAt(new Date().toLocaleTimeString("vi-VN"));
         } catch {
-            const fallbackCards = await buildCardsFromSafes(
-                reviewerSafesRef.current,
+            setReviewerError(
+                "Chưa tải được danh sách reviewer. Vui lòng thử lại sau.",
             );
-            setReviewers(fallbackCards);
-            if (fallbackCards.length > 0) {
-                setReviewerError(
-                    "Không tải được dữ liệu reviewer từ backend, đã chuyển sang danh sách on-chain.",
-                );
-            } else {
-                setReviewerError(
-                    "Chưa tải được danh sách reviewer. Vui lòng thử lại sau.",
-                );
-            }
         } finally {
             setIsLoadingReviewers(false);
             setIsRefreshingReviewers(false);
         }
-    }, [buildCardsFromSafes]);
+    }, []);
 
     useEffect(() => {
         refreshReviewers();

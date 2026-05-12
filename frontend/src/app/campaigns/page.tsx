@@ -6,7 +6,8 @@ import {
     isPlaceholderCampaignDescription,
     isPlaceholderCampaignTitle,
     useBackendCampaigns,
-    useReadAllCampaigns
+    TERMINAL_STATUSES,
+    SEPOLIA_CHAIN_ID,
 } from "@/lib";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -14,14 +15,6 @@ import { useEffect, useMemo, useState } from "react";
 import { formatEther } from "viem";
 import { useAccount, useChainId } from "wagmi";
 import { showErrorToast } from "@/lib/ui/toast";
-
-const SEPOLIA_CHAIN_ID = 11155111;
-const TERMINAL_STATUSES = new Set([
-    "completed",
-    "partial_failed",
-    "failed",
-    "cancelled",
-]);
 
 function formatEthAmount(value: number) {
     if (!Number.isFinite(value) || value <= 0) return '0';
@@ -53,12 +46,6 @@ const ITEMS_PER_PAGE = 9;
 
 function CampaignsPageContent() {
     const { data: campaigns, isLoading, error, refetch } = useBackendCampaigns();
-    const {
-        campaigns: onChainCampaigns,
-        isLoading: isOnChainLoading,
-        error: onChainError,
-        refetch: refetchOnChain,
-    } = useReadAllCampaigns();
     const { isConnected } = useAccount();
     const chainId = useChainId();
     const [searchQuery, setSearchQuery] = useState("");
@@ -69,16 +56,15 @@ function CampaignsPageContent() {
     const canCreateCampaign = isConnected && isSepoliaNetwork;
 
     useEffect(() => {
-        const message =
-            error || onChainError || "Có lỗi xảy ra. Vui lòng kiểm tra backend/on-chain RPC.";
-        if (!error && !onChainError) return;
-        showErrorToast(message);
-    }, [error, onChainError]);
+        if (!error) return;
+        showErrorToast(error || "Có lỗi xảy ra khi tải dữ liệu từ backend.");
+    }, [error]);
 
-    const backendCampaigns = useMemo(
+    const normalizedCampaigns = useMemo(
         () =>
             campaigns.map((campaign) => {
                 const cached = getCampaignMetadataFromCache(campaign.onChainId);
+                const status = (campaign.status || "").toLowerCase();
                 return {
                     id: campaign.onChainId,
                     title: !isPlaceholderCampaignTitle(campaign.title, campaign.onChainId)
@@ -86,70 +72,16 @@ function CampaignsPageContent() {
                         : (cached?.title || `Chiến dịch #${campaign.onChainId}`),
                     description: !isPlaceholderCampaignDescription(campaign.description)
                         ? campaign.description
-                        : (cached?.description || ""),
+                        : (cached?.description || "Dữ liệu đang được đồng bộ..."),
                     creator: campaign.creator,
                     goal: BigInt(campaign.goal || "0"),
                     raised: BigInt(campaign.raised || "0"),
                     status: campaign.status,
-                    completed: TERMINAL_STATUSES.has(
-                        (campaign.status || "").toLowerCase(),
-                    ),
+                    completed: TERMINAL_STATUSES.has(status),
                 };
             }),
         [campaigns]
     );
-
-    const normalizedCampaigns = useMemo(() => {
-        const campaignMap = new Map<
-            number,
-            {
-                id: number;
-                title: string;
-                description: string;
-                creator: string;
-                goal: bigint;
-                raised: bigint;
-                status?: string;
-                completed: boolean;
-            }
-        >();
-
-        // Backend-first for metadata (title/description), then on-chain overrides numeric fields for freshness.
-        backendCampaigns.forEach((campaign) => {
-            campaignMap.set(campaign.id, campaign);
-        });
-
-        onChainCampaigns.forEach((campaign) => {
-            const existing = campaignMap.get(campaign.id);
-            if (existing) {
-                // Prioritize backend terminal statuses over on-chain status
-                const isBackendTerminal = TERMINAL_STATUSES.has(existing.status || "");
-
-                campaignMap.set(campaign.id, {
-                    ...existing,
-                    creator: campaign.creator || existing.creator,
-                    goal: campaign.goal,
-                    raised: campaign.raised,
-                    status: isBackendTerminal ? existing.status : (campaign.statusLabel || existing.status),
-                    completed: isBackendTerminal ? true : campaign.completed,
-                });
-            } else {
-                const cached = getCampaignMetadataFromCache(campaign.id);
-                campaignMap.set(campaign.id, {
-                    id: campaign.id,
-                    title: cached?.title || `Chiến dịch #${campaign.id}`,
-                    description: cached?.description || "Dữ liệu chiến dịch đang được đồng bộ giữa on-chain và backend. Vui lòng kiểm tra lại sau.",
-                    creator: campaign.creator,
-                    goal: campaign.goal,
-                    raised: campaign.raised,
-                    status: campaign.statusLabel,
-                    completed: campaign.completed,
-                });
-            }
-        });
-
-        return Array.from(campaignMap.values());
-    }, [backendCampaigns, onChainCampaigns]);
 
     // Filter and search campaigns
     const filteredCampaigns = useMemo(() => {
@@ -246,7 +178,6 @@ function CampaignsPageContent() {
                             <button
                                 onClick={() => {
                                     refetch();
-                                    refetchOnChain();
                                 }}
                                 className="inline-flex items-center justify-center px-5 py-3 rounded-lg border-2 border-slate-200 text-slate-900 font-semibold hover:border-blue-600 hover:text-blue-600 transition duration-200"
                             >
@@ -276,20 +207,19 @@ function CampaignsPageContent() {
                         <div className="rounded-xl bg-white border border-slate-200 p-4 shadow-sm">
                             <p className="text-sm font-medium text-slate-600">Tổng chiến dịch</p>
                             <p className="text-2xl font-bold text-slate-900 mt-1">
-
-                                {isLoading && isOnChainLoading ? "..." : normalizedCampaigns.length}
+                                {isLoading ? "..." : normalizedCampaigns.length}
                             </p>
                         </div>
                         <div className="rounded-xl bg-white border border-slate-200 p-4 shadow-sm">
                             <p className="text-sm font-medium text-slate-600">Đang hoạt động</p>
                             <p className="text-2xl font-bold text-green-600 mt-1">
-                                {isLoading && isOnChainLoading ? "..." : normalizedCampaigns.filter((c) => !c.completed).length}
+                                {isLoading ? "..." : normalizedCampaigns.filter((c) => !c.completed).length}
                             </p>
                         </div>
                         <div className="rounded-xl bg-white border border-slate-200 p-4 shadow-sm">
                             <p className="text-sm font-medium text-slate-600">Đã kết thúc</p>
                             <p className="text-2xl font-bold text-slate-600 mt-1">
-                                {isLoading && isOnChainLoading ? "..." : normalizedCampaigns.filter((c) => c.completed).length}
+                                {isLoading ? "..." : normalizedCampaigns.filter((c) => c.completed).length}
                             </p>
                         </div>
                         <div className="rounded-xl bg-white border border-slate-200 p-4 shadow-sm">
@@ -367,13 +297,13 @@ function CampaignsPageContent() {
                 {/* Campaign Grid */}
                 <section className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                     {/* Loading State */}
-                    {(isLoading || isOnChainLoading) && normalizedCampaigns.length === 0 &&
+                    {isLoading && normalizedCampaigns.length === 0 &&
                         Array.from({ length: 6 }).map((_, index) => (
                             <CampaignCardSkeleton key={`skeleton-${index}`} />
                         ))}
 
                     {/* Error State */}
-                    {!isLoading && !isOnChainLoading && error && normalizedCampaigns.length === 0 && (
+                    {!isLoading && error && normalizedCampaigns.length === 0 && (
                         <div className="col-span-full rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
                             <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4">
                                 <span className="text-2xl">⚠️</span>
@@ -385,7 +315,6 @@ function CampaignsPageContent() {
                             <button
                                 onClick={() => {
                                     refetch();
-                                    refetchOnChain();
                                 }}
                                 className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700 transition"
                             >
@@ -395,7 +324,7 @@ function CampaignsPageContent() {
                     )}
 
                     {/* Empty State - No Campaigns */}
-                    {!isLoading && !isOnChainLoading && !error && normalizedCampaigns.length === 0 && (
+                    {!isLoading && !error && normalizedCampaigns.length === 0 && (
                         <div className="col-span-full rounded-2xl border border-blue-200 bg-blue-50 p-12 text-center">
                             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 mb-4">
                                 <span className="text-3xl">🚀</span>
@@ -412,7 +341,7 @@ function CampaignsPageContent() {
                     )}
 
                     {/* Empty State - No Search Results */}
-                    {!isLoading && !isOnChainLoading && normalizedCampaigns.length > 0 && filteredCampaigns.length === 0 && (
+                    {!isLoading && normalizedCampaigns.length > 0 && filteredCampaigns.length === 0 && (
                         <div className="col-span-full rounded-2xl border border-slate-200 bg-slate-50 p-12 text-center">
                             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
                                 <span className="text-3xl">🔍</span>
@@ -549,7 +478,7 @@ function CampaignsPageContent() {
                 </section>
 
                 {/* Pagination Controls */}
-                {!isLoading && !isOnChainLoading && filteredCampaigns.length > ITEMS_PER_PAGE && (
+                {!isLoading && filteredCampaigns.length > ITEMS_PER_PAGE && (
                     <div className="mt-10 flex items-center justify-center gap-2">
                         {/* First page */}
                         <button

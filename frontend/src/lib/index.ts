@@ -102,6 +102,7 @@ export {
     updateCampaignStatus,
     getRefundStatus,
     mapMilestoneRecord,
+    TERMINAL_STATUSES,
 } from "./api/campaigns";
 export {
     getDonationsByCampaign,

@@ -31,7 +31,7 @@ function MyDonationsContent() {
     const [allOnChainDonations, setAllOnChainDonations] = useState<
         DonationRecord[]
     >([]);
-    const [isOnChainLoading, setIsOnChainLoading] = useState(false);
+    const [isOnChainLoading] = useState(false);
     const campaignIdFilter = useMemo(() => {
         const raw = searchParams.get("campaignId");
         if (!raw) return null;
@@ -44,111 +44,6 @@ function MyDonationsContent() {
     );
     const transactionQuery = useBackendTransactions(address ?? null);
     const campaignsQuery = useBackendCampaigns();
-
-    useEffect(() => {
-        const fetchOnChainDonations = async () => {
-            if (!publicClient) return;
-
-            try {
-                setIsOnChainLoading(true);
-                const latestBlock = await publicClient.getBlockNumber();
-                const maxBlocksToScan = 500n;
-                const chunkSize = 500n;
-                const fromBlock =
-                    latestBlock > maxBlocksToScan
-                        ? latestBlock - maxBlocksToScan + 1n
-                        : 0n;
-                const logs: Awaited<ReturnType<typeof publicClient.getLogs>> =
-                    [];
-
-                for (
-                    let chunkFrom = fromBlock;
-                    chunkFrom <= latestBlock;
-                    chunkFrom += chunkSize
-                ) {
-                    const chunkTo =
-                        chunkFrom + chunkSize - 1n > latestBlock
-                            ? latestBlock
-                            : chunkFrom + chunkSize - 1n;
-                    const chunkLogs = await publicClient.getLogs({
-                        address: contractConfig.address,
-                        event: parseAbiItem(
-                            "event Donated(uint256 indexed campaignId, address indexed donor, uint256 amount)",
-                        ),
-                        fromBlock: chunkFrom,
-                        toBlock: chunkTo,
-                    });
-                    logs.push(...chunkLogs);
-                }
-
-                const mapped = await Promise.all(
-                    logs.map(async (log) => {
-                        const args = (
-                            log as {
-                                args?: {
-                                    campaignId?: bigint;
-                                    amount?: bigint;
-                                    donor?: string;
-                                };
-                                blockNumber?: bigint | null;
-                            }
-                        ).args;
-                        const campaignOnChainId = Number(
-                            args?.campaignId ?? 0n,
-                        );
-                        const amountWei = args?.amount ?? 0n;
-                        const donorWallet = (args?.donor ?? "").toString();
-                        const blockNumber = (
-                            log as { blockNumber?: bigint | null }
-                        ).blockNumber;
-                        const block = blockNumber
-                            ? await publicClient.getBlock({ blockNumber })
-                            : null;
-                        return {
-                            txHash: log.transactionHash ?? "",
-                            campaignOnChainId,
-                            donorWallet,
-                            amount: amountWei.toString(),
-                            amountEth: Number(formatEther(amountWei)),
-                            donatedAt: new Date(
-                                block
-                                    ? Number(block.timestamp) * 1000
-                                    : Date.now(),
-                            ).toISOString(),
-                        } satisfies DonationRecord;
-                    }),
-                );
-
-                const sorted = mapped
-                    .filter((item) => item.txHash)
-                    .sort(
-                        (a, b) =>
-                            new Date(b.donatedAt).getTime() -
-                            new Date(a.donatedAt).getTime(),
-                    );
-
-                setAllOnChainDonations(sorted);
-                if (address) {
-                    const lowerAddress = address.toLowerCase();
-                    setOnChainDonations(
-                        sorted.filter(
-                            (item) =>
-                                item.donorWallet.toLowerCase() === lowerAddress,
-                        ),
-                    );
-                } else {
-                    setOnChainDonations([]);
-                }
-            } catch {
-                setOnChainDonations([]);
-                setAllOnChainDonations([]);
-            } finally {
-                setIsOnChainLoading(false);
-            }
-        };
-
-        fetchOnChainDonations();
-    }, [address, publicClient]);
 
     const campaignTitleById = useMemo(() => {
         const map = new Map<number, string>();
