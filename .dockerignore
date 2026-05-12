@@ -1,0 +1,14 @@
+node_modules
+.next
+.swc
+out
+build
+dist
+.env
+.env.local
+.git
+.vscode
+**/.dockerignore
+**/Dockerfile
+**/node_modules
+**/.next
