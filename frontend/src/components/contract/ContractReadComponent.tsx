@@ -8,7 +8,7 @@ import {
     isPlaceholderCampaignTitle,
     useBackendCampaigns,
     useContractStats,
-    useReadAllCampaigns,
+    TERMINAL_STATUSES,
 } from "@/lib";
 import { useWalletStatus } from "@/lib";
 
@@ -178,13 +178,6 @@ export function CampaignListDisplay({
     onlyActive?: boolean;
 } = {}) {
     const {
-        campaigns: onChainCampaigns,
-        isLoading: isOnChainLoading,
-        isError: isOnChainError,
-        error: onChainError,
-        refetch: refetchOnChain,
-    } = useReadAllCampaigns();
-    const {
         data: backendCampaigns,
         isLoading: isBackendLoading,
         error: backendError,
@@ -192,79 +185,37 @@ export function CampaignListDisplay({
     } = useBackendCampaigns();
 
     const campaigns = useMemo(() => {
-        const campaignMap = new Map<
-            number,
-            {
-                id: number;
-                title: string;
-                creator: string;
-                goal: bigint;
-                raised: bigint;
-                completed: boolean;
-                status?: string;
-            }
-        >();
-
-        backendCampaigns.forEach((campaign) => {
-            campaignMap.set(campaign.onChainId, {
+        const result = backendCampaigns.map((campaign) => {
+            const status = (campaign.status || "").toLowerCase();
+            return {
                 id: campaign.onChainId,
                 title: campaign.title || `Chiến dịch #${campaign.onChainId}`,
                 creator: campaign.creator,
                 goal: BigInt(campaign.goal || "0"),
                 raised: BigInt(campaign.raised || "0"),
-                completed: Boolean(campaign.status === "completed"),
+                completed: TERMINAL_STATUSES.has(status),
                 status: campaign.status,
-            });
+            };
         });
 
-        onChainCampaigns.forEach((campaign) => {
-            const existing = campaignMap.get(campaign.id);
-            if (existing) {
-                campaignMap.set(campaign.id, {
-                    ...existing,
-                    creator: campaign.creator || existing.creator,
-                    goal: campaign.goal,
-                    raised: campaign.raised,
-                    completed: existing.status
-                        ? existing.completed
-                        : campaign.completed,
-                });
-                return;
-            }
+        let filtered = [...result].sort((a, b) => b.id - a.id);
 
-            campaignMap.set(campaign.id, {
-                id: campaign.id,
-                title: `Chiến dịch #${campaign.id}`,
-                creator: campaign.creator,
-                goal: campaign.goal,
-                raised: campaign.raised,
-                completed: campaign.completed,
-            });
-        });
-
-        let result = Array.from(campaignMap.values()).sort(
-            (a, b) => b.id - a.id,
-        );
-
-        // Lọc chỉ chiến dịch đang hoạt động nếu cần
         if (onlyActive) {
-            result = result.filter((c) => !c.completed);
+            filtered = filtered.filter((c) => !c.completed);
         }
 
-        // Giới hạn số lượng hiển thị
         if (limit > 0) {
-            result = result.slice(0, limit);
+            filtered = filtered.slice(0, limit);
         }
 
-        return result;
-    }, [backendCampaigns, onChainCampaigns, limit, onlyActive]);
+        return filtered;
+    }, [backendCampaigns, limit, onlyActive]);
 
-
-    const isLoading = isOnChainLoading || isBackendLoading;
-    const isError = isOnChainError || Boolean(backendError);
-    const error = onChainError || backendError || null;
+    const isLoading = isBackendLoading;
+    const isError = Boolean(backendError);
+    const error = backendError || null;
     const refetch = async () => {
-        await Promise.all([refetchOnChain(), refetchBackend()]);
+        await refetchBackend();
     };
 
     if (isLoading) {
