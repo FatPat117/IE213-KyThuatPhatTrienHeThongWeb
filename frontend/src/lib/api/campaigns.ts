@@ -565,10 +565,40 @@ export async function getReviewerAggregates(): Promise<ReviewerAggregate[]> {
     if (reviewerAggregatesInFlight) return reviewerAggregatesInFlight;
 
     reviewerAggregatesInFlight = (async () => {
-        // Thay vì quét toàn bộ campaign, chúng ta sẽ trả về mảng trống hoặc 
-        // lấy từ một API endpoint tổng hợp duy nhất (nếu có).
-        // KHÔNG ĐƯỢC quét N+1 API ở đây.
-        return [];
+        const campaigns = await getAllPublicCampaigns();
+        const aggregates = new Map<string, ReviewerAggregate>();
+
+        for (const campaign of campaigns) {
+            const reviewerSafe = (campaign.reviewerSafe || "").trim().toLowerCase();
+            if (!/^0x[a-f0-9]{40}$/.test(reviewerSafe)) continue;
+
+            const existing = aggregates.get(reviewerSafe);
+            if (!existing) {
+                aggregates.set(reviewerSafe, {
+                    reviewerSafe,
+                    campaignCount: 1,
+                    totalDisbursedWei: campaign.totalDisbursedWei || "0",
+                    campaignIds: [campaign.onChainId],
+                });
+                continue;
+            }
+
+            existing.campaignCount += 1;
+            existing.campaignIds.push(campaign.onChainId);
+
+            try {
+                const nextTotal =
+                    BigInt(existing.totalDisbursedWei || "0") +
+                    BigInt(campaign.totalDisbursedWei || "0");
+                existing.totalDisbursedWei = nextTotal.toString();
+            } catch {
+                // Ignore malformed wei values from upstream and keep previous aggregate.
+            }
+        }
+
+        return Array.from(aggregates.values()).sort(
+            (a, b) => b.campaignCount - a.campaignCount,
+        );
     })();
 
     try {
