@@ -115,29 +115,37 @@ function createContractInstance() {
     const resolved = resolveContractConfig();
     if (!resolved) return null;
 
-    const providers = resolved.rpcUrls.map((url, index) => {
-        const provider = withGetLogsChunking(
-            new ethers.JsonRpcProvider(url, 11155111, {
-                staticNetwork: true,
-                batchMaxCount: 50, // Enable JSON-RPC batching to reduce Alchemy API calls
-            }),
-        );
-        provider.pollingInterval = 15000; // 15 seconds to reduce RPC load on Alchemy
+    const wssUrl = process.env.SEPOLIA_WSS_URL;
+    let provider;
 
-        return {
-            provider,
-            priority: index + 1,
-            weight: 1,
-            stallTimeout: 2000,
-        };
-    });
+    if (wssUrl && wssUrl.startsWith("ws")) {
+        console.log("[listener-service] Đang kết nối qua WebSocket (WSS) để nhận sự kiện real-time...");
+        provider = new ethers.WebSocketProvider(wssUrl, 11155111);
+    } else {
+        const providers = resolved.rpcUrls.map((url, index) => {
+            const p = withGetLogsChunking(
+                new ethers.JsonRpcProvider(url, 11155111, {
+                    staticNetwork: true,
+                    batchMaxCount: 50,
+                }),
+            );
+            p.pollingInterval = 15000;
+            return {
+                provider: p,
+                priority: index + 1,
+                weight: 1,
+                stallTimeout: 2000,
+            };
+        });
 
-    const provider =
-        providers.length === 1
-            ? providers[0].provider
-            : new ethers.FallbackProvider(providers, undefined, {
-                  quorum: 1,
-              });
+        provider =
+            providers.length === 1
+                ? providers[0].provider
+                : new ethers.FallbackProvider(providers, undefined, {
+                      quorum: 1,
+                  });
+    }
+
     const contract = new ethers.Contract(resolved.contractAddress, CONTRACT_ABI, provider);
     return { provider, contract };
 }
