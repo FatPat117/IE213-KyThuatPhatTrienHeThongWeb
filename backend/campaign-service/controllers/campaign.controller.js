@@ -1065,6 +1065,9 @@ async function getRefundStatus(req, res, next) {
                                 finalStatus = "refunded";
                             }
                         }
+                    } else {
+                        // User has on-chain balance in a refundable campaign
+                        finalStatus = "eligible";
                     }
                 }
             } catch (err) {

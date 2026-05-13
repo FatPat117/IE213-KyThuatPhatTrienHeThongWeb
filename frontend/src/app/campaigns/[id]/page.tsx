@@ -1402,9 +1402,10 @@ export default function CampaignDetailPage() {
                                         showRefund={Boolean(
                                             (isCampaignFailed ||
                                                 isCampaignPartialFailed) &&
-                                            userDonatedAmount > 0n &&
+                                            effectiveUserDonatedAmount > 0n &&
                                             campaign &&
-                                            campaign.raised > campaign.totalDisbursed &&
+                                            campaign.raised >
+                                                campaign.totalDisbursed &&
                                             refundStatus?.status !== "none",
                                         )}
                                         showMint={Boolean(

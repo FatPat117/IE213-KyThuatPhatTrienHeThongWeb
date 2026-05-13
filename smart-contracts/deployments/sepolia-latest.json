@@ -1,7 +1,7 @@
 {
   "contract": "FundingPlatform",
   "network": "sepolia",
-  "address": "0x9702dbfc06ea051a2a49308cd9071c64dd953753",
-  "deployedAt": "2026-05-03T09:08:17Z",
-  "explorer": "https://sepolia.etherscan.io/address/0x9702dbfc06ea051a2a49308cd9071c64dd953753"
+  "address": "0x1663264F8E1504Ec62252A11E89282178A177a59",
+  "deployedAt": "2026-05-13T04:00:00Z",
+  "explorer": "https://sepolia.etherscan.io/address/0x1663264F8E1504Ec62252A11E89282178A177a59"
 }
