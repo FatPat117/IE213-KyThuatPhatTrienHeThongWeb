@@ -684,6 +684,8 @@ async function getPublicCampaignMilestones(req, res, next) {
                     lastRejectionReason: milestone.lastRejectionReason || null,
                     rejectionCount: Number(milestone.rejectionCount || 0),
                     maxRetries: Number(milestone.maxRetries || 3),
+                    pendingRejections: Array.isArray(milestone.pendingRejections) ? milestone.pendingRejections.length : 0,
+                    rejectionVoters: Array.isArray(milestone.pendingRejections) ? milestone.pendingRejections.map(v => v.reviewerWallet) : [],
                 };
             }),
         });

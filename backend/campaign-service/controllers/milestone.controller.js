@@ -692,6 +692,7 @@ const rejectMilestone = async (req, res) => {
         let hasPermission = assignedReviewerSafe === reviewerWallet.toLowerCase();
 
         // 2. Nếu không phải, kiểm tra xem ví người dùng có phải là Owner của Safe không
+        let threshold = 1;
         if (!hasPermission && assignedReviewerSafe) {
             try {
                 // Đọc trực tiếp từ Smart Contract bằng ethers để tránh bị chặn rate limit (429) bởi Safe API
@@ -700,9 +701,13 @@ const rejectMilestone = async (req, res) => {
                 const rpcUrl = process.env.RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
                 const provider = new ethers.JsonRpcProvider(rpcUrl);
 
-                const safeAbi = ["function getOwners() public view returns (address[] memory)"];
+                const safeAbi = [
+                    "function getOwners() public view returns (address[] memory)",
+                    "function getThreshold() public view returns (uint256)"
+                ];
                 const safeContract = new ethers.Contract(assignedReviewerSafe, safeAbi, provider);
                 const owners = await safeContract.getOwners();
+                threshold = Number(await safeContract.getThreshold());
 
                 if (owners && Array.isArray(owners)) {
                     hasPermission = owners.some(
@@ -710,7 +715,7 @@ const rejectMilestone = async (req, res) => {
                     );
                 }
             } catch (err) {
-                console.error(`[rejectMilestone] Error fetching Safe owners via RPC for ${assignedReviewerSafe}:`, err.message);
+                console.error(`[rejectMilestone] Error fetching Safe owners/threshold via RPC for ${assignedReviewerSafe}:`, err.message);
             }
         }
 
@@ -745,6 +750,44 @@ const rejectMilestone = async (req, res) => {
             });
         }
 
+        // KIỂM TRA THRESHOLD TỪ CHỐI
+        const alreadyVoted = milestone.pendingRejections?.find(
+            v => v.reviewerWallet.toLowerCase() === reviewerWallet.toLowerCase()
+        );
+        if (alreadyVoted) {
+            return res.status(400).json({
+                status: "error",
+                code: "ALREADY_VOTED",
+                message: "Bạn đã biểu quyết từ chối minh chứng này rồi. Vui lòng đợi các kiểm duyệt viên khác."
+            });
+        }
+
+        if (!milestone.pendingRejections) milestone.pendingRejections = [];
+        
+        milestone.pendingRejections.push({
+            reviewerWallet: reviewerWallet.toLowerCase(),
+            reason,
+            timestamp: new Date()
+        });
+
+        // Nếu số người bấm từ chối chưa đủ threshold -> chỉ lưu lại và chờ
+        if (milestone.pendingRejections.length < threshold) {
+            await milestone.save();
+            const msg = `Đã ghi nhận phiếu từ chối. Cần thêm ${threshold - milestone.pendingRejections.length} phiếu nữa để chính thức yêu cầu nộp lại.`;
+            return res.status(200).json({
+                success: true,
+                status: "pending_threshold",
+                message: msg,
+                data: { 
+                    pendingVotes: milestone.pendingRejections.length, 
+                    threshold,
+                    rejectionCount: milestone.rejectionCount || 0,
+                    message: msg
+                }
+            });
+        }
+
+        // Đã đủ chữ ký -> Tiến hành từ chối chính thức
         const deadlineExceeded = isDeadlineExceeded(milestone.deadline);
         // retriesLeft is calculated BEFORE incrementing rejectionCount.
         // We need retriesLeft > 1 so that the CURRENT rejection still leaves
@@ -771,7 +814,8 @@ const rejectMilestone = async (req, res) => {
                         status: "resubmittable",
                         lastRejectionReason: reason,
                         lastRejectionTimestamp: now,
-                        deadline: newDeadline
+                        deadline: newDeadline,
+                        pendingRejections: []
                     },
                     $inc: { rejectionCount: 1 },
                     $push: {
@@ -839,6 +883,7 @@ const rejectMilestone = async (req, res) => {
             : "MAX_RETRIES_EXCEEDED";
         milestone.lastRejectionReason = reason;
         milestone.lastRejectionTimestamp = new Date();
+        milestone.pendingRejections = [];
 
         if (!milestone.rejectionHistory) milestone.rejectionHistory = [];
         milestone.rejectionHistory.push({
