@@ -293,6 +293,21 @@ async function startListener() {
     });
 
     onIfSupported(
+        "CampaignRejected",
+        async (campaignId, rejectedBy, reason, event) => {
+            const meta = normalizeMeta(event);
+            await publish("campaign.rejected", {
+                campaignId: campaignId.toString(),
+                rejectedBy: (rejectedBy || "").toLowerCase(),
+                reason: reason,
+                txHash: meta.txHash,
+                blockNumber: meta.blockNumber,
+                logIndex: meta.logIndex,
+            });
+        },
+    );
+
+    onIfSupported(
         "Donated",
         async (campaignId, donor, amount, totalRaised, event) => {
             const meta = normalizeMeta(event);

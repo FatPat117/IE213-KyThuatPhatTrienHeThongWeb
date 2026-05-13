@@ -84,6 +84,11 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
     );
 
     event CampaignApproved(uint256 indexed campaignId, address approvedBy);
+    event CampaignRejected(
+        uint256 indexed campaignId,
+        address rejectedBy,
+        string reason
+    );
 
     event Donated(
         uint256 indexed campaignId,
@@ -587,6 +592,20 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
 
         campaign.status = CampaignStatus.Active;
         emit CampaignApproved(campaignId, msg.sender);
+    }
+
+    function adminReject(
+        uint256 campaignId,
+        string calldata reason
+    ) external onlyRole(ADMIN_ROLE) campaignExists(campaignId) {
+        Campaign storage campaign = campaigns[campaignId];
+        require(
+            campaign.status == CampaignStatus.PendingApproval,
+            "Campaign not pending approval"
+        );
+
+        campaign.status = CampaignStatus.Cancelled;
+        emit CampaignRejected(campaignId, msg.sender, reason);
     }
 
     function claimMilestoneRefund(
