@@ -102,6 +102,16 @@ const MilestoneSchema = new mongoose.Schema(
             type: Number,
             default: 0,
         },
+        pendingRejections: {
+            type: [
+                {
+                    reviewerWallet: String,
+                    reason: String,
+                    timestamp: { type: Date, default: Date.now },
+                },
+            ],
+            default: [],
+        },
         rejectionHistory: {
             type: [
                 {

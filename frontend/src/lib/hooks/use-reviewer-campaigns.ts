@@ -33,6 +33,11 @@ interface ReviewerCampaignRow {
     approvedAt: string | null;
     approvedBy: string;
     disbursedAt: string | null;
+    lastRejectionReason?: string;
+    rejectionCount?: number;
+    maxRetries?: number;
+    pendingRejections?: number;
+    rejectionVoters?: string[];
   }>;
 }
 
@@ -240,7 +245,7 @@ export function useReviewerCampaigns() {
 
   useEffect(() => {
     if (!isLoadingOwnerSafes && !isLoadingRegistered && myReviewerSafes.length > 0) {
-      refresh();
+      refresh(true);
     } else if (myReviewerSafes.length === 0) {
       setRows([]);
       setLastUpdatedAt(new Date().toLocaleTimeString("vi-VN"));
@@ -251,7 +256,7 @@ export function useReviewerCampaigns() {
   useEffect(() => {
     if (myReviewerSafes.length === 0) return;
     const timer = window.setInterval(() => {
-      refresh();
+      refresh(true);
     }, 20_000);
     return () => window.clearInterval(timer);
   }, [refresh, myReviewerSafes.length]);

@@ -165,10 +165,10 @@ export default function MilestoneTimeline({
     const canUploadForMilestone = (milestoneId: number, milestoneStatus: string): boolean => {
         if (!canUploadEvidence) return false;
         if (!isCampaignInProgress) return false;
-        
+
         const allowedStatuses = ["in_progress", "resubmittable", "disbursed"];
         if (allowedStatuses.includes(milestoneStatus)) return true;
-        
+
         return false;
     };
 
@@ -366,7 +366,7 @@ export default function MilestoneTimeline({
                                         </Link>
                                     ) : canUploadEvidence && !isCampaignInProgress ? (
                                         <span className="inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 font-semibold text-amber-700">
-                                            Chiến dịch chưa ở giai đoạn thực hiện
+                                            Chiến dịch chưa ở giai đoạn thực hiện hoặc đã thất bại
                                         </span>
                                     ) : canUploadEvidence && isCampaignInProgress && !["in_progress", "resubmittable", "disbursed"].includes(milestone.status) ? (
                                         <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-100 px-3 py-1.5 font-semibold text-slate-500">
