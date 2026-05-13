@@ -55,23 +55,37 @@ async function startMilestoneApprovedConsumer() {
             const campaign = await Campaign.findOne({
                 onChainId: campaignOnChainId,
             });
-            if (
-                campaign &&
-                milestoneId === Number(campaign.milestoneCount) - 1
-            ) {
-                campaign.status = "completed";
-                await campaign.save();
-            }
-            if (campaign?.creator) {
-                await notificationService.createNotification({
-                    recipientWallet: campaign.creator,
-                    type: "milestone_approved",
-                    title: "Milestone đã được duyệt",
-                    message:
-                        "Milestone được duyệt, bạn có thể tiếp tục triển khai mốc tiếp theo.",
-                    campaignOnChainId,
-                    txHash: payload.txHash || "",
-                });
+
+            if (campaign) {
+                const count = Number(campaign.milestoneCount || 0);
+                const isLast = milestoneId === count - 1;
+
+                console.log(`[milestoneApproved] Campaign ${campaignOnChainId}: Milestone ${milestoneId} approved. Count: ${count}. IsLast: ${isLast}`);
+
+                if (isLast) {
+                    campaign.status = "completed";
+                    await campaign.save();
+
+                    if (campaign.creator) {
+                        await notificationService.createNotification({
+                            recipientWallet: campaign.creator,
+                            type: "campaign_succeeded",
+                            title: "Chiến dịch thành công! 🎉",
+                            message: `Chúc mừng! Toàn bộ các mốc của chiến dịch "${campaign.title}" đã được duyệt hoàn tất.`,
+                            campaignOnChainId,
+                            txHash: payload.txHash || "",
+                        });
+                    }
+                } else if (campaign.creator) {
+                    await notificationService.createNotification({
+                        recipientWallet: campaign.creator,
+                        type: "milestone_approved",
+                        title: "Milestone đã được duyệt",
+                        message: `Milestone #${milestoneId + 1} đã được duyệt, bạn có thể tiếp tục triển khai mốc tiếp theo.`,
+                        campaignOnChainId,
+                        txHash: payload.txHash || "",
+                    });
+                }
             }
 
             await recordTransaction({

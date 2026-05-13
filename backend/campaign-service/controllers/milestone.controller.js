@@ -695,10 +695,9 @@ const rejectMilestone = async (req, res) => {
         let threshold = 1;
         if (!hasPermission && assignedReviewerSafe) {
             try {
-                // Đọc trực tiếp từ Smart Contract bằng ethers để tránh bị chặn rate limit (429) bởi Safe API
+                console.log(`[rejectMilestone] Fetching threshold for Safe ${assignedReviewerSafe} via RPC...`);
                 const { ethers } = require("ethers");
-                // Sử dụng RPC public hoặc biến môi trường
-                const rpcUrl = process.env.RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
+                const rpcUrl = process.env.SEPOLIA_RPC_URL || process.env.RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
                 const provider = new ethers.JsonRpcProvider(rpcUrl);
 
                 const safeAbi = [
@@ -706,8 +705,13 @@ const rejectMilestone = async (req, res) => {
                     "function getThreshold() public view returns (uint256)"
                 ];
                 const safeContract = new ethers.Contract(assignedReviewerSafe, safeAbi, provider);
-                const owners = await safeContract.getOwners();
-                threshold = Number(await safeContract.getThreshold());
+                const [owners, onChainThreshold] = await Promise.all([
+                    safeContract.getOwners(),
+                    safeContract.getThreshold()
+                ]);
+                
+                threshold = Number(onChainThreshold);
+                console.log(`[rejectMilestone] Safe ${assignedReviewerSafe} has threshold ${threshold} and ${owners?.length} owners`);
 
                 if (owners && Array.isArray(owners)) {
                     hasPermission = owners.some(
@@ -716,6 +720,19 @@ const rejectMilestone = async (req, res) => {
                 }
             } catch (err) {
                 console.error(`[rejectMilestone] Error fetching Safe owners/threshold via RPC for ${assignedReviewerSafe}:`, err.message);
+                // Fallback to Safe API if RPC fails
+                try {
+                    const { getSafeInfo } = require("../utils/safeUtils");
+                    const info = await getSafeInfo(assignedReviewerSafe);
+                    if (info) {
+                        threshold = Number(info.threshold || 1);
+                        const owners = info.owners || [];
+                        hasPermission = owners.some(o => o.toLowerCase() === reviewerWallet.toLowerCase());
+                        console.log(`[rejectMilestone] Fallback to Safe API: threshold=${threshold}`);
+                    }
+                } catch (apiErr) {
+                    console.error(`[rejectMilestone] Fallback Safe API also failed:`, apiErr.message);
+                }
             }
         }
 
@@ -773,7 +790,8 @@ const rejectMilestone = async (req, res) => {
         // Nếu số người bấm từ chối chưa đủ threshold -> chỉ lưu lại và chờ
         if (milestone.pendingRejections.length < threshold) {
             await milestone.save();
-            const msg = `Đã ghi nhận phiếu từ chối. Cần thêm ${threshold - milestone.pendingRejections.length} phiếu nữa để chính thức yêu cầu nộp lại.`;
+            const needed = threshold - milestone.pendingRejections.length;
+            const msg = `Đã ghi nhận phiếu từ chối. Cần thêm ${needed} phiếu nữa để chính thức yêu cầu nộp lại (Threshold Safe: ${threshold}).`;
             return res.status(200).json({
                 success: true,
                 status: "pending_threshold",
@@ -781,6 +799,7 @@ const rejectMilestone = async (req, res) => {
                 data: {
                     pendingVotes: milestone.pendingRejections.length,
                     threshold,
+                    safeAddress: assignedReviewerSafe,
                     rejectionCount: milestone.rejectionCount || 0,
                     message: msg
                 }

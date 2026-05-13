@@ -66,14 +66,8 @@ async function startMilestoneDisbursedConsumer() {
                 ).toString();
                 campaign.currentMilestoneId = milestoneId + 1;
 
-                if (
-                    campaign.currentMilestoneId >=
-                        Number(campaign.milestoneCount) &&
-                    campaign.status !== "partial_failed"
-                ) {
-                    campaign.status = "completed";
-                }
-
+                campaign.currentMilestoneId = milestoneId + 1;
+                // Status "completed" is now handled in milestoneApproved consumer
                 await campaign.save();
             }
 
@@ -94,6 +88,18 @@ async function startMilestoneDisbursedConsumer() {
                         }),
                     ),
                 );
+            }
+
+            // Thông báo cho Creator (Chỉ báo về việc giải ngân, không báo thành công ở đây)
+            if (campaign?.creator) {
+                await notificationService.createNotification({
+                    recipientWallet: campaign.creator,
+                    type: "milestone_disbursed",
+                    title: "Kinh phí mốc đã được giải ngân",
+                    message: `Kinh phí cho milestone #${milestoneId + 1} của chiến dịch "${campaign.title}" đã được chuyển vào tài khoản của bạn.`,
+                    campaignOnChainId,
+                    txHash: payload.txHash || "",
+                });
             }
 
             await recordTransaction({
