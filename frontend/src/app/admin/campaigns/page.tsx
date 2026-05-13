@@ -13,6 +13,7 @@ import {
     useReadAllCampaigns,
     useReadCampaignReviewersBatch,
     useReadContractOwner,
+    useAdminRejectCampaign,
 } from "@/lib/contracts/hooks";
 import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 import { useOwnerSafes } from "@/lib/hooks/use-owner-safes";
@@ -60,7 +61,9 @@ export default function AdminCampaignApprovalsPage() {
     const { isAdminOnChain, isLoading: isCheckingAdminPermission } =
         useReadContractOwner();
     const { isLoading: isLoadingOwnerSafes } = useOwnerSafes();
-    const { adminApprove: directApprove } = useAdminApprove();
+    const { adminApprove, isPending: isApproving } = useAdminApprove();
+    const { adminRejectCampaign: adminRejectOnChain, isPending: isRejectingOnChain } =
+        useAdminRejectCampaign();
 
     const { campaigns, isLoading: isLoadingCampaigns, refetch } = useReadAllCampaigns();
     const backendCampaigns = useBackendCampaigns();
@@ -74,7 +77,8 @@ export default function AdminCampaignApprovalsPage() {
     const [rejectingCampaignId, setRejectingCampaignId] = useState<number | null>(null);
     const [rejectionReason, setRejectionReason] = useState("");
     const [showRejectModal, setShowRejectModal] = useState(false);
-    const [isSubmittingRejection, setIsSubmittingRejection] = useState(false);
+    const [isSubmittingRejectionBackend, setIsSubmittingRejectionBackend] = useState(false);
+    const isSubmittingRejection = isSubmittingRejectionBackend || isRejectingOnChain;
 
     useEffect(() => { setMounted(true); }, []);
 
@@ -116,7 +120,16 @@ export default function AdminCampaignApprovalsPage() {
     const pendingItems = useMemo(
         () =>
             campaigns
-                .filter((item) => item.statusLabel === "pending_approval")
+                .filter((item) => {
+                    const backendStatus = metadataById.get(item.id)?.status;
+                    // Chỉ hiện nếu on-chain là pending_approval VÀ backend không phải các trạng thái kết thúc/lỗi
+                    return (
+                        item.statusLabel === "pending_approval" &&
+                        backendStatus !== "failed" &&
+                        backendStatus !== "cancelled" &&
+                        backendStatus !== "partial_failed"
+                    );
+                })
                 .sort((a, b) => {
                     const createdA = Date.parse(
                         metadataById.get(a.id)?.createdAt || "",
@@ -350,7 +363,7 @@ export default function AdminCampaignApprovalsPage() {
                                                 setLastApprovedCampaignId(null);
 
                                                 if (isAdminOnChain) {
-                                                    const txHash = await directApprove(item.id);
+                                                    const txHash = await adminApprove(item.id);
                                                     showSuccessToast(
                                                         "Đã gửi giao dịch duyệt. Đang chờ xác nhận on-chain...",
                                                     );
@@ -469,18 +482,38 @@ export default function AdminCampaignApprovalsPage() {
                                         return;
                                     }
                                     try {
-                                        setIsSubmittingRejection(true);
-                                        await rejectCampaign(rejectingCampaignId, token, trimmedReason);
-                                        showSuccessToast(`  Đã từ chối campaign #${rejectingCampaignId}.`);
+                                        setIsSubmittingRejectionBackend(true);
+                                        // 1. Gửi lên backend để lưu lý do trước (hoặc song song)
+                                        await rejectCampaign(
+                                            rejectingCampaignId,
+                                            token,
+                                            trimmedReason,
+                                        );
+
+                                        // 2. Thực hiện giao dịch on-chain
+                                        await adminRejectOnChain(
+                                            rejectingCampaignId,
+                                            trimmedReason,
+                                        );
+
+                                        showSuccessToast(
+                                            `Đã từ chối campaign #${rejectingCampaignId} on-chain.`,
+                                        );
                                         setShowRejectModal(false);
                                         setRejectingCampaignId(null);
                                         setRejectionReason("");
-                                        await Promise.all([refetch(), backendRefetch()]);
+                                        await Promise.all([
+                                            refetch(),
+                                            backendRefetch(),
+                                        ]);
                                     } catch (err) {
-                                        const msg = err instanceof Error ? err.message : "Không thể từ chối campaign.";
+                                        const msg =
+                                            err instanceof Error
+                                                ? err.message
+                                                : "Không thể từ chối campaign.";
                                         showErrorToast(msg);
                                     } finally {
-                                        setIsSubmittingRejection(false);
+                                        setIsSubmittingRejectionBackend(false);
                                     }
                                 }}
                             >
