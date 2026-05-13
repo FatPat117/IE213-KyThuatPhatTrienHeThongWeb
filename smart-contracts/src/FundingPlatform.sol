@@ -3,7 +3,9 @@ pragma solidity ^0.8.20;
 
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {
+    ReentrancyGuard
+} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
@@ -100,7 +102,10 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
         uint256 submissionCount
     );
 
-    event MilestoneUnlocked(uint256 indexed campaignId, uint256 indexed milestoneId);
+    event MilestoneUnlocked(
+        uint256 indexed campaignId,
+        uint256 indexed milestoneId
+    );
 
     event MilestoneApproved(
         uint256 indexed campaignId,
@@ -166,7 +171,9 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
         grantRole(ADMIN_ROLE, account);
     }
 
-    function removeAdmin(address account) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function removeAdmin(
+        address account
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         revokeRole(ADMIN_ROLE, account);
     }
 
@@ -187,7 +194,10 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
     }
 
     modifier onlyCreator(uint256 campaignId) {
-        require(msg.sender == campaigns[campaignId].creator, "Not campaign creator");
+        require(
+            msg.sender == campaigns[campaignId].creator,
+            "Not campaign creator"
+        );
         _;
     }
 
@@ -240,7 +250,10 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
         require(reviewerSafes[reviewerSafe], "Reviewer not approved");
         require(fundingDeadline > block.timestamp, "Invalid funding deadline");
         require(allocationBps.length > 0, "At least one milestone is required");
-        require(allocationBps.length == deadlines.length, "Array length mismatch");
+        require(
+            allocationBps.length == deadlines.length,
+            "Array length mismatch"
+        );
 
         uint256 totalBps = 0;
         for (uint256 i = 0; i < allocationBps.length; i++) {
@@ -328,7 +341,10 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
         uint256 campaignId
     ) external payable nonReentrant campaignExists(campaignId) {
         Campaign storage campaign = campaigns[campaignId];
-        require(campaign.status == CampaignStatus.Active, "Campaign is not active");
+        require(
+            campaign.status == CampaignStatus.Active,
+            "Campaign is not active"
+        );
         require(block.timestamp < campaign.deadline, "Funding deadline passed");
         require(msg.value > 0, "Donation must be > 0");
 
@@ -339,14 +355,15 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
 
         if (campaign.totalRaised >= campaign.goal) {
             campaign.status = CampaignStatus.InProgress;
-            
+
             // Kích hoạt mốc đầu tiên để chờ nộp minh chứng và duyệt
-            milestones[campaignId][0].status = MilestoneStatus.PendingVerification;
+            milestones[campaignId][0].status = MilestoneStatus
+                .PendingVerification;
             campaign.currentMilestoneId = 0;
-            
+
             // Tự động giải ngân ứng trước cho mốc đầu tiên để bắt đầu thực hiện
             _disburseMilestone(campaignId, 0);
-            
+
             emit FundingComplete(campaignId, campaign.totalRaised);
         }
     }
@@ -354,21 +371,31 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
     /**
      * @dev Giải ngân tiền cho một mốc cụ thể (ứng trước)
      */
-    function _disburseMilestone(uint256 campaignId, uint256 milestoneId) internal {
+    function _disburseMilestone(
+        uint256 campaignId,
+        uint256 milestoneId
+    ) internal {
         Campaign storage campaign = campaigns[campaignId];
         Milestone storage milestone = milestones[campaignId][milestoneId];
-        
+
         // Đã giải ngân rồi thì không giải ngân lại
         if (milestone.disbursedAt > 0) return;
 
         uint256 amount = getMilestoneAmount(campaignId, milestoneId);
         campaign.totalDisbursed += amount;
-        
-        (bool success, ) = payable(campaign.beneficiary).call{value: amount}("");
+
+        (bool success, ) = payable(campaign.beneficiary).call{value: amount}(
+            ""
+        );
         require(success, "Transfer failed");
 
         milestone.disbursedAt = block.timestamp;
-        emit MilestoneDisbursed(campaignId, milestoneId, campaign.beneficiary, amount);
+        emit MilestoneDisbursed(
+            campaignId,
+            milestoneId,
+            campaign.beneficiary,
+            amount
+        );
     }
 
     function submitMilestoneProof(
@@ -384,7 +411,10 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
         Campaign storage campaign = campaigns[campaignId];
         Milestone storage milestone = milestones[campaignId][milestoneId];
 
-        require(campaign.status == CampaignStatus.InProgress, "Campaign not in progress");
+        require(
+            campaign.status == CampaignStatus.InProgress,
+            "Campaign not in progress"
+        );
         require(
             milestoneId == campaign.currentMilestoneId,
             "Only current milestone can be updated"
@@ -393,7 +423,10 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
             milestone.status == MilestoneStatus.PendingVerification,
             "Milestone not pending verification"
         );
-        require(block.timestamp <= milestone.deadline, "Milestone deadline has passed");
+        require(
+            block.timestamp <= milestone.deadline,
+            "Milestone deadline has passed"
+        );
         require(bytes(ipfsCid).length > 0, "IPFS CID cannot be empty");
 
         milestone.proofCids.push(ipfsCid);
@@ -419,8 +452,14 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
         Campaign storage campaign = campaigns[campaignId];
         Milestone storage milestone = milestones[campaignId][milestoneId];
 
-        require(msg.sender == campaignReviewerSafe[campaignId], "Wrong reviewer");
-        require(campaign.status == CampaignStatus.InProgress, "Campaign not in progress");
+        require(
+            msg.sender == campaignReviewerSafe[campaignId],
+            "Wrong reviewer"
+        );
+        require(
+            campaign.status == CampaignStatus.InProgress,
+            "Campaign not in progress"
+        );
         require(
             milestoneId == campaign.currentMilestoneId,
             "Only current milestone can be approved"
@@ -449,11 +488,12 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
         uint256 nextMilestoneId = milestoneId + 1;
         if (nextMilestoneId < campaign.milestoneCount) {
             campaign.currentMilestoneId = nextMilestoneId;
-            milestones[campaignId][nextMilestoneId].status = MilestoneStatus.PendingVerification;
-            
+            milestones[campaignId][nextMilestoneId].status = MilestoneStatus
+                .PendingVerification;
+
             // Giải ngân ứng trước cho mốc tiếp theo
             _disburseMilestone(campaignId, nextMilestoneId);
-            
+
             emit MilestoneUnlocked(campaignId, nextMilestoneId);
         } else {
             // Nếu là mốc cuối cùng, đánh dấu chiến dịch hoàn thành
@@ -475,16 +515,29 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
     function markMilestoneFailed(
         uint256 campaignId,
         uint256 milestoneId
-    ) external campaignExists(campaignId) milestoneExists(campaignId, milestoneId) {
+    )
+        external
+        campaignExists(campaignId)
+        milestoneExists(campaignId, milestoneId)
+    {
         Campaign storage campaign = campaigns[campaignId];
         Milestone storage milestone = milestones[campaignId][milestoneId];
 
-        require(campaign.status == CampaignStatus.InProgress, "Campaign not in progress");
+        require(
+            campaign.status == CampaignStatus.InProgress,
+            "Campaign not in progress"
+        );
         require(
             milestoneId == campaign.currentMilestoneId,
             "Only current milestone can be marked failed"
         );
-        require(block.timestamp > milestone.deadline, "Milestone deadline not reached");
+        // Allow Admin/Bot to mark failed early (e.g. after 3 rejections recorded off-chain)
+        if (!hasRole(ADMIN_ROLE, msg.sender)) {
+            require(
+                block.timestamp > milestone.deadline,
+                "Milestone deadline not reached"
+            );
+        }
         require(
             milestone.status == MilestoneStatus.PendingVerification,
             "Milestone not pending verification"
@@ -501,14 +554,26 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
         emit CampaignStopped(campaignId, remainingWei, milestoneId);
     }
 
-    function markCampaignFailed(uint256 campaignId) external campaignExists(campaignId) {
+    function markCampaignFailed(
+        uint256 campaignId
+    ) external campaignExists(campaignId) {
         Campaign storage campaign = campaigns[campaignId];
-        require(campaign.status == CampaignStatus.Active, "Campaign is not active");
-        require(block.timestamp >= campaign.deadline, "Funding deadline not reached");
+        require(
+            campaign.status == CampaignStatus.Active,
+            "Campaign is not active"
+        );
+        require(
+            block.timestamp >= campaign.deadline,
+            "Funding deadline not reached"
+        );
         require(campaign.totalRaised < campaign.goal, "Goal already reached");
 
         campaign.status = CampaignStatus.Failed;
-        emit CampaignStopped(campaignId, campaign.totalRaised, type(uint256).max);
+        emit CampaignStopped(
+            campaignId,
+            campaign.totalRaised,
+            type(uint256).max
+        );
     }
 
     function adminApprove(
@@ -536,8 +601,14 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
         Campaign storage campaign = campaigns[campaignId];
         Milestone storage milestone = milestones[campaignId][milestoneId];
 
-        require(milestone.status == MilestoneStatus.Failed, "Milestone not failed");
-        require(campaign.status == CampaignStatus.PartialFailed, "Campaign not partial failed");
+        require(
+            milestone.status == MilestoneStatus.Failed,
+            "Milestone not failed"
+        );
+        require(
+            campaign.status == CampaignStatus.PartialFailed,
+            "Campaign not partial failed"
+        );
         require(
             !milestoneRefundClaimed[campaignId][msg.sender],
             "Refund already claimed"
@@ -550,20 +621,29 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
         milestoneRefundClaimed[campaignId][msg.sender] = true;
 
         uint256 remainingETH = campaign.totalRaised - campaign.totalDisbursed;
-        uint256 refundAmount = (donorShare * remainingETH) / campaign.totalRaised;
+        uint256 refundAmount = (donorShare * remainingETH) /
+            campaign.totalRaised;
         require(refundAmount > 0, "Nothing to refund");
 
         (bool success, ) = msg.sender.call{value: refundAmount}("");
         require(success, "Refund transfer failed");
 
-        emit MilestoneRefunded(campaignId, milestoneId, msg.sender, refundAmount);
+        emit MilestoneRefunded(
+            campaignId,
+            milestoneId,
+            msg.sender,
+            refundAmount
+        );
     }
 
     function claimFundingRefund(
         uint256 campaignId
     ) external nonReentrant campaignExists(campaignId) {
         Campaign storage campaign = campaigns[campaignId];
-        require(campaign.status == CampaignStatus.Failed, "Campaign has not failed");
+        require(
+            campaign.status == CampaignStatus.Failed,
+            "Campaign has not failed"
+        );
 
         uint256 amount = donations[campaignId][msg.sender];
         require(amount > 0, "Nothing to refund");
@@ -572,7 +652,12 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
         (bool success, ) = msg.sender.call{value: amount}("");
         require(success, "Refund transfer failed");
 
-        emit MilestoneRefunded(campaignId, type(uint256).max, msg.sender, amount);
+        emit MilestoneRefunded(
+            campaignId,
+            type(uint256).max,
+            msg.sender,
+            amount
+        );
     }
 
     function mintCertificate(
@@ -639,20 +724,31 @@ contract FundingPlatform is ERC721, ReentrancyGuard, AccessControl {
         return donations[campaignId][donor];
     }
 
-    function getCertificates(address owner) external view returns (uint256[] memory) {
+    function getCertificates(
+        address owner
+    ) external view returns (uint256[] memory) {
         return certificatesOf[owner];
     }
 
     function getMilestoneAmount(
         uint256 campaignId,
         uint256 milestoneId
-    ) public view campaignExists(campaignId) milestoneExists(campaignId, milestoneId) returns (uint256) {
+    )
+        public
+        view
+        campaignExists(campaignId)
+        milestoneExists(campaignId, milestoneId)
+        returns (uint256)
+    {
         Campaign storage campaign = campaigns[campaignId];
         Milestone storage milestone = milestones[campaignId][milestoneId];
-        return (campaign.totalRaised * milestone.allocationBps) / BPS_DENOMINATOR;
+        return
+            (campaign.totalRaised * milestone.allocationBps) / BPS_DENOMINATOR;
     }
 
-    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721, AccessControl) returns (bool) {
+    function supportsInterface(
+        bytes4 interfaceId
+    ) public view virtual override(ERC721, AccessControl) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
 }
