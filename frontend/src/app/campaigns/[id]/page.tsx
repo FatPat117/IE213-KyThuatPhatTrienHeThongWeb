@@ -11,6 +11,7 @@ import {
     getRefundStatus,
     isPlaceholderCampaignDescription,
     isPlaceholderCampaignTitle,
+    isPlaceholderThumbnailUrl,
     toAuthUserProfile,
     updateUserProfile,
     useAuth,
@@ -1174,7 +1175,16 @@ export default function CampaignDetailPage() {
                                 }
                                 progress={progress}
                                 thumbnailUrl={
-                                    backendCampaign.data?.thumbnailUrl ?? null
+                                    !isPlaceholderThumbnailUrl(
+                                        backendCampaign.data?.thumbnailUrl,
+                                    )
+                                        ? backendCampaign.data?.thumbnailUrl
+                                        : cachedMetadata?.thumbnailUrl ||
+                                          backendCampaign.data?.thumbnailUrl ||
+                                          null
+                                }
+                                rejectionReason={
+                                    backendCampaign.data?.rejectionReason
                                 }
                             />
 

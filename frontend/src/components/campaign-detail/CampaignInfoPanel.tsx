@@ -29,6 +29,7 @@ interface CampaignInfoPanelProps {
     reviewerSafe?: string;
     progress: number;
     thumbnailUrl?: string | null;
+    rejectionReason?: string | null;
 }
 
 function formatEthAmount(value: number) {
@@ -101,6 +102,7 @@ function getStatusBadge(
     progress,
     thumbnailUrl,
     userDonatedWei = 0n,
+    rejectionReason,
 }: CampaignInfoPanelProps) {
     const goalEth = Number(formatEther(campaign.goal));
     const raisedEth = Number(formatEther(campaign.raised));
@@ -121,18 +123,37 @@ function getStatusBadge(
     return (
         <div className="rounded-2xl bg-white border border-slate-200 p-8 shadow-sm">
 
-            {thumbnailUrl && (
-                <div className="w-full h-56 sm:h-64 bg-slate-100 overflow-hidden">
+            <div className="w-full h-56 sm:h-64 bg-slate-100 overflow-hidden relative group/thumb">
+                {thumbnailUrl ? (
                     <img
                         src={thumbnailUrl}
                         alt={`Thumbnail chiến dịch ${backendTitle || campaign.title || `Campaign ${campaign.id}`}`}
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover/thumb:scale-105"
                         onError={(e) => {
-                            (e.currentTarget as HTMLImageElement).style.display = 'none';
+                            // If image fails, replace with a nice fallback div
+                            const target = e.currentTarget as HTMLImageElement;
+                            target.style.display = 'none';
+                            const parent = target.parentElement;
+                            if (parent) {
+                                const fallback = document.createElement('div');
+                                fallback.className = "w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 text-slate-400";
+                                fallback.innerHTML = '<span class="text-4xl mb-2">🖼️</span><span class="text-xs font-medium">Không thể tải ảnh</span>';
+                                parent.appendChild(fallback);
+                            }
                         }}
                     />
-                </div>
-            )}
+                ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-200">
+                        <span className="text-5xl mb-2">✨</span>
+                        <span className="text-xs font-semibold uppercase tracking-wider text-blue-400 opacity-60">
+                            Crowdfunding Campaign
+                        </span>
+                    </div>
+                )}
+                
+                {/* Decorative overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
+            </div>
 
             <div className="mb-6">
                 <h2 className="mb-3 break-words text-3xl font-bold text-slate-900">
@@ -152,6 +173,17 @@ function getStatusBadge(
                         campaign.description ||
                         "Chiến dịch này sử dụng hợp đồng thông minh để gây quỹ minh bạch."}
                 </p>
+
+                {campaign.statusLabel === "cancelled" && rejectionReason && (
+                    <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4">
+                        <p className="text-xs font-bold uppercase tracking-wider text-red-600 mb-1">
+                            Lý do từ chối từ Admin:
+                        </p>
+                        <p className="text-sm text-red-800 italic">
+                            "{rejectionReason}"
+                        </p>
+                    </div>
+                )}
             </div>
 
             <div className="rounded-xl bg-slate-50 p-4 mb-6">
