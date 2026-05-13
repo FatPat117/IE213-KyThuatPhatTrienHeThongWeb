@@ -88,7 +88,7 @@ async function startMilestoneDisbursedConsumer() {
                             recipientWallet: ownerWallet,
                             type: "milestone_disbursed",
                             title: "Milestone mới được mở khóa",
-                            message: `Milestone #${milestoneId} của chiến dịch #${campaignOnChainId} vừa được giải ngân và đang chờ creator nộp bằng chứng. Hãy chuẩn bị duyệt.`,
+                            message: `Milestone #${milestoneId + 1} của chiến dịch #${campaignOnChainId} vừa được giải ngân và đang chờ creator nộp bằng chứng. Hãy chuẩn bị duyệt.`,
                             campaignOnChainId,
                             txHash: payload.txHash || "",
                         }),

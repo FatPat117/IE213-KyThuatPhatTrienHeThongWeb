@@ -29,7 +29,7 @@ export function showSuccessToast(message: string) {
         }`}
       >
         <span className="mt-0.5 shrink-0 text-lg" aria-hidden>
-          ✅
+
         </span>
         <div className="min-w-0 flex-1 leading-snug">{message}</div>
         <button
@@ -90,6 +90,37 @@ export function showErrorToast(message: string, options?: ErrorToastOptions) {
       </div>
     ),
     { id, duration },
+  );
+}
+
+export function showNotificationToast(title: string, message: string, notificationId: string) {
+  const id = `notification:${notificationId}`;
+  scheduleAutoDismiss(id, 6000);
+  return toast.custom(
+    (t: Toast) => (
+      <div
+        className={`pointer-events-auto flex max-w-md items-start gap-3 rounded-xl border border-blue-300 bg-blue-50 px-4 py-3.5 text-sm font-medium text-blue-950 shadow-lg ring-1 ring-blue-200 transition ${
+          t.visible ? 'animate-toast-in' : 'opacity-0'
+        }`}
+      >
+        <span className="mt-0.5 shrink-0 text-lg" aria-hidden>
+          🔔
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="font-bold text-blue-900">{title}</p>
+          <p className="mt-0.5 text-blue-800 line-clamp-2">{message}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => toast.dismiss(t.id)}
+          className="ml-1 shrink-0 rounded-full p-1.5 text-sm font-bold text-blue-800 hover:bg-blue-100"
+          aria-label="Đóng"
+        >
+          ×
+        </button>
+      </div>
+    ),
+    { id, duration: 6000 },
   );
 }
 

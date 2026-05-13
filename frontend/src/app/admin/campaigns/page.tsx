@@ -169,7 +169,7 @@ export default function AdminCampaignApprovalsPage() {
                     </p>
                     <div className="mt-4 space-y-1 text-xs text-slate-500">
                         <p>Wallet: {address ? `${address.slice(0, 10)}...` : "Chưa connect"}</p>
-                        <p>On-chain Admin: {isAdminOnChain ? "✅ Đã xác thực" : "❌ Chưa có quyền"}</p>
+                        <p>On-chain Admin: {isAdminOnChain ? "  Đã xác thực" : "❌ Chưa có quyền"}</p>
                     </div>
                 </main>
             </div>
@@ -366,7 +366,7 @@ export default function AdminCampaignApprovalsPage() {
                                                     ]);
                                                     setLastApprovedCampaignId(item.id);
                                                     showSuccessToast(
-                                                        `✅ Duyệt campaign #${item.id} thành công!`,
+                                                        `Duyệt campaign #${item.id} thành công!`,
                                                     );
                                                 } else {
                                                     throw new Error("Ví của bạn không có quyền ADMIN_ROLE trực tiếp. Vui lòng sử dụng ví Admin hoặc Safe Admin.");
@@ -471,7 +471,7 @@ export default function AdminCampaignApprovalsPage() {
                                     try {
                                         setIsSubmittingRejection(true);
                                         await rejectCampaign(rejectingCampaignId, token, trimmedReason);
-                                        showSuccessToast(`✅ Đã từ chối campaign #${rejectingCampaignId}.`);
+                                        showSuccessToast(`  Đã từ chối campaign #${rejectingCampaignId}.`);
                                         setShowRejectModal(false);
                                         setRejectingCampaignId(null);
                                         setRejectionReason("");

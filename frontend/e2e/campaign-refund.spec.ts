@@ -93,7 +93,7 @@ async function mockCampaignApis(
   });
 
   // Mock campaign list
-  await page.route(url => (url.includes('/api/campaigns') || url.includes('/api/campaigns/public/campaigns')) && 
+  await page.route(url => (url.includes('/api/campaigns') || url.includes('/api/campaigns/public/campaigns')) &&
                          (url.endsWith('/campaigns') || url.includes('/campaigns?')), async (route) => {
     await route.fulfill({
       status: 200,
@@ -155,7 +155,7 @@ async function mockCampaignApis(
     if (request.resourceType() !== 'fetch' && request.resourceType() !== 'xhr') {
         return route.continue();
     }
-    
+
     if (!request.url().includes('sepolia') && !request.url().includes('alchemy') && !request.url().includes('infura')) {
         return route.continue();
     }
@@ -191,7 +191,7 @@ async function mockCampaignApis(
 
     if (postData.method === 'eth_call') {
       const data = postData.params[0].data;
-      
+
       // campaignCount() - selector 0x32338f6f
       if (data.startsWith('0x32338f6f')) {
         await route.fulfill({
@@ -343,7 +343,7 @@ test.describe('Donor đã rút tiền (refundStatus = refunded)', () => {
     });
   });
 
-  test('hiển thị "✅ Bạn đã rút tiền hoàn lại thành công" thay vì nút hoàn tiền', async ({
+  test('hiển thị "  Bạn đã rút tiền hoàn lại thành công" thay vì nút hoàn tiền', async ({
     page,
   }) => {
     await connectMockWallet(page, TEST_ACCOUNTS.donorA);
@@ -582,10 +582,10 @@ test.describe('Error Cases: API trả về lỗi 500', () => {
     // Không xuất hiện lỗi JavaScript unhandled
     const errors: string[] = [];
     page.on('pageerror', (err) => errors.push(err.message));
-    
+
     // Đợi thêm 2 giây để bắt lỗi async
     await page.waitForTimeout(2000);
-    
+
     // Không có unhandled JS errors
     expect(errors.filter(e => !e.includes('hydration'))).toHaveLength(0);
   });

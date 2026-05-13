@@ -480,7 +480,7 @@ export default function AdminReviewersPage() {
                         {newSafeValidation.status === "valid" && (
                             <div className="mt-2 space-y-1 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
                                 <p className="text-xs font-semibold text-emerald-800">
-                                    ✅ Địa chỉ Safe hợp lệ
+                                      Địa chỉ Safe hợp lệ
                                 </p>
                                 <p className="text-xs text-emerald-700">
                                     Threshold: {newSafeValidation.threshold} / {newSafeValidation.ownerCount} owners

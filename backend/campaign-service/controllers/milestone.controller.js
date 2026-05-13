@@ -763,7 +763,7 @@ const rejectMilestone = async (req, res) => {
         }
 
         if (!milestone.pendingRejections) milestone.pendingRejections = [];
-        
+
         milestone.pendingRejections.push({
             reviewerWallet: reviewerWallet.toLowerCase(),
             reason,
@@ -778,8 +778,8 @@ const rejectMilestone = async (req, res) => {
                 success: true,
                 status: "pending_threshold",
                 message: msg,
-                data: { 
-                    pendingVotes: milestone.pendingRejections.length, 
+                data: {
+                    pendingVotes: milestone.pendingRejections.length,
                     threshold,
                     rejectionCount: milestone.rejectionCount || 0,
                     message: msg
@@ -802,7 +802,7 @@ const rejectMilestone = async (req, res) => {
             const oldDeadline = milestone.deadline ? new Date(milestone.deadline) : now;
             const baseDate = oldDeadline > now ? oldDeadline : now;
             const newDeadline = new Date(baseDate.getTime() + 3 * 24 * 60 * 60 * 1000);
-            
+
             // Tính toán khoảng thời gian được gia hạn thêm
             const extensionMs = newDeadline.getTime() - oldDeadline.getTime();
 
@@ -855,7 +855,7 @@ const rejectMilestone = async (req, res) => {
                 recipientWallet: campaign.creator,
                 type: "milestone_rejected",
                 title: `Milestone #${Number(milestoneIndex) + 1} bị từ chối`,
-                message: `Minh chứng của bạn bị từ chối. Lý do: ${reason}. Bạn đã được cộng thêm 3 ngày. Hạn chót mới: ${newDeadline.toLocaleString("vi-VN")}. Vui lòng nộp lại minh chứng bổ sung trước khi hết hạn.`,
+                message: `Minh chứng của bạn bị từ chối. Bạn đã được cộng thêm 3 ngày. Hạn chót mới: ${newDeadline.toLocaleString("vi-VN")}. Vui lòng nộp lại minh chứng bổ sung trước khi hết hạn.`,
                 campaignOnChainId: Number(campaignOnChainId),
             });
 
@@ -909,7 +909,7 @@ const rejectMilestone = async (req, res) => {
             recipientWallet: campaign.creator,
             type: "campaign_failed",
             title: `Chiến dịch thất bại tại Milestone #${Number(milestoneIndex) + 1}`,
-            message: `Chiến dịch đã thất bại do minh chứng bị từ chối sau khi hết hạn. Lý do: ${reason}. Hệ thống sẽ bắt đầu quy trình hoàn tiền.`,
+            message: `Chiến dịch đã thất bại do minh chứng bị từ chối sau khi hết hạn. Hệ thống sẽ bắt đầu quy trình hoàn tiền.`,
             campaignOnChainId: Number(campaignOnChainId),
         });
 

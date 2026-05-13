@@ -11,6 +11,7 @@ import {
     openNotificationStream,
     type NotificationItem,
 } from "@/lib/api/notifications";
+import { showNotificationToast } from "@/lib/ui/toast";
 
 export default function NotificationBell({ token }: { token: string | null }) {
     const [open, setOpen] = useState(false);
@@ -18,6 +19,8 @@ export default function NotificationBell({ token }: { token: string | null }) {
     const [isLoading, setIsLoading] = useState(false);
     const [realtimeConnected, setRealtimeConnected] = useState(false);
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const toastedRef = useRef<Set<string>>(new Set());
+    const initialLoadDone = useRef(false);
     const router = useRouter();
 
     const mergeNotification = (
@@ -49,11 +52,19 @@ export default function NotificationBell({ token }: { token: string | null }) {
             try {
                 setIsLoading(true);
                 const data = await getMyNotifications(token, 20);
-                if (!cancelled) setItems(data);
+                if (!cancelled) {
+                    setItems(data);
+                    // Mark existing notifications as "already seen" so they don't trigger toasts
+                    data.forEach((item) => toastedRef.current.add(item._id));
+                    initialLoadDone.current = true;
+                }
             } catch {
                 if (!cancelled) setItems([]);
             } finally {
-                if (!cancelled) setIsLoading(false);
+                if (!cancelled) {
+                    setIsLoading(false);
+                    initialLoadDone.current = true;
+                }
             }
         };
         load();
@@ -84,6 +95,23 @@ export default function NotificationBell({ token }: { token: string | null }) {
                     token,
                     (incoming) => {
                         if (!active) return;
+
+                        // Deduplicate toasts using a ref to avoid issues with React StrictMode 
+                        // or simultaneous stream/poll updates.
+                        if (toastedRef.current.has(incoming._id)) {
+                            return;
+                        }
+                        toastedRef.current.add(incoming._id);
+
+                        // Only show toast if initial load is complete to avoid "burst" on refresh
+                        if (initialLoadDone.current) {
+                            showNotificationToast(
+                                incoming.title,
+                                incoming.message,
+                                incoming._id,
+                            );
+                        }
+
                         setItems((prev) => mergeNotification(prev, incoming));
                     },
                     () => {
@@ -185,7 +213,7 @@ export default function NotificationBell({ token }: { token: string | null }) {
                 🔔
                 {unreadCount > 0 && (
                     <span className="absolute -right-1 -top-1 rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
-                        {unreadCount}
+                        {unreadCount > 9 ? "9+" : unreadCount}
                     </span>
                 )}
             </button>

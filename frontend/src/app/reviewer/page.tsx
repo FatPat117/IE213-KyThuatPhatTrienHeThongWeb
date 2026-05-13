@@ -166,7 +166,7 @@ function getMilestoneActivityTimestamp(milestone: {
 function buildSignatureProgressLabel(status: MilestoneApprovalStatus, milestoneApprovedAt?: string | null): string {
     // If milestone is already approved in DB, show approved message
     if (milestoneApprovedAt) {
-        return "✅ Đã được phê duyệt";
+        return "  Đã được phê duyệt";
     }
 
     if (!status.required || status.required <= 0) {
@@ -672,7 +672,7 @@ export default function ReviewerWorkspacePage() {
 
         if (isTxSuccess) {
             setActionIsSuccess(true);
-            setActionMessage("✅ Giao dịch đã được thực thi thành công!");
+            setActionMessage("  Giao dịch đã được thực thi thành công!");
             refreshApprovalStatuses(true);
             // Poll campaigns to show updated milestone status from Indexer
             let attempts = 0;
@@ -769,7 +769,7 @@ export default function ReviewerWorkspacePage() {
                 const result = await proposeSafeTx(campaignId, milestoneId, campaignReviewerSafe as `0x${string}`);
                 console.log('[handleApprove] Proposal SUCCESS:', result);
                 setActionIsSuccess(true);
-                setActionMessage(`✅ ${result.message}`);
+                setActionMessage(`  ${result.message}`);
 
                 // Open Safe UI in new tab so reviewer can see and continue signing
                 window.open(result.safeUiUrl, '_blank');
@@ -834,7 +834,7 @@ export default function ReviewerWorkspacePage() {
             setRejectError(null);
             try {
                 const result = await rejectMilestone(campaignId, milestoneId, token, reason);
-                
+
                 // Đóng modal ngay lập tức để hiện rõ màn hình loading overlay nếu có delay
                 setRejectModalTarget(null);
                 setRejectReason("");
