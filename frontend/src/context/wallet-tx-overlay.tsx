@@ -11,7 +11,7 @@ import {
 } from "react";
 
 type WalletTxOverlayContextValue = {
-    registerActive: (active: boolean, stage?: "preparing" | "signing" | "confirming", hash?: string) => void;
+    registerActive: (active: boolean, stage?: "preparing" | "signing" | "confirming" | "processing", hash?: string) => void;
 };
 
 const WalletTxOverlayContext = createContext<WalletTxOverlayContextValue | null>(
@@ -24,9 +24,9 @@ const WalletTxOverlayContext = createContext<WalletTxOverlayContextValue | null>
 export function WalletTxOverlayProvider({ children }: { children: ReactNode }) {
     const [activeCount, setActiveCount] = useState(0);
     const [txHash, setTxHash] = useState<string | null>(null);
-    const [currentStage, setCurrentStage] = useState<"preparing" | "signing" | "confirming">("signing");
+    const [currentStage, setCurrentStage] = useState<"preparing" | "signing" | "confirming" | "processing">("signing");
 
-    const registerActive = useCallback((active: boolean, stage?: "preparing" | "signing" | "confirming", hash?: string) => {
+    const registerActive = useCallback((active: boolean, stage?: "preparing" | "signing" | "confirming" | "processing", hash?: string) => {
         setActiveCount((n) => {
             const next = active ? n + 1 : n - 1;
             return next < 0 ? 0 : next;
@@ -66,11 +66,13 @@ export function WalletTxOverlayProvider({ children }: { children: ReactNode }) {
                             {currentStage === "preparing" && "Đang chuẩn bị giao dịch..."}
                             {currentStage === "signing" && "Đang chờ xác nhận từ ví..."}
                             {currentStage === "confirming" && "Đang xử lý trên Blockchain..."}
+                            {currentStage === "processing" && "Đang xử lý yêu cầu..."}
                         </p>
                         <p className="mt-2 text-sm text-slate-600">
                             {currentStage === "preparing" && "Hệ thống đang chuẩn bị dữ liệu, vui lòng đợi."}
                             {currentStage === "signing" && "Vui lòng hoàn tất ký trong ví MetaMask của bạn."}
                             {currentStage === "confirming" && "Giao dịch đã được gửi. Vui lòng đợi block được xác nhận."}
+                            {currentStage === "processing" && "Hệ thống đang ghi nhận thao tác của bạn, vui lòng đợi."}
                         </p>
                         {txHash && (
                             <div className="mt-4 rounded-lg bg-slate-50 p-3">
@@ -95,7 +97,7 @@ export function WalletTxOverlayProvider({ children }: { children: ReactNode }) {
 /**
  * Marks global wallet overlay as active while `active` is true (signing or confirming).
  */
-export function useRegisterWalletTxOverlay(active: boolean, stage?: "preparing" | "signing" | "confirming", hash?: string) {
+export function useRegisterWalletTxOverlay(active: boolean, stage?: "preparing" | "signing" | "confirming" | "processing", hash?: string) {
     const ctx = useContext(WalletTxOverlayContext);
     useEffect(() => {
         if (!ctx || !active) return;

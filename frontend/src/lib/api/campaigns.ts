@@ -34,6 +34,8 @@ export interface PublicCampaignMilestone {
     lastRejectionReason?: string;
     rejectionCount?: number;
     maxRetries?: number;
+    pendingRejections?: number;
+    rejectionVoters?: string[];
 }
 
 export interface ReviewerAggregate {
@@ -105,6 +107,8 @@ interface CampaignMilestoneRecord {
     lastRejectionReason?: string;
     rejectionCount?: number;
     maxRetries?: number;
+    pendingRejections?: number;
+    rejectionVoters?: string[];
 }
 
 interface MilestoneServiceResponse {
@@ -220,6 +224,12 @@ export function mapMilestoneRecord(
         maxRetries: typeof (item as Record<string, unknown>).maxRetries === 'number'
             ? (item as Record<string, unknown>).maxRetries as number
             : undefined,
+        pendingRejections: typeof (item as Record<string, unknown>).pendingRejections === 'number'
+            ? (item as Record<string, unknown>).pendingRejections as number
+            : undefined,
+        rejectionVoters: Array.isArray((item as Record<string, unknown>).rejectionVoters)
+            ? (item as Record<string, unknown>).rejectionVoters as string[]
+            : [],
     };
 }
 
