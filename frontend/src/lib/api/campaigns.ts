@@ -126,6 +126,7 @@ export const TERMINAL_STATUSES = new Set([
     "closed",
     "refunded",
     "success",
+    "partial_failed",
 ]);
 
 // Global cache configuration
@@ -133,7 +134,7 @@ const PUBLIC_CAMPAIGNS_CACHE_TTL_MS = 300_000; // 5 minutes
 const PUBLIC_MILESTONES_CACHE_TTL_MS = 300_000; // 5 minutes
 const AGGREGATES_CACHE_TTL_MS = 600_000; // 10 minutes
 const CAMPAIGN_INDEX_STATUS_CACHE_TTL_MS = 60_000; // 1 minute
-const DISBURSED_MILESTONE_COUNT_CACHE_TTL_MS = 600_000; 
+const DISBURSED_MILESTONE_COUNT_CACHE_TTL_MS = 600_000;
 
 const publicCampaignsCache = new Map<string, { data: PublicCampaignsResponse; expiresAt: number }>();
 const publicCampaignsInFlight = new Map<string, Promise<PublicCampaignsResponse>>();
@@ -553,7 +554,7 @@ export async function getDisbursedMilestoneCount(): Promise<number> {
         try {
             // Tạm thời trả về 0 hoặc lấy từ Stats tập trung thay vì quét từng campaign
             // Việc quét 100 campaign ở frontend là sai lầm về kiến trúc.
-            return 0; 
+            return 0;
         } catch {
             return 0;
         }

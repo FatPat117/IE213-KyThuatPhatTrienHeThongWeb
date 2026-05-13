@@ -515,7 +515,7 @@ export default function Home() {
                         </Link>
                     </div>
                     <div>
-                        <CampaignListDisplay limit={3} onlyActive={true} />
+                        <CampaignListDisplay limit={6} onlyActive={true} />
                     </div>
                 </section>
 

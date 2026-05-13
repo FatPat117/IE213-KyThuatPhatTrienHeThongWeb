@@ -59,7 +59,7 @@ export default function RefundAndMintPanel({
           <p className="text-orange-100 mb-6 text-sm">
             {hasRefunded ? 'Bạn đã rút tiền hoàn lại thành công.' : 'Bạn có thể yêu cầu hoàn tiền.'}
           </p>
-          
+
           {!hasRefunded && !refundConfirmed ? (
             <button
               onClick={onRefund}
@@ -70,7 +70,7 @@ export default function RefundAndMintPanel({
             </button>
           ) : (
             <div className="rounded-lg bg-white/20 px-4 py-4 text-sm font-bold text-white mb-4 border border-white/30 text-center flex items-center justify-center gap-2">
-              <span className="text-xl">✅</span> Bạn đã rút tiền hoàn lại thành công
+              <span className="text-xl"> </span> Bạn đã rút tiền hoàn lại thành công
             </div>
           )}
 

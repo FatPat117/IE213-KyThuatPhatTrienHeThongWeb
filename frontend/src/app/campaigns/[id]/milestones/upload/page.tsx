@@ -54,7 +54,7 @@ function toDisplayMilestoneId(milestoneId: number) {
     return milestoneId;
 }
 
-// ✅ Tách phần dùng useSearchParams ra component riêng
+//   Tách phần dùng useSearchParams ra component riêng
 function MilestoneEvidenceUploadContent() {
     const params = useParams();
     const searchParams = useSearchParams();
@@ -419,7 +419,7 @@ function MilestoneEvidenceUploadContent() {
                                 uploadedCids.length === 0 ||
                                 !isCampaignInProgress ||
                                 isSubmittingOnChain ||
-                                isConfirmingOnChain ||  
+                                isConfirmingOnChain ||
                                 hasSubmittedOnChain
                             }
                             onClick={handleSubmitOnChain}

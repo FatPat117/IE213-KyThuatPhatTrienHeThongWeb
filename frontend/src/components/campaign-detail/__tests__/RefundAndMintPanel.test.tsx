@@ -81,7 +81,7 @@ describe('Refund button state', () => {
     expect(screen.getByRole('button', { name: /Đang xác nhận/i })).toBeDisabled();
   });
 
-  it('hiển thị "✅ Bạn đã rút tiền hoàn lại thành công" khi hasRefunded=true', () => {
+  it('hiển thị "  Bạn đã rút tiền hoàn lại thành công" khi hasRefunded=true', () => {
     renderPanel({ showRefund: true, hasRefunded: true });
     // Text này xuất hiện cả trong mô tả lẫn success box → dùng getAllByText
     const elements = screen.getAllByText(/Bạn đã rút tiền hoàn lại thành công/i);
@@ -90,7 +90,7 @@ describe('Refund button state', () => {
     expect(screen.queryByRole('button', { name: /Yêu cầu hoàn tiền/i })).not.toBeInTheDocument();
   });
 
-  it('hiển thị "✅ Bạn đã rút tiền hoàn lại thành công" khi refundConfirmed=true', () => {
+  it('hiển thị "  Bạn đã rút tiền hoàn lại thành công" khi refundConfirmed=true', () => {
     renderPanel({ showRefund: true, refundConfirmed: true });
     expect(screen.getByText(/Bạn đã rút tiền hoàn lại thành công/i)).toBeInTheDocument();
   });

@@ -808,7 +808,7 @@ export function useAdminApproveCampaign() {
             throw new Error("Không tìm thấy địa chỉ ví để gửi giao dịch.");
         }
 
-        // ✅ Kiểm tra quyền ADMIN_ROLE thay vì owner()
+        //   Kiểm tra quyền ADMIN_ROLE thay vì owner()
         const isAdmin = (await publicClient
             .readContract({
                 address: CROWDFUNDING_CONTRACT_ADDRESS,
@@ -878,7 +878,7 @@ export function useAddReviewerSafe() {
             throw new Error("Không tìm thấy địa chỉ ví để gửi giao dịch.");
         }
         const normalizedSafe = safe.toLowerCase() as Address;
-        // ✅ Kiểm tra quyền ADMIN_ROLE thay vì owner()
+        //   Kiểm tra quyền ADMIN_ROLE thay vì owner()
         const isAdmin = (await publicClient
             .readContract({
                 address: CROWDFUNDING_CONTRACT_ADDRESS,
@@ -974,7 +974,7 @@ export function useRemoveReviewerSafe() {
             throw new Error("Không tìm thấy địa chỉ ví để gửi giao dịch.");
         }
         const normalizedSafe = safe.toLowerCase() as Address;
-        // ✅ Kiểm tra quyền ADMIN_ROLE thay vì owner()
+        //   Kiểm tra quyền ADMIN_ROLE thay vì owner()
         const isAdmin = (await publicClient
             .readContract({
                 address: CROWDFUNDING_CONTRACT_ADDRESS,

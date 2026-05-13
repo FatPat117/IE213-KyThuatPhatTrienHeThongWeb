@@ -49,7 +49,7 @@ function CampaignsPageContent() {
     const { isConnected } = useAccount();
     const chainId = useChainId();
     const [searchQuery, setSearchQuery] = useState("");
-    const [filterStatus, setFilterStatus] = useState<"all" | "active" | "ended">("all");
+    const [filterStatus, setFilterStatus] = useState<string>("all");
     const [sortBy, setSortBy] = useState<"newest" | "mostfunded" | "trending">("newest");
     const [currentPage, setCurrentPage] = useState(1);
     const isSepoliaNetwork = chainId === SEPOLIA_CHAIN_ID;
@@ -88,10 +88,27 @@ function CampaignsPageContent() {
         let result = [...normalizedCampaigns];
 
         // Apply status filter
-        if (filterStatus === "active") {
-            result = result.filter(c => !c.completed);
-        } else if (filterStatus === "ended") {
-            result = result.filter(c => c.completed);
+        if (filterStatus !== "all") {
+            const queryStatus = filterStatus.toLowerCase();
+            if (queryStatus === "active") {
+                // Chỉ lấy các chiến dịch đang trong giai đoạn gọi vốn (status chính xác là active)
+                result = result.filter(c => (c.status || "").toLowerCase() === "active");
+            } else if (queryStatus === "ended") {
+                // Chỉ lấy các chiến dịch đã kết thúc thành công
+                result = result.filter(c => {
+                    const s = (c.status || "").toLowerCase();
+                    return s === "completed" || s === "success";
+                });
+            } else if (queryStatus === "failed") {
+                // Các chiến dịch thất bại hoặc bị dừng
+                result = result.filter(c => {
+                    const s = (c.status || "").toLowerCase();
+                    return s === "failed" || s === "partial_failed" || s === "cancelled" || s === "refunded";
+                });
+            } else {
+                // Khớp chính xác cho các trạng thái khác (in_progress, pending_approval)
+                result = result.filter(c => (c.status || "").toLowerCase() === queryStatus);
+            }
         }
 
         // Apply search
@@ -252,13 +269,16 @@ function CampaignsPageContent() {
                             <label className="text-xs font-semibold text-slate-600 mb-2 block">Trạng thái</label>
                             <select
                                 value={filterStatus}
-                                onChange={(e) => setFilterStatus(e.target.value as "all" | "active" | "ended")}
+                                onChange={(e) => setFilterStatus(e.target.value)}
                                 aria-label="Lọc theo trạng thái chiến dịch"
                                 className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2 text-slate-900 focus:border-blue-600 focus:outline-none transition"
                             >
                                 <option value="all">Tất cả</option>
-                                <option value="active">🔴 Đang hoạt động</option>
-                                <option value="ended">Đã kết thúc</option>
+                                <option value="active">🟢 Đang gây quỹ (Hoạt động)</option>
+                                <option value="pending_approval">⏳ Chờ duyệt</option>
+                                <option value="in_progress">🔵 Đang triển khai (Milestones)</option>
+                                <option value="failed">❌ Thất bại / Bị từ chối</option>
+                                <option value="ended">  Chiến dịch thành công</option>
                             </select>
                         </div>
 
@@ -370,14 +390,32 @@ function CampaignsPageContent() {
                             const isPendingApproval = normalizedStatus === "pending_approval";
                             const isInProgress = normalizedStatus === "in_progress";
                             const isActive = !campaign.completed && !isPendingApproval;
-                            const statusClasses = isActive
-                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                : "bg-slate-100 text-slate-700 border-slate-200";
-                            const progressBarColor = isActive
-                                ? "bg-emerald-500"
-                                : progress >= 100
-                                ? "bg-green-500"
-                                : "bg-slate-400";
+                            const isFailed = normalizedStatus === "failed" || normalizedStatus === "partial_failed";
+                            const isSuccess = campaign.completed && !isFailed;
+
+                            let statusClasses = "bg-slate-100 text-slate-700 border-slate-200";
+                            if (isPendingApproval) {
+                                statusClasses = "bg-amber-50 text-amber-700 border-amber-200";
+                            } else if (isFailed) {
+                                statusClasses = "bg-red-50 text-red-700 border-red-200";
+                            } else if (isInProgress) {
+                                statusClasses = "bg-blue-50 text-blue-700 border-blue-200";
+                            } else if (isActive) {
+                                statusClasses = "bg-emerald-50 text-emerald-700 border-emerald-200";
+                            } else if (isSuccess) {
+                                statusClasses = "bg-green-50 text-green-700 border-green-200";
+                            }
+
+                            let progressBarColor = "bg-slate-400";
+                            if (isFailed) {
+                                progressBarColor = "bg-red-500";
+                            } else if (isInProgress) {
+                                progressBarColor = "bg-blue-500";
+                            } else if (isActive) {
+                                progressBarColor = "bg-emerald-500";
+                            } else if (isSuccess) {
+                                progressBarColor = "bg-green-500";
+                            }
 
                             return (
                                 <Link
@@ -412,7 +450,7 @@ function CampaignsPageContent() {
                                                             ? "🔵 Đang triển khai"
                                                             : isActive
                                                                 ? "● Đang hoạt động"
-                                                                : "Đã kết thúc"}
+                                                                : "Thành công"}
                                             </span>
                                         </div>
                                     </div>
