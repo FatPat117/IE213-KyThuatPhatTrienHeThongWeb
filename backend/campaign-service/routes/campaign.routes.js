@@ -13,6 +13,7 @@ const {
     getPublicCampaignMilestones,
     getMilestoneApprovalStatus,
     getRefundStatus,
+    rejectCampaign,
 } = require("../controllers/campaign.controller");
 const {
     getReviewerProfile,
@@ -80,5 +81,6 @@ router.post("/", requireAuth, (_req, res) => {
 
 router.get("/:onChainId", getCampaignById);
 router.patch("/:onChainId/status", requireAuth, updateCampaignStatus);
+router.post("/:onChainId/reject", requireAuth, rejectCampaign);
 
 module.exports = router;

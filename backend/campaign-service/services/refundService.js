@@ -7,6 +7,7 @@ const {
 } = require("../models");
 
 const FUNDING_FAILURE_MILESTONE_SENTINEL = 2n ** 256n - 1n;
+const notificationService = require("./notification.service");
 
 function toBigInt(value) {
     try {
@@ -623,6 +624,19 @@ async function handleCampaignCascadeFailure(campaignOnChainId) {
         campaign.updatedAt = new Date();
         await campaign.save();
         console.log(`[refundService.handleCampaignCascadeFailure] Campaign status updated to ${campaign.status}.`);
+
+        // Notify creator about failure
+        if (campaign.creator) {
+            notificationService.createNotification({
+                recipientWallet: campaign.creator,
+                type: "campaign_failed",
+                title: "Chiến dịch thất bại",
+                message: isFundingFailure 
+                    ? `Chiến dịch #${campaignOnChainId} đã thất bại do không đạt mục tiêu tài chính.`
+                    : `Chiến dịch #${campaignOnChainId} đã bị dừng do có milestone quá hạn hoặc thất bại.`,
+                campaignOnChainId: Number(campaignOnChainId),
+            }).catch(err => console.error("[refundService] Failed to send failure notification:", err.message));
+        }
 
         if (
             remainingWei === 0n ||

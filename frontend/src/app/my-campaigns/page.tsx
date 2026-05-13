@@ -387,7 +387,7 @@ function MyCampaignsPageContent() {
                         const isPendingApproval = normalizedStatus === "pending_approval";
                         const isInProgress = normalizedStatus === "in_progress";
                         const isActive = !campaign.completed && !isPendingApproval;
-                        const isFailed = normalizedStatus === "failed" || normalizedStatus === "partial_failed";
+                        const isFailed = ["failed", "partial_failed", "cancelled", "refunded"].includes(normalizedStatus);
                         const isSuccess = campaign.completed && !isFailed;
 
                         let statusClasses = "bg-slate-100 text-slate-700 border-slate-200";
@@ -415,6 +415,7 @@ function MyCampaignsPageContent() {
                                         <div className="flex flex-col items-end gap-1">
                                             <span className={`rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${statusClasses}`}>
                                                 {isPendingApproval ? "Chờ duyệt" :
+                                                 normalizedStatus === "cancelled" ? "Bị từ chối" :
                                                  isFailed ? "Thất bại" :
                                                  isInProgress ? "Đang triển khai" :
                                                  isActive ? "Đang gây quỹ" : "Thành công"}

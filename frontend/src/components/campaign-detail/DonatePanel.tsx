@@ -145,6 +145,8 @@ export default function DonatePanel({
               ? "Chiến dịch thất bại một phần"
               : campaignStatusLabel === "failed"
               ? "Chiến dịch đã thất bại"
+              : campaignStatusLabel === "cancelled"
+              ? "Chiến dịch đã bị hủy/từ chối"
               : "Chiến dịch đã kết thúc"
             : isExceedGoal
             ? `Vượt mục tiêu ${remainingGoalEth.toFixed(4)} ETH`

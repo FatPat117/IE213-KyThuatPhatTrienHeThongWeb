@@ -183,78 +183,78 @@ const SAFE_INFO_CACHE_TTL_MS = 30 * 60 * 1000; // 30 phút
 const SAFE_INFO_CACHE = new Map<string, { owners: string[]; threshold: number; expiresAt: number }>();
 
 async function getSafeOwnersAndThreshold(safe: string): Promise<{ owners: string[]; threshold: number }> {
-  // Validate and convert to checksum first
-  let checksumSafe: string;
-  try {
-    checksumSafe = getAddress(safe as Address);
-  } catch (error) {
-    console.error('[getSafeOwnersAndThreshold] Invalid address:', safe, error);
-    throw new Error(`Invalid Safe address: ${safe}`);
-  }
+    // Validate and convert to checksum first
+    let checksumSafe: string;
+    try {
+        checksumSafe = getAddress(safe as Address);
+    } catch (error) {
+        console.error('[getSafeOwnersAndThreshold] Invalid address:', safe, error);
+        throw new Error(`Invalid Safe address: ${safe}`);
+    }
 
-  const normalizedSafe = checksumSafe.toLowerCase();
-  const cached = SAFE_INFO_CACHE.get(normalizedSafe);
-  const now = Date.now();
+    const normalizedSafe = checksumSafe.toLowerCase();
+    const cached = SAFE_INFO_CACHE.get(normalizedSafe);
+    const now = Date.now();
 
-  if (cached && now < cached.expiresAt) {
-    console.log('[SafeInfoCache] Cache HIT for', normalizedSafe, '->', cached.owners.length, 'owners, threshold:', cached.threshold);
-    return { owners: cached.owners, threshold: cached.threshold };
-  }
+    if (cached && now < cached.expiresAt) {
+        console.log('[SafeInfoCache] Cache HIT for', normalizedSafe, '->', cached.owners.length, 'owners, threshold:', cached.threshold);
+        return { owners: cached.owners, threshold: cached.threshold };
+    }
 
-  console.log('[SafeInfoCache] Cache MISS for', normalizedSafe, '- fetching from API');
+    console.log('[SafeInfoCache] Cache MISS for', normalizedSafe, '- fetching from API');
 
-  // Fetch owners & threshold together từ Safe API using CHECKSUM address
-  const safeInfoRes = await fetch(
-    `https://safe-transaction-sepolia.safe.global/api/v1/safes/${checksumSafe}/`,
-    { cache: "no-store" }
-  );
+    // Fetch owners & threshold together từ Safe API using CHECKSUM address
+    const safeInfoRes = await fetch(
+        `https://safe-transaction-sepolia.safe.global/api/v1/safes/${checksumSafe}/`,
+        { cache: "no-store" }
+    );
 
-  if (!safeInfoRes.ok) {
-    throw new Error(`Không thể lấy thông tin Safe: ${safeInfoRes.status}`);
-  }
+    if (!safeInfoRes.ok) {
+        throw new Error(`Không thể lấy thông tin Safe: ${safeInfoRes.status}`);
+    }
 
-  const safeInfo = await safeInfoRes.json();
-  const owners = Array.isArray(safeInfo.owners) ? safeInfo.owners.map((o: string) => o.toLowerCase()) : [];
-  const threshold = safeInfo.threshold;
+    const safeInfo = await safeInfoRes.json();
+    const owners = Array.isArray(safeInfo.owners) ? safeInfo.owners.map((o: string) => o.toLowerCase()) : [];
+    const threshold = safeInfo.threshold;
 
-  // Update cache
-  SAFE_INFO_CACHE.set(normalizedSafe, {
-    owners,
-    threshold,
-    expiresAt: now + SAFE_INFO_CACHE_TTL_MS,
-  });
+    // Update cache
+    SAFE_INFO_CACHE.set(normalizedSafe, {
+        owners,
+        threshold,
+        expiresAt: now + SAFE_INFO_CACHE_TTL_MS,
+    });
 
-  return { owners, threshold };
+    return { owners, threshold };
 }
 
 async function getSafeNonceFresh(safe: string): Promise<number> {
-  // Validate and convert to checksum first
-  let checksumSafe: string;
-  try {
-    checksumSafe = getAddress(safe as Address);
-  } catch (error) {
-    console.error('[getSafeNonceFresh] Invalid address:', safe, error);
-    throw new Error(`Invalid Safe address: ${safe}`);
-  }
+    // Validate and convert to checksum first
+    let checksumSafe: string;
+    try {
+        checksumSafe = getAddress(safe as Address);
+    } catch (error) {
+        console.error('[getSafeNonceFresh] Invalid address:', safe, error);
+        throw new Error(`Invalid Safe address: ${safe}`);
+    }
 
-  // Always fetch fresh nonce (nonce changes with each transaction)
-  const safeInfoRes = await fetch(
-    `https://safe-transaction-sepolia.safe.global/api/v1/safes/${checksumSafe}/`,
-    { cache: "no-store" }
-  );
+    // Always fetch fresh nonce (nonce changes with each transaction)
+    const safeInfoRes = await fetch(
+        `https://safe-transaction-sepolia.safe.global/api/v1/safes/${checksumSafe}/`,
+        { cache: "no-store" }
+    );
 
-  if (!safeInfoRes.ok) {
-    throw new Error(`Không thể lấy nonce của Safe: ${safeInfoRes.status}`);
-  }
+    if (!safeInfoRes.ok) {
+        throw new Error(`Không thể lấy nonce của Safe: ${safeInfoRes.status}`);
+    }
 
-  const safeInfo = await safeInfoRes.json();
-  const nonce = safeInfo.nonce;
+    const safeInfo = await safeInfoRes.json();
+    const nonce = safeInfo.nonce;
 
-  if (typeof nonce === "undefined") {
-    throw new Error("Safe API trả về dữ liệu không hợp lệ (thiếu nonce).");
-  }
+    if (typeof nonce === "undefined") {
+        throw new Error("Safe API trả về dữ liệu không hợp lệ (thiếu nonce).");
+    }
 
-  return nonce;
+    return nonce;
 }
 
 function normalizeCampaign(
@@ -416,7 +416,7 @@ export function useReadAllCampaigns() {
             refetchOnMount: true,
             enabled:
                 CROWDFUNDING_CONTRACT_ADDRESS !==
-                    "0x0000000000000000000000000000000000000000" &&
+                "0x0000000000000000000000000000000000000000" &&
                 campaignCount > 0,
         },
     });
@@ -688,8 +688,8 @@ export function useReadReviewerSafes() {
     const reviewerSafes = useMemo(() => {
         const onChainList = Array.isArray(reviewerSafesOnChain)
             ? reviewerSafesOnChain
-                  .map((item) => item.toLowerCase())
-                  .filter((item) => /^0x[a-f0-9]{40}$/.test(item))
+                .map((item) => item.toLowerCase())
+                .filter((item) => /^0x[a-f0-9]{40}$/.test(item))
             : [];
         if (onChainList.length > 0) {
             return Array.from(new Set(onChainList));
@@ -746,8 +746,8 @@ export function useReadReviewerSafesOnChain() {
     const reviewerSafes = useMemo(() => {
         const onChainList = Array.isArray(reviewerSafesOnChain)
             ? reviewerSafesOnChain
-                  .map((item) => item.toLowerCase())
-                  .filter((item) => /^0x[a-f0-9]{40}$/.test(item))
+                .map((item) => item.toLowerCase())
+                .filter((item) => /^0x[a-f0-9]{40}$/.test(item))
             : [];
         return Array.from(new Set(onChainList));
     }, [reviewerSafesOnChain]);
@@ -866,6 +866,69 @@ export function useAdminApproveCampaign() {
     };
 }
 
+export function useAdminRejectCampaign() {
+    const { address } = useAccount();
+    const publicClient = usePublicClient();
+    const { writeContractAsync, data, isPending, error } = useWriteContract();
+    const ADMIN_REJECT_GAS_LIMIT_CAP = 300_000n;
+
+    const adminRejectCampaign = async (campaignId: number, reason: string) => {
+        if (!publicClient) {
+            throw new Error("Không thể kết nối RPC để ước lượng gas.");
+        }
+        if (!address) {
+            throw new Error("Không tìm thấy địa chỉ ví để gửi giao dịch.");
+        }
+
+        const isAdmin = (await publicClient
+            .readContract({
+                address: CROWDFUNDING_CONTRACT_ADDRESS,
+                abi: contractConfig.abi,
+                functionName: "hasRole",
+                args: [ADMIN_ROLE, address],
+            })
+            .catch(() => null)) as boolean | null;
+
+        if (isAdmin === false) {
+            throw new Error(
+                `Ví (${address}) không có quyền ADMIN_ROLE để thực hiện hành động này.`,
+            );
+        }
+
+        const args = [BigInt(campaignId), reason] as const;
+        let gas: bigint | undefined;
+        try {
+            const estimatedGas = await publicClient.estimateContractGas({
+                ...contractConfig,
+                account: address,
+                functionName: "adminReject",
+                args,
+            });
+            const bufferedGas = (estimatedGas * 120n) / 100n;
+            gas =
+                bufferedGas > ADMIN_REJECT_GAS_LIMIT_CAP
+                    ? ADMIN_REJECT_GAS_LIMIT_CAP
+                    : bufferedGas;
+        } catch (estimateError) {
+            console.warn("[useAdminRejectCampaign] Gas estimation failed:", estimateError);
+        }
+
+        return writeContractAsync({
+            ...contractConfig,
+            functionName: "adminReject",
+            args,
+            gas,
+        });
+    };
+
+    return {
+        adminRejectCampaign,
+        hash: data,
+        isPending,
+        error,
+    };
+}
+
 export function useAddReviewerSafe() {
     const { address } = useAccount();
     const publicClient = usePublicClient();
@@ -920,11 +983,11 @@ export function useAddReviewerSafe() {
             const normalizedMessage = message.toLowerCase();
             const rawRevertData =
                 typeof error === "object" &&
-                error !== null &&
-                "cause" in error &&
-                typeof (error as { cause?: unknown }).cause === "object" &&
-                (error as { cause?: unknown }).cause !== null &&
-                "raw" in ((error as { cause?: { raw?: unknown } }).cause || {})
+                    error !== null &&
+                    "cause" in error &&
+                    typeof (error as { cause?: unknown }).cause === "object" &&
+                    (error as { cause?: unknown }).cause !== null &&
+                    "raw" in ((error as { cause?: { raw?: unknown } }).cause || {})
                     ? (error as { cause?: { raw?: string } }).cause?.raw
                     : undefined;
             if (
@@ -1399,7 +1462,7 @@ export function useReadCampaignReviewersBatch(campaignCount: number) {
         query: {
             enabled:
                 CROWDFUNDING_CONTRACT_ADDRESS !==
-                    "0x0000000000000000000000000000000000000000" &&
+                "0x0000000000000000000000000000000000000000" &&
                 campaignCount > 0,
             staleTime: 30_000,
         },
@@ -1731,239 +1794,239 @@ export function useProposeSafeTransaction() {
 
 // ABI for Safe's execTransaction function
 const SAFE_EXEC_ABI = [
-  {
-    type: "function",
-    name: "execTransaction",
-    stateMutability: "payable",
-    inputs: [
-      { name: "to", type: "address" },
-      { name: "value", type: "uint256" },
-      { name: "data", type: "bytes" },
-      { name: "operation", type: "uint8" },
-      { name: "safeTxGas", type: "uint256" },
-      { name: "baseGas", type: "uint256" },
-      { name: "gasPrice", type: "uint256" },
-      { name: "gasToken", type: "address" },
-      { name: "refundReceiver", type: "address" },
-      { name: "signatures", type: "bytes" },
-    ],
-    outputs: [{ name: "success", type: "bool" }],
-  },
+    {
+        type: "function",
+        name: "execTransaction",
+        stateMutability: "payable",
+        inputs: [
+            { name: "to", type: "address" },
+            { name: "value", type: "uint256" },
+            { name: "data", type: "bytes" },
+            { name: "operation", type: "uint8" },
+            { name: "safeTxGas", type: "uint256" },
+            { name: "baseGas", type: "uint256" },
+            { name: "gasPrice", type: "uint256" },
+            { name: "gasToken", type: "address" },
+            { name: "refundReceiver", type: "address" },
+            { name: "signatures", type: "bytes" },
+        ],
+        outputs: [{ name: "success", type: "bool" }],
+    },
 ] as const;
 
 interface SafeConfirmation {
-  owner: string;
-  signature: string;
+    owner: string;
+    signature: string;
 }
 
 interface SafeTransaction {
-  safeTxHash?: string;
-  transactionHash?: string;
-  to: string;
-  value: string;
-  data: string;
-  operation: number;
-  safeTxGas: string;
-  baseGas: string;
-  gasPrice: string;
-  gasToken?: string;
-  refundReceiver?: string;
-  confirmations: SafeConfirmation[];
-  confirmationsRequired?: number;
-  confirmations_required?: number;
-  isExecuted?: boolean;
-  executed?: boolean;
+    safeTxHash?: string;
+    transactionHash?: string;
+    to: string;
+    value: string;
+    data: string;
+    operation: number;
+    safeTxGas: string;
+    baseGas: string;
+    gasPrice: string;
+    gasToken?: string;
+    refundReceiver?: string;
+    confirmations: SafeConfirmation[];
+    confirmationsRequired?: number;
+    confirmations_required?: number;
+    isExecuted?: boolean;
+    executed?: boolean;
 }
 
 /**
  * Hook for executing Safe multisig transactions directly from the app
  */
 export function useExecuteSafeTransaction() {
-  const { address } = useAccount();
-  const publicClient = usePublicClient();
-  const { writeContractAsync, data, isPending, error } = useWriteContract();
+    const { address } = useAccount();
+    const publicClient = usePublicClient();
+    const { writeContractAsync, data, isPending, error } = useWriteContract();
 
-  const execute = async (
-    safeAddress: Address,
-    safeTxHash: string
-  ): Promise<`0x${string}`> => {
-    if (!publicClient) {
-      throw new Error("Không thể kết nối RPC để ước lượng gas.");
-    }
-    if (!address) {
-      throw new Error("Không tìm thấy địa chỉ ví để gửi giao dịch.");
-    }
+    const execute = async (
+        safeAddress: Address,
+        safeTxHash: string
+    ): Promise<`0x${string}`> => {
+        if (!publicClient) {
+            throw new Error("Không thể kết nối RPC để ước lượng gas.");
+        }
+        if (!address) {
+            throw new Error("Không tìm thấy địa chỉ ví để gửi giao dịch.");
+        }
 
-    // Validate safeAddress first
-    const normalizedSafeAddress = (safeAddress || "").trim().toLowerCase();
-    if (!/^0x[a-f0-9]{40}$/.test(normalizedSafeAddress)) {
-      throw new Error(`Invalid Safe address: "${safeAddress}". Expected a valid EVM address (0x + 40 hex chars).`);
-    }
-    const checksumSafe = getAddress(normalizedSafeAddress as Address);
+        // Validate safeAddress first
+        const normalizedSafeAddress = (safeAddress || "").trim().toLowerCase();
+        if (!/^0x[a-f0-9]{40}$/.test(normalizedSafeAddress)) {
+            throw new Error(`Invalid Safe address: "${safeAddress}". Expected a valid EVM address (0x + 40 hex chars).`);
+        }
+        const checksumSafe = getAddress(normalizedSafeAddress as Address);
 
-    // 1. Fetch pending transactions for the Safe from Safe Transaction Service
-    const safeApiUrl = `https://safe-transaction-sepolia.safe.global/api/v1/safes/${checksumSafe}/multisig-transactions/?executed=false&ordering=-nonce`;
-    const response = await fetch(safeApiUrl, { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(
-        `Không thể lấy danh sách pending transactions từ Safe API: ${response.status}`
-      );
-    }
-    const payload = await response.json();
-    const results = Array.isArray(payload?.results) ? payload.results : [];
+        // 1. Fetch pending transactions for the Safe from Safe Transaction Service
+        const safeApiUrl = `https://safe-transaction-sepolia.safe.global/api/v1/safes/${checksumSafe}/multisig-transactions/?executed=false&ordering=-nonce`;
+        const response = await fetch(safeApiUrl, { cache: "no-store" });
+        if (!response.ok) {
+            throw new Error(
+                `Không thể lấy danh sách pending transactions từ Safe API: ${response.status}`
+            );
+        }
+        const payload = await response.json();
+        const results = Array.isArray(payload?.results) ? payload.results : [];
 
-    // 2. Find the specific transaction by safeTxHash
-    const tx = results.find(
-      (t: SafeTransaction) => (t.safeTxHash || t.transactionHash) === safeTxHash
-    );
-    if (!tx) {
-      throw new Error(
-        `Không tìm thấy pending transaction với hash ${safeTxHash}. Có thể đã được execute hoặc bị xóa.`
-      );
-    }
-
-    // 3. Validate threshold reached
-    const confirmations = Array.isArray(tx.confirmations)
-      ? tx.confirmations
-      : [];
-    const required = Number(
-      tx.confirmationsRequired || tx.confirmations_required || 0
-    );
-    const confirmed = confirmations.length;
-
-    if (confirmed < required) {
-      throw new Error(
-        `Chưa đủ chữ ký để thực thi. Cần ${required}, đã có ${confirmed}.`
-      );
-    }
-
-    // 4. Check not already executed
-    const isExecuted = Boolean(tx.isExecuted ?? tx.executed ?? false);
-    if (isExecuted) {
-      throw new Error("Giao dịch này đã được thực thi trước đó.");
-    }
-
-    // 5. Extract transaction parameters
-    const {
-      to,
-      value,
-      data: txData,
-      operation,
-      safeTxGas,
-      baseGas,
-      gasPrice,
-      gasToken,
-      refundReceiver,
-    } = tx;
-
-    if (!to || !txData) {
-      throw new Error("Dữ liệu transaction không hợp lệ từ Safe API.");
-    }
-
-    // 6. Sort confirmations by owner address (ascending) - MANDATORY for Safe
-    const sortedConfirmations = [...confirmations].sort((a, b) =>
-      a.owner.toLowerCase().localeCompare(b.owner.toLowerCase())
-    );
-
-    // 7. Concatenate signatures into single bytes string
-    // Each signature is hex string like "0x..."
-    const signatures: `0x${string}` =
-      "0x" +
-      sortedConfirmations
-        .map((c) => c.signature.slice(2)) // remove 0x prefix
-        .join("") as `0x${string}`;
-
-    // 8. Build args for execTransaction
-    const args: [
-      to: Address,
-      value: bigint,
-      data: `0x${string}`,
-      operation: number,
-      safeTxGas: bigint,
-      baseGas: bigint,
-      gasPrice: bigint,
-      gasToken: Address,
-      refundReceiver: Address,
-      signatures: `0x${string}`
-    ] = [
-      to as Address,
-      BigInt(value || 0),
-      txData as `0x${string}`,
-      Number(operation || 0),
-      BigInt(safeTxGas || 0),
-      BigInt(baseGas || 0),
-      BigInt(gasPrice || 0),
-      (gasToken || "0x0000000000000000000000000000000000000000") as Address,
-      (refundReceiver || "0x0000000000000000000000000000000000000000") as Address,
-      signatures,
-    ];
-
-    // 9. Simulate contract call to validate and estimate gas
-    let estimatedGas: bigint;
-    try {
-      await publicClient.simulateContract({
-        address: checksumSafe,
-        abi: SAFE_EXEC_ABI,
-        functionName: "execTransaction",
-        args,
-        account: address,
-      });
-      // simulation may return gasEstimate in some implementations
-      // but viem's simulateContract doesn't return it directly
-    } catch (simulationError) {
-      const message =
-        simulationError instanceof Error
-          ? simulationError.message.toLowerCase()
-          : "";
-      if (message.includes("gas limit too high")) {
-        // Continue with fallback gas
-      } else if (message.includes("already executed")) {
-        throw new Error("Giao dịch đã được thực thi trước đó.");
-      } else if (message.includes("invalid signature")) {
-        throw new Error(
-          "Chữ ký không hợp lệ. Có thể do Safe contract không khớp."
+        // 2. Find the specific transaction by safeTxHash
+        const tx = results.find(
+            (t: SafeTransaction) => (t.safeTxHash || t.transactionHash) === safeTxHash
         );
-      } else {
-        throw simulationError;
-      }
-    }
+        if (!tx) {
+            throw new Error(
+                `Không tìm thấy pending transaction với hash ${safeTxHash}. Có thể đã được execute hoặc bị xóa.`
+            );
+        }
 
-    // 10. Estimate gas with buffer
-    try {
-      const gasEstimate = await publicClient.estimateContractGas({
-        address: checksumSafe,
-        abi: SAFE_EXEC_ABI,
-        functionName: "execTransaction",
-        args,
-        account: address,
-      });
-      estimatedGas = (gasEstimate * 120n) / 100n; // 20% buffer
-    } catch (estimateError) {
-      // Use safe fallback if estimation fails
-      console.warn(
-        "[useExecuteSafeTransaction] Gas estimation failed, using fallback",
-        estimateError
-      );
-      estimatedGas = 2_000_000n;
-    }
+        // 3. Validate threshold reached
+        const confirmations = Array.isArray(tx.confirmations)
+            ? tx.confirmations
+            : [];
+        const required = Number(
+            tx.confirmationsRequired || tx.confirmations_required || 0
+        );
+        const confirmed = confirmations.length;
 
-    // 11. Execute transaction on-chain
-    const hash = await writeContractAsync({
-      address: checksumSafe,
-      abi: SAFE_EXEC_ABI,
-      functionName: "execTransaction",
-      args,
-      gas: estimatedGas,
-      value: 0n, // Safe execTransaction is payable, but we send 0 ETH
-    });
+        if (confirmed < required) {
+            throw new Error(
+                `Chưa đủ chữ ký để thực thi. Cần ${required}, đã có ${confirmed}.`
+            );
+        }
 
-    return hash as `0x${string}`;
-  };
+        // 4. Check not already executed
+        const isExecuted = Boolean(tx.isExecuted ?? tx.executed ?? false);
+        if (isExecuted) {
+            throw new Error("Giao dịch này đã được thực thi trước đó.");
+        }
 
-  return {
-    execute,
-    hash: data,
-    isPending,
-    error,
-  };
+        // 5. Extract transaction parameters
+        const {
+            to,
+            value,
+            data: txData,
+            operation,
+            safeTxGas,
+            baseGas,
+            gasPrice,
+            gasToken,
+            refundReceiver,
+        } = tx;
+
+        if (!to || !txData) {
+            throw new Error("Dữ liệu transaction không hợp lệ từ Safe API.");
+        }
+
+        // 6. Sort confirmations by owner address (ascending) - MANDATORY for Safe
+        const sortedConfirmations = [...confirmations].sort((a, b) =>
+            a.owner.toLowerCase().localeCompare(b.owner.toLowerCase())
+        );
+
+        // 7. Concatenate signatures into single bytes string
+        // Each signature is hex string like "0x..."
+        const signatures: `0x${string}` =
+            "0x" +
+            sortedConfirmations
+                .map((c) => c.signature.slice(2)) // remove 0x prefix
+                .join("") as `0x${string}`;
+
+        // 8. Build args for execTransaction
+        const args: [
+            to: Address,
+            value: bigint,
+            data: `0x${string}`,
+            operation: number,
+            safeTxGas: bigint,
+            baseGas: bigint,
+            gasPrice: bigint,
+            gasToken: Address,
+            refundReceiver: Address,
+            signatures: `0x${string}`
+        ] = [
+                to as Address,
+                BigInt(value || 0),
+                txData as `0x${string}`,
+                Number(operation || 0),
+                BigInt(safeTxGas || 0),
+                BigInt(baseGas || 0),
+                BigInt(gasPrice || 0),
+                (gasToken || "0x0000000000000000000000000000000000000000") as Address,
+                (refundReceiver || "0x0000000000000000000000000000000000000000") as Address,
+                signatures,
+            ];
+
+        // 9. Simulate contract call to validate and estimate gas
+        let estimatedGas: bigint;
+        try {
+            await publicClient.simulateContract({
+                address: checksumSafe,
+                abi: SAFE_EXEC_ABI,
+                functionName: "execTransaction",
+                args,
+                account: address,
+            });
+            // simulation may return gasEstimate in some implementations
+            // but viem's simulateContract doesn't return it directly
+        } catch (simulationError) {
+            const message =
+                simulationError instanceof Error
+                    ? simulationError.message.toLowerCase()
+                    : "";
+            if (message.includes("gas limit too high")) {
+                // Continue with fallback gas
+            } else if (message.includes("already executed")) {
+                throw new Error("Giao dịch đã được thực thi trước đó.");
+            } else if (message.includes("invalid signature")) {
+                throw new Error(
+                    "Chữ ký không hợp lệ. Có thể do Safe contract không khớp."
+                );
+            } else {
+                throw simulationError;
+            }
+        }
+
+        // 10. Estimate gas with buffer
+        try {
+            const gasEstimate = await publicClient.estimateContractGas({
+                address: checksumSafe,
+                abi: SAFE_EXEC_ABI,
+                functionName: "execTransaction",
+                args,
+                account: address,
+            });
+            estimatedGas = (gasEstimate * 120n) / 100n; // 20% buffer
+        } catch (estimateError) {
+            // Use safe fallback if estimation fails
+            console.warn(
+                "[useExecuteSafeTransaction] Gas estimation failed, using fallback",
+                estimateError
+            );
+            estimatedGas = 2_000_000n;
+        }
+
+        // 11. Execute transaction on-chain
+        const hash = await writeContractAsync({
+            address: checksumSafe,
+            abi: SAFE_EXEC_ABI,
+            functionName: "execTransaction",
+            args,
+            gas: estimatedGas,
+            value: 0n, // Safe execTransaction is payable, but we send 0 ETH
+        });
+
+        return hash as `0x${string}`;
+    };
+
+    return {
+        execute,
+        hash: data,
+        isPending,
+        error,
+    };
 }
