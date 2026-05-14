@@ -183,13 +183,10 @@ function CampaignsPageContent() {
         [filteredCampaigns, safePage],
     );
 
-<<<<<<< HEAD
     // Reset to page 1 whenever filters or search change
     useEffect(() => {
         setCurrentPage(1);
     }, [searchQuery, filterStatus, sortBy]);
-=======
->>>>>>> f9e35ed011401d0ff0c7c0a21eeefb7d08a95ca3
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
@@ -343,16 +340,10 @@ function CampaignsPageContent() {
                             </label>
                             <select
                                 value={filterStatus}
-<<<<<<< HEAD
-                                onChange={(e) =>
-                                    setFilterStatus(e.target.value)
-                                }
-=======
                                 onChange={(e) => {
                                     setFilterStatus(e.target.value);
                                     setCurrentPage(1);
                                 }}
->>>>>>> f9e35ed011401d0ff0c7c0a21eeefb7d08a95ca3
                                 aria-label="Lọc theo trạng thái chiến dịch"
                                 className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2 text-slate-900 focus:border-blue-600 focus:outline-none transition"
                             >
@@ -383,21 +374,15 @@ function CampaignsPageContent() {
                             </label>
                             <select
                                 value={sortBy}
-<<<<<<< HEAD
-                                onChange={(e) =>
+                                onChange={(e) => {
                                     setSortBy(
                                         e.target.value as
                                             | "newest"
                                             | "mostfunded"
                                             | "trending",
-                                    )
-                                }
-=======
-                                onChange={(e) => {
-                                    setSortBy(e.target.value as "newest" | "mostfunded" | "trending");
+                                    );
                                     setCurrentPage(1);
                                 }}
->>>>>>> f9e35ed011401d0ff0c7c0a21eeefb7d08a95ca3
                                 aria-label="Sắp xếp danh sách chiến dịch"
                                 className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2 text-slate-900 focus:border-blue-600 focus:outline-none transition"
                             >
