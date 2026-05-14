@@ -593,7 +593,7 @@ export default function Home() {
                                 className="inline-flex cursor-not-allowed items-center justify-center rounded-xl bg-white/20 px-8 py-3.5 text-base font-bold text-white"
                                 disabled
                                 title={
-                                    !isConnected
+                                    !safeIsConnected
                                         ? "Kết nối ví để tạo chiến dịch"
                                         : "Chuyển sang mạng Sepolia"
                                 }
