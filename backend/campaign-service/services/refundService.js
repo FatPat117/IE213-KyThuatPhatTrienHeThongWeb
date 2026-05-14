@@ -560,7 +560,7 @@ async function prepareCampaignRefundTx(
     );
 }
 
-async function handleCampaignCascadeFailure(campaignOnChainId) {
+async function handleCampaignCascadeFailure(campaignOnChainId, txHash = "") {
     try {
         console.log(`[refundService.handleCampaignCascadeFailure] Starting for campaignOnChainId=${campaignOnChainId}`);
         const campaign = await Campaign.findOne({
@@ -618,24 +618,51 @@ async function handleCampaignCascadeFailure(campaignOnChainId) {
         const remainingWei = toNonNegative(totalRaisedWei - totalDisbursedWei);
         console.log(`[refundService.handleCampaignCascadeFailure] totalRaised=${totalRaisedWei}, totalDisbursed=${totalDisbursedWei}, remaining=${remainingWei}, isFundingFailure=${isFundingFailure}`);
 
-        // Set correct status
-        campaign.status = isFundingFailure ? "failed" : "partial_failed";
-        campaign.remainingWei = remainingWei.toString();
-        campaign.updatedAt = new Date();
-        await campaign.save();
-        console.log(`[refundService.handleCampaignCascadeFailure] Campaign status updated to ${campaign.status}.`);
+        // Set correct status atomically to prevent race conditions
+        const statusToSet = isFundingFailure ? "failed" : "partial_failed";
+        const updateResult = await Campaign.updateOne(
+            {
+                _id: campaign._id,
+                status: { $nin: ["failed", "partial_failed"] }
+            },
+            {
+                $set: {
+                    status: statusToSet,
+                    remainingWei: remainingWei.toString(),
+                    updatedAt: new Date()
+                }
+            }
+        );
+
+        if (updateResult.modifiedCount === 0) {
+            console.log(`[refundService.handleCampaignCascadeFailure] Campaign status already updated by another process for campaignOnChainId=${campaignOnChainId}. Skipping.`);
+            return {
+                campaignId: campaign._id,
+                campaignOnChainId: Number(campaignOnChainId),
+                totalDonors: 0,
+                refundsCreated: 0,
+                refundPoolWei: remainingWei.toString(),
+                alreadyStopped: true,
+            };
+        }
+
+        console.log(`[refundService.handleCampaignCascadeFailure] Campaign status updated to ${statusToSet}.`);
 
         // Notify creator about failure
         if (campaign.creator) {
+            const failureTitle = isFundingFailure ? "Chiến dịch thất bại (Không đủ vốn)" : "Chiến dịch thất bại (Mốc hỏng)";
+            const failureMessage = isFundingFailure 
+                ? `Chiến dịch "${campaign.title || `#${campaignOnChainId}`}" đã kết thúc nhưng không đạt được mục tiêu gây quỹ (Goal). Hệ thống đã tự động chuyển sang trạng thái thất bại và chuẩn bị hoàn tiền cho nhà hảo tâm.`
+                : `Chiến dịch "${campaign.title || `#${campaignOnChainId}`}" đã thất bại tại một cột mốc. Nhà hảo tâm có thể yêu cầu hoàn lại phần tiền chưa sử dụng.`;
+
             notificationService.createNotification({
                 recipientWallet: campaign.creator,
                 type: "campaign_failed",
-                title: "Chiến dịch thất bại",
-                message: isFundingFailure 
-                    ? `Chiến dịch #${campaignOnChainId} đã thất bại do không đạt mục tiêu tài chính.`
-                    : `Chiến dịch #${campaignOnChainId} đã bị dừng do có milestone quá hạn hoặc thất bại.`,
+                title: failureTitle,
+                message: failureMessage,
                 campaignOnChainId: Number(campaignOnChainId),
-            }).catch(err => console.error("[refundService] Failed to send failure notification:", err.message));
+                txHash,
+            }).catch(err => console.error("[refundService] Failed to send creator failure notification:", err.message));
         }
 
         if (
@@ -672,6 +699,7 @@ async function handleCampaignCascadeFailure(campaignOnChainId) {
                 : Number(campaign.currentMilestoneId || 0);
         }
 
+        const donorNotificationPromises = [];
         const operations = donorShares
             .map((share) => {
                 const donorTotalWei = toBigInt(share.donorTotalContributionWei);
@@ -683,6 +711,18 @@ async function handleCampaignCascadeFailure(campaignOnChainId) {
                 if (eligibleRefundWei <= 0n) {
                     return null;
                 }
+
+                // Notify donor about refund eligibility
+                const amountEth = (Number(eligibleRefundWei) / 1e18).toFixed(4);
+                donorNotificationPromises.push(
+                    notificationService.createNotification({
+                        recipientWallet: share.donorAddress,
+                        type: "campaign_failed",
+                        title: "Chiến dịch thất bại - Yêu cầu hoàn tiền",
+                        message: `Chiến dịch "${campaign.title || `#${campaignOnChainId}`}" đã thất bại. Bạn có thể yêu cầu hoàn lại ${amountEth} ETH tại trang chi tiết chiến dịch.`,
+                        campaignOnChainId: Number(campaignOnChainId),
+                    }).catch(err => console.error(`[refundService] Failed to notify donor ${share.donorAddress}:`, err.message))
+                );
 
                 return {
                     updateOne: {
@@ -716,6 +756,14 @@ async function handleCampaignCascadeFailure(campaignOnChainId) {
         if (operations.length > 0) {
             await CampaignRefund.bulkWrite(operations, {
                 ordered: false,
+            });
+            
+            // Send notifications in background (don't await to avoid blocking)
+            Promise.allSettled(donorNotificationPromises).then(results => {
+                const failed = results.filter(r => r.status === 'rejected').length;
+                if (failed > 0) {
+                    console.warn(`[refundService] Failed to send ${failed} donor notifications`);
+                }
             });
         }
 
