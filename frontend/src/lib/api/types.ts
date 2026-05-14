@@ -5,6 +5,27 @@ export interface AuthUser {
   avatarUrl?: string;
 }
 
+export interface CampaignMilestoneRecord {
+  milestoneId?: number;
+  milestoneIndex?: number;
+  title?: string;
+  description?: string;
+  allocationBps?: number;
+  financialTargetWei?: string;
+  amountWei?: string;
+  deadline?: string;
+  status?: string;
+  reportCids?: Array<{ cid?: string; submittedAt?: string }>;
+  approvedAt?: string | null;
+  approvedBy?: string;
+  disbursedAt?: string | null;
+  lastRejectionReason?: string;
+  rejectionCount?: number;
+  maxRetries?: number;
+  pendingRejections?: number;
+  rejectionVoters?: string[];
+}
+
 export interface CampaignRecord {
   onChainId: number;
   title: string;
@@ -19,7 +40,7 @@ export interface CampaignRecord {
   deadline: string;
   status: 'pending_approval' | 'active' | 'in_progress' | 'completed' | 'partial_failed' | 'failed' | 'cancelled';
   milestoneCount?: number;
-  milestones?: unknown[];
+  milestones?: CampaignMilestoneRecord[];
   rejectionReason?: string | null;
   rejectedAt?: string | null;
   createdAt: string;
