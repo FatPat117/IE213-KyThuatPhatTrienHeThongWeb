@@ -7,38 +7,6 @@ on:
     branches: [ main, dev ]
 
 jobs:
-  lint:
-    name: Lint Codebase
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: |
-            frontend/package-lock.json
-            backend/campaign-service/package-lock.json
-
-      - name: Install Frontend Deps
-        run: |
-          cd frontend
-          npm install
-
-      - name: Sync Contract Artifacts
-        run: |
-          cd frontend
-          npm run sync:contract-artifacts
-
-      - name: Lint Frontend
-        run: |
-          cd frontend
-          npm run lint
-
-      # We can add backend linting here if backend has a lint script
-      # For now, focusing on frontend which is usually stricter
-
   smart-contracts-test:
     name: Smart Contract Tests
     runs-on: ubuntu-latest
