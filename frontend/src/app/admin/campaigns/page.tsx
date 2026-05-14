@@ -15,7 +15,6 @@ import {
     useReadContractOwner,
     useAdminRejectCampaign,
 } from "@/lib/contracts/hooks";
-import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 import { useOwnerSafes } from "@/lib/hooks/use-owner-safes";
 import { useAdminApprove } from "@/lib/contracts/hooks";
 import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
@@ -61,7 +60,7 @@ export default function AdminCampaignApprovalsPage() {
     const { isAdminOnChain, isLoading: isCheckingAdminPermission } =
         useReadContractOwner();
     const { isLoading: isLoadingOwnerSafes } = useOwnerSafes();
-    const { adminApprove, isPending: isApproving } = useAdminApprove();
+    const { adminApprove } = useAdminApprove();
     const { adminRejectCampaign: adminRejectOnChain, isPending: isRejectingOnChain } =
         useAdminRejectCampaign();
 
