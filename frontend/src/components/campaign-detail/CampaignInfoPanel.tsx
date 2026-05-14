@@ -180,7 +180,7 @@ function getStatusBadge(
                             Lý do từ chối từ Admin:
                         </p>
                         <p className="text-sm text-red-800 italic">
-                            "{rejectionReason}"
+                            &quot;{rejectionReason}&quot;
                         </p>
                     </div>
                 )}

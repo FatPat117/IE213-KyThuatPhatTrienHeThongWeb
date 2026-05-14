@@ -1,7 +1,7 @@
 'use client';
 
 import { useContext } from 'react';
-import { StatusContext, type StatusContextType, type StatusType, type StatusMessage } from '../context/status';
+import { StatusContext, type StatusContextType, type StatusType } from '../context/status';
 
 export function useSystemStatus(): StatusContextType {
   const context = useContext(StatusContext);

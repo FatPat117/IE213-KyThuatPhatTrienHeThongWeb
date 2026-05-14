@@ -17,7 +17,11 @@ export default function WalletStatus() {
   const isSepoliaNetwork = isHydrated ? chainId === SEPOLIA_CHAIN_ID : false;
   const safeAddress = isHydrated ? address : undefined;
   const safeBalance = isHydrated ? balance : undefined;
+<<<<<<< HEAD
 
+=======
+  
+>>>>>>> f9e35ed011401d0ff0c7c0a21eeefb7d08a95ca3
   if (!safeIsConnected) {
     return (
       <div className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg space-y-2">

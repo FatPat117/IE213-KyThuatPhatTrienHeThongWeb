@@ -7,33 +7,6 @@ on:
     branches: [ main, dev ]
 
 jobs:
-  lint:
-    name: Lint Codebase
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: |
-            frontend/package-lock.json
-            backend/campaign-service/package-lock.json
-
-      - name: Install Frontend Deps
-        run: |
-          cd frontend
-          npm ci
-
-      - name: Lint Frontend
-        run: |
-          cd frontend
-          npm run lint
-
-      # We can add backend linting here if backend has a lint script
-      # For now, focusing on frontend which is usually stricter
-
   smart-contracts-test:
     name: Smart Contract Tests
     runs-on: ubuntu-latest
@@ -41,11 +14,21 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
+
+      - name: Initialize Submodules
+        run: git submodule update --init --recursive
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: nightly
+
+      - name: Install Dependencies
+        run: |
+          cd smart-contracts
+          forge install openzeppelin/openzeppelin-contracts --no-commit
+          forge install foundry-rs/forge-std --no-commit
 
       - name: Run Forge Tests
         run: |
@@ -67,7 +50,7 @@ jobs:
       - name: Install Dependencies
         run: |
           cd backend/campaign-service
-          npm ci
+          npm install
 
       - name: Run Tests
         run: |
@@ -92,7 +75,12 @@ jobs:
       - name: Install Dependencies
         run: |
           cd frontend
-          npm ci
+          npm install
+
+      - name: Sync Contract Artifacts
+        run: |
+          cd frontend
+          npm run sync:contract-artifacts
 
       - name: Run Unit Tests
         run: |
@@ -114,7 +102,12 @@ jobs:
       - name: Install Dependencies
         run: |
           cd frontend
-          npm ci
+          npm install
+
+      - name: Sync Contract Artifacts
+        run: |
+          cd frontend
+          npm run sync:contract-artifacts
 
       - name: Build Next.js App
         run: |

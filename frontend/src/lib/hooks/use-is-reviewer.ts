@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/context/auth";
 import { useReadReviewerSafesOnChain } from "@/lib/contracts/hooks";
 import { useOwnerSafes } from "./use-owner-safes";
@@ -20,22 +20,19 @@ export function useIsReviewer() {
   const roleFromAuth = (user?.role || "").toString().trim().toLowerCase();
   const isReviewerByRole = roleFromAuth === "reviewer";
 
-  const prevIsReviewerRef = useRef(false);
+  const [prevIsReviewer, setPrevIsReviewer] = useState(false);
   const isReviewer = useMemo(() => {
     if (!isSignedIn) return false;
     if (isReviewerByRole) return true;
     if (isLoadingOwnerSafes || isLoadingRegisteredSafes) {
-      return prevIsReviewerRef.current;
+      return prevIsReviewer;
     }
     if (!ownerSafes.length || !registeredSafes.length) {
-      prevIsReviewerRef.current = false;
       return false;
     }
-    const hasIntersection = ownerSafes.some((safe) =>
+    return ownerSafes.some((safe) =>
       registeredSafes.includes(safe),
     );
-    prevIsReviewerRef.current = hasIntersection;
-    return hasIntersection;
   }, [
     isSignedIn,
     isReviewerByRole,
@@ -43,7 +40,12 @@ export function useIsReviewer() {
     registeredSafes,
     isLoadingOwnerSafes,
     isLoadingRegisteredSafes,
+    prevIsReviewer,
   ]);
+
+  useEffect(() => {
+    setPrevIsReviewer(isReviewer);
+  }, [isReviewer]);
 
   const isLoading = isLoadingOwnerSafes || isLoadingRegisteredSafes;
 

@@ -380,7 +380,10 @@ function MyCampaignsPageContent() {
                             type="text"
                             placeholder="🔍 Tìm kiếm trong chiến dịch của bạn..."
                             value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
+                            onChange={(e) => {
+                                setSearchQuery(e.target.value);
+                                setCurrentPage(1);
+                            }}
                             className="w-full rounded-lg border-2 border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder-slate-400 focus:border-blue-600 focus:outline-none transition"
                         />
                     </div>
@@ -392,9 +395,10 @@ function MyCampaignsPageContent() {
                             </label>
                             <select
                                 value={filterStatus}
-                                onChange={(e) =>
-                                    setFilterStatus(e.target.value)
-                                }
+                                onChange={(e) => {
+                                    setFilterStatus(e.target.value);
+                                    setCurrentPage(1);
+                                }}
                                 className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2 text-slate-900 focus:border-blue-600 focus:outline-none transition"
                             >
                                 <option value="all">Tất cả trạng thái</option>
@@ -418,9 +422,10 @@ function MyCampaignsPageContent() {
                             </label>
                             <select
                                 value={sortBy}
-                                onChange={(e) =>
-                                    setSortBy(e.target.value as any)
-                                }
+                                onChange={(e) => {
+                                    setSortBy(e.target.value as any);
+                                    setCurrentPage(1);
+                                }}
                                 className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2 text-slate-900 focus:border-blue-600 focus:outline-none transition"
                             >
                                 <option value="newest">Mới nhất</option>

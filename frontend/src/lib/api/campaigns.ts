@@ -1,7 +1,7 @@
 "use client";
 
 import { API_BASE_URL, apiRequest, trackedFetch } from "./client";
-import type { CampaignRecord } from "./types";
+import type { CampaignRecord, CampaignMilestoneRecord } from "./types";
 
 export interface PublicCampaignItem {
     onChainId: number;
@@ -90,26 +90,6 @@ export interface PublicCampaignMilestonesResponse {
     milestones: PublicCampaignMilestone[];
 }
 
-interface CampaignMilestoneRecord {
-    milestoneId?: number;
-    milestoneIndex?: number;
-    title?: string;
-    description?: string;
-    allocationBps?: number;
-    financialTargetWei?: string;
-    amountWei?: string;
-    deadline?: string;
-    status?: string;
-    reportCids?: Array<{ cid?: string; submittedAt?: string }>;
-    approvedAt?: string | null;
-    approvedBy?: string;
-    disbursedAt?: string | null;
-    lastRejectionReason?: string;
-    rejectionCount?: number;
-    maxRetries?: number;
-    pendingRejections?: number;
-    rejectionVoters?: string[];
-}
 
 interface MilestoneServiceResponse {
     success?: boolean;
@@ -186,7 +166,7 @@ async function ensureCampaignIndexed(onChainId: number): Promise<void> {
 }
 
 export function mapMilestoneRecord(
-    item: CampaignMilestoneRecord | any,
+    item: CampaignMilestoneRecord,
 ): PublicCampaignMilestone {
     return {
         milestoneId: Number(item.milestoneId ?? item.milestoneIndex ?? 0),
@@ -204,13 +184,13 @@ export function mapMilestoneRecord(
             if (!Array.isArray(item.reportCids)) return [];
             const seenCids = new Set<string>();
             return item.reportCids
-                .filter((entry: { cid: string; submittedAt: string }) => {
+                .filter((entry: { cid?: string; submittedAt?: string }) => {
                     const cid = (entry?.cid || "").trim();
                     if (!cid || seenCids.has(cid)) return false;
                     seenCids.add(cid);
                     return true;
                 })
-                .map((entry: { cid: string; submittedAt: string }) => ({
+                .map((entry: { cid?: string; submittedAt?: string }) => ({
                     cid: (entry.cid || "").trim(),
                     submittedAt: entry.submittedAt || "",
                 }));
@@ -219,18 +199,10 @@ export function mapMilestoneRecord(
         approvedBy: item.approvedBy || "",
         disbursedAt: item.disbursedAt || null,
         lastRejectionReason: item.lastRejectionReason,
-        rejectionCount: typeof (item as Record<string, unknown>).rejectionCount === 'number'
-            ? (item as Record<string, unknown>).rejectionCount as number
-            : undefined,
-        maxRetries: typeof (item as Record<string, unknown>).maxRetries === 'number'
-            ? (item as Record<string, unknown>).maxRetries as number
-            : undefined,
-        pendingRejections: typeof (item as Record<string, unknown>).pendingRejections === 'number'
-            ? (item as Record<string, unknown>).pendingRejections as number
-            : undefined,
-        rejectionVoters: Array.isArray((item as Record<string, unknown>).rejectionVoters)
-            ? (item as Record<string, unknown>).rejectionVoters as string[]
-            : [],
+        rejectionCount: item.rejectionCount,
+        maxRetries: item.maxRetries,
+        pendingRejections: item.pendingRejections,
+        rejectionVoters: item.rejectionVoters || [],
     };
 }
 
