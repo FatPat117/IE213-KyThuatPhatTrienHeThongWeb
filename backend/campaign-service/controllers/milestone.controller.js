@@ -709,7 +709,7 @@ const rejectMilestone = async (req, res) => {
                     safeContract.getOwners(),
                     safeContract.getThreshold()
                 ]);
-                
+
                 threshold = Number(onChainThreshold);
                 console.log(`[rejectMilestone] Safe ${assignedReviewerSafe} has threshold ${threshold} and ${owners?.length} owners`);
 
@@ -791,7 +791,7 @@ const rejectMilestone = async (req, res) => {
         if (milestone.pendingRejections.length < threshold) {
             await milestone.save();
             const needed = threshold - milestone.pendingRejections.length;
-            const msg = `Đã ghi nhận phiếu từ chối. Cần thêm ${needed} phiếu nữa để chính thức yêu cầu nộp lại (Threshold Safe: ${threshold}).`;
+            const msg = `Đã ghi nhận phiếu từ chối. Cần thêm ${needed} phiếu nữa để chính thức yêu cầu nộp lại (Số chữ ký cần là: ${threshold}).`;
             return res.status(200).json({
                 success: true,
                 status: "pending_threshold",

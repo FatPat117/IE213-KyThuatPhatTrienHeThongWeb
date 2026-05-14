@@ -71,7 +71,7 @@ async function startMilestoneApprovedConsumer() {
                             recipientWallet: campaign.creator,
                             type: "campaign_succeeded",
                             title: "Chiến dịch thành công! 🎉",
-                            message: `Chúc mừng! Toàn bộ các mốc của chiến dịch "${campaign.title}" đã được duyệt hoàn tất.`,
+                            message: `Chúc mừng! Toàn bộ các mốc của chiến dịch "${campaign.title}" đã được hoàn thành.`,
                             campaignOnChainId,
                             txHash: payload.txHash || "",
                         });

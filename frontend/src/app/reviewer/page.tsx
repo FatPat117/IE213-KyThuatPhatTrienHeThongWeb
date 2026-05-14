@@ -470,6 +470,10 @@ export default function ReviewerWorkspacePage() {
         Record<string, MilestoneApprovalStatus>
     >({});
     const approvalStatusMapRef = useRef(approvalStatusMap);
+    const isRefreshingRef = useRef(false);
+    const lastRefreshRef = useRef<number>(0);
+    const lastBlurRef = useRef<number>(0);
+    const notificationTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
         approvalStatusMapRef.current = approvalStatusMap;
@@ -527,7 +531,10 @@ export default function ReviewerWorkspacePage() {
     }, [rejectError]);
 
     const refreshApprovalStatuses = useCallback(async (forceRefresh = false) => {
-        if (!token || rows.length === 0) return;
+        if (!token || rows.length === 0 || isRefreshingRef.current) return;
+        isRefreshingRef.current = true;
+        
+        try {
 
         const pendingTargets = rows.flatMap((row) =>
             row.milestones
@@ -589,6 +596,10 @@ export default function ReviewerWorkspacePage() {
             }
             return hasChanges ? next : prev;
         });
+        });
+        } finally {
+            isRefreshingRef.current = false;
+        }
     }, [rows, token]);
 
     useEffect(() => {
@@ -624,7 +635,7 @@ export default function ReviewerWorkspacePage() {
         refreshApprovalStatuses();
         const timer = window.setInterval(() => {
             refreshApprovalStatuses();
-        }, 20_000); // 20 seconds (reduced from 2m for better responsiveness)
+        }, 45_000); // 45 seconds (increased from 20s to prevent 429)
 
         return () => window.clearInterval(timer);
     }, [hasReviewerAccess, refreshApprovalStatuses, rows, indexingKeys.size]);
@@ -632,18 +643,42 @@ export default function ReviewerWorkspacePage() {
     // Force refresh when window regains focus (useful after signing in Safe tab)
     useEffect(() => {
         if (!hasReviewerAccess) return;
+
+        const handleBlur = () => {
+            lastBlurRef.current = Date.now();
+        };
+
         const handleFocus = async () => {
-            console.log('[ReviewerPage] Window focused, triggering refresh...');
-            setIsFocusRefreshing(true);
-            try {
-                await refreshApprovalStatuses(true);
-                await refresh(true);
-            } finally {
-                setIsFocusRefreshing(false);
+            const now = Date.now();
+            const timeSinceBlur = now - lastBlurRef.current;
+            const timeSinceLastRefresh = now - lastRefreshRef.current;
+
+            // Only refresh if:
+            // 1. User was away for more than 5 seconds (avoid flickering on quick task switching)
+            // 2. We haven't refreshed in the last 15 seconds
+            if (timeSinceBlur > 5000 && timeSinceLastRefresh > 15000) {
+                console.log('[ReviewerPage] Window focused after gap, triggering silent refresh...');
+                lastRefreshRef.current = now;
+                
+                // Silent background refresh - do not set isFocusRefreshing=true
+                // to avoid annoying the user with loading spinners while they work
+                try {
+                    await Promise.allSettled([
+                        refreshApprovalStatuses(true),
+                        refresh(true)
+                    ]);
+                } catch (e) {
+                    console.error('[ReviewerPage] Background refresh failed', e);
+                }
             }
         };
+
+        window.addEventListener('blur', handleBlur);
         window.addEventListener('focus', handleFocus);
-        return () => window.removeEventListener('focus', handleFocus);
+        return () => {
+            window.removeEventListener('blur', handleBlur);
+            window.removeEventListener('focus', handleFocus);
+        };
     }, [hasReviewerAccess, refreshApprovalStatuses, refresh]);
 
     // Listen for SSE notifications
@@ -668,7 +703,14 @@ export default function ReviewerWorkspacePage() {
                     (notification) => {
                         if (!active) return;
                         if (RELOAD_TYPES.has(notification.type)) {
-                            refresh(true);
+                            // Debounce reload to handle bursts of notifications
+                            if (notificationTimerRef.current) {
+                                window.clearTimeout(notificationTimerRef.current);
+                            }
+                            notificationTimerRef.current = window.setTimeout(() => {
+                                console.log('[ReviewerPage] SSE notification received, debounced refresh...');
+                                refresh(true);
+                            }, 1500);
                         }
                     },
                     undefined,
@@ -687,6 +729,7 @@ export default function ReviewerWorkspacePage() {
         return () => {
             active = false;
             controller.abort();
+            if (notificationTimerRef.current) window.clearTimeout(notificationTimerRef.current);
         };
     }, [token, walletAddress, refresh]);
 

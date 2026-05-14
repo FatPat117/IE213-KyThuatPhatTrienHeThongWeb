@@ -252,12 +252,13 @@ export function useReviewerCampaigns() {
     }
   }, [myReviewerSafes, refresh, isLoadingOwnerSafes, isLoadingRegistered]);
 
-  // Auto-refresh every 20 seconds
+  // Auto-refresh every 60 seconds (increased from 20s to prevent 429)
   useEffect(() => {
     if (myReviewerSafes.length === 0) return;
     const timer = window.setInterval(() => {
-      refresh(true);
-    }, 20_000);
+      // Use background refresh without forcing cache invalidation
+      refresh(false);
+    }, 60_000);
     return () => window.clearInterval(timer);
   }, [refresh, myReviewerSafes.length]);
 
