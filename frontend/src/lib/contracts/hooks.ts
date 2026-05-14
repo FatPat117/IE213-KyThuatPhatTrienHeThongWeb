@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Address, encodeFunctionData, encodePacked, formatEther, getAddress, hashTypedData, keccak256, parseEther, recoverAddress, toBytes } from "viem";
+import { Address, encodeFunctionData, formatEther, getAddress, hashTypedData, keccak256, parseEther, recoverAddress, toBytes } from "viem";
 
 import {
     useAccount,
@@ -1532,11 +1532,8 @@ export function useProposeSafeTransaction() {
 
         // 1. Encode function data based on milestoneId
         let encodedData: `0x${string}`;
-        let functionName: string;
-
         if (milestoneId === null) {
             // adminApprove(uint256 campaignId)
-            functionName = "adminApprove";
             encodedData = encodeFunctionData({
                 abi: CROWDFUNDING_ABI,
                 functionName: "adminApprove",
@@ -1544,7 +1541,6 @@ export function useProposeSafeTransaction() {
             });
         } else {
             // approveMilestone(uint256 campaignId, uint256 milestoneId)
-            functionName = "approveMilestone";
             encodedData = encodeFunctionData({
                 abi: CROWDFUNDING_ABI,
                 functionName: "approveMilestone",
