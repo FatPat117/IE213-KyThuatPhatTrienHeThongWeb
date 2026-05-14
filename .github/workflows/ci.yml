@@ -46,6 +46,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
+
+      - name: Initialize Submodules
+        run: git submodule update --init --recursive
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
@@ -55,7 +59,8 @@ jobs:
       - name: Install Dependencies
         run: |
           cd smart-contracts
-          forge install
+          forge install openzeppelin/openzeppelin-contracts --no-commit
+          forge install foundry-rs/forge-std --no-commit
 
       - name: Run Forge Tests
         run: |

@@ -31,6 +31,7 @@ export default function Header() {
     const { isReviewer } = useIsReviewer();
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setIsMounted(true);
     }, []);
 

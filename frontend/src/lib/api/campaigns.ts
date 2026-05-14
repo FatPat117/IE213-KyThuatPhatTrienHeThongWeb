@@ -186,7 +186,7 @@ async function ensureCampaignIndexed(onChainId: number): Promise<void> {
 }
 
 export function mapMilestoneRecord(
-    item: CampaignMilestoneRecord | any,
+    item: CampaignMilestoneRecord,
 ): PublicCampaignMilestone {
     return {
         milestoneId: Number(item.milestoneId ?? item.milestoneIndex ?? 0),
