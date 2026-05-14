@@ -184,13 +184,13 @@ export function mapMilestoneRecord(
             if (!Array.isArray(item.reportCids)) return [];
             const seenCids = new Set<string>();
             return item.reportCids
-                .filter((entry: { cid: string; submittedAt: string }) => {
+                .filter((entry: { cid?: string; submittedAt?: string }) => {
                     const cid = (entry?.cid || "").trim();
                     if (!cid || seenCids.has(cid)) return false;
                     seenCids.add(cid);
                     return true;
                 })
-                .map((entry: { cid: string; submittedAt: string }) => ({
+                .map((entry: { cid?: string; submittedAt?: string }) => ({
                     cid: (entry.cid || "").trim(),
                     submittedAt: entry.submittedAt || "",
                 }));
@@ -199,18 +199,10 @@ export function mapMilestoneRecord(
         approvedBy: item.approvedBy || "",
         disbursedAt: item.disbursedAt || null,
         lastRejectionReason: item.lastRejectionReason,
-        rejectionCount: typeof (item as Record<string, unknown>).rejectionCount === 'number'
-            ? (item as Record<string, unknown>).rejectionCount as number
-            : undefined,
-        maxRetries: typeof (item as Record<string, unknown>).maxRetries === 'number'
-            ? (item as Record<string, unknown>).maxRetries as number
-            : undefined,
-        pendingRejections: typeof (item as Record<string, unknown>).pendingRejections === 'number'
-            ? (item as Record<string, unknown>).pendingRejections as number
-            : undefined,
-        rejectionVoters: Array.isArray((item as Record<string, unknown>).rejectionVoters)
-            ? (item as Record<string, unknown>).rejectionVoters as string[]
-            : [],
+        rejectionCount: item.rejectionCount,
+        maxRetries: item.maxRetries,
+        pendingRejections: item.pendingRejections,
+        rejectionVoters: item.rejectionVoters || [],
     };
 }
 
