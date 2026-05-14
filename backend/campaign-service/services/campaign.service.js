@@ -169,6 +169,26 @@ async function updateCampaignStatus(onChainId, status) {
     return updated;
 }
 
+async function rejectCampaign(onChainId, reason) {
+    const updated = await Campaign.findOneAndUpdate(
+        { onChainId: Number(onChainId) },
+        {
+            $set: {
+                status: "cancelled",
+                rejectionReason: reason,
+                rejectedAt: new Date(),
+            },
+        },
+        { new: true },
+    );
+
+    // Invalidate cache
+    await delCache(`campaign:detail:${onChainId}`);
+    await clearPrefix("campaign:list:*");
+
+    return updated;
+}
+
 async function updateRaised(onChainId, raisedWei) {
     const updated = await Campaign.findOneAndUpdate(
         { onChainId: Number(onChainId) },
@@ -348,4 +368,5 @@ module.exports = {
     updateRaised,
     updateMetadata,
     createCampaignWithMilestones,
+    rejectCampaign,
 };

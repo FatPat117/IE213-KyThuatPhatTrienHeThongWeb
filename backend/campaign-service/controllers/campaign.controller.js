@@ -4,6 +4,7 @@ const campaignService = require("../services/campaign.service");
 const { Campaign, Milestone, Donation } = require("../models");
 const { successRes, errorRes } = require("../utils/response");
 const { getCache, setCache } = require("../utils/cache");
+const notificationService = require("../services/notification.service");
 
 // Approval status cache (for getMilestoneApprovalStatus)
 const approvalStatusCache = new Map();
@@ -265,6 +266,8 @@ function normalizeCampaignItem(campaignDoc) {
         milestoneCount: campaignDoc.milestoneCount || 0,
         thumbnailUrl: campaignDoc.thumbnailUrl || "",
         createdAt: campaignDoc.createdAt,
+        rejectionReason: campaignDoc.rejectionReason || null,
+        rejectedAt: campaignDoc.rejectedAt || null,
     };
 }
 
@@ -356,6 +359,87 @@ async function updateCampaignStatus(req, res, next) {
         }
 
         return successRes(res, campaign);
+    } catch (err) {
+        return next(err);
+    }
+}
+
+/**
+ * @swagger
+ * /api/campaigns/{onChainId}/reject:
+ *   post:
+ *     summary: Admin từ chối chiến dịch (on-chain sync preparation)
+ *     description: Lưu lý do từ chối vào backend trước khi admin thực hiện giao dịch adminReject trên blockchain.
+ *     tags: [Campaigns]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: onChainId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID của chiến dịch trên blockchain
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - reason
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 minLength: 10
+ *                 description: Lý do từ chối chiến dịch
+ *     responses:
+ *       200:
+ *         description: Đã lưu lý do từ chối thành công
+ *       400:
+ *         description: Dữ liệu không hợp lệ hoặc trạng thái campaign không cho phép từ chối
+ *       403:
+ *         description: Không có quyền Admin
+ *       404:
+ *         description: Không tìm thấy campaign
+ */
+async function rejectCampaign(req, res, next) {
+    try {
+        const callerRole = (req.userRole || req.headers["x-user-role"] || "")
+            .toString()
+            .toLowerCase();
+        if (callerRole !== "admin") {
+            return errorRes(res, "Forbidden", 403);
+        }
+
+        const onChainId = Number(req.params.onChainId || req.params.id);
+        const { reason } = req.body;
+
+        if (!reason || reason.trim().length < 10) {
+            return errorRes(res, "Rejection reason must be at least 10 characters", 400);
+        }
+
+        const campaign = await Campaign.findOne({ onChainId });
+        if (!campaign) {
+            return errorRes(res, "Campaign not found", 404);
+        }
+
+        // Cho phép từ chối nếu đang chờ duyệt hoặc lỡ bị đánh dấu là thất bại trước khi duyệt on-chain
+        const allowedStatuses = ["pending_approval", "failed"];
+        if (!allowedStatuses.includes(campaign.status)) {
+            return errorRes(res, `Cannot reject campaign with current status: ${campaign.status}`, 400);
+        }
+
+        const updatedCampaign = await campaignService.rejectCampaign(
+            onChainId,
+            reason.trim(),
+        );
+
+        return successRes(res, {
+            campaignOnChainId: onChainId,
+            campaignStatus: updatedCampaign.status,
+            reason: updatedCampaign.rejectionReason,
+        });
     } catch (err) {
         return next(err);
     }
@@ -1100,4 +1184,5 @@ module.exports = {
     getMilestoneApprovalStatus,
     invalidateApprovalCache,
     getRefundStatus,
+    rejectCampaign,
 };

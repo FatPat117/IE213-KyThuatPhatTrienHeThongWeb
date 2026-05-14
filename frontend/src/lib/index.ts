@@ -81,6 +81,7 @@ export {
     getCampaignMetadataFromCache,
     isPlaceholderCampaignDescription,
     isPlaceholderCampaignTitle,
+    isPlaceholderThumbnailUrl,
     saveCampaignMetadataToCache,
 } from "./utils/campaign-metadata-cache";
 

@@ -279,8 +279,9 @@ export default function CreateCampaignPage() {
         saveCampaignMetadataToCache(createdCampaignId, {
             title: formData.title,
             description: formData.description,
+            thumbnailUrl: thumbnailPreview || undefined,
         });
-    }, [createdCampaignId, formData.description, formData.title, isConfirmed]);
+    }, [createdCampaignId, formData.description, formData.title, isConfirmed, thumbnailPreview]);
 
     useEffect(() => {
         if (!isConfirmed || !createdCampaignId || metadataSynced || !token)

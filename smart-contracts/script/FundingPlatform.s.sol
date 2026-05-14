@@ -13,18 +13,30 @@ contract DeployFundingPlatform is Script {
         address deployer = vm.addr(deployerPrivateKey);
 
         address multisig = vm.envAddress("MULTISIG_ADDRESS");
-        // For simplicity, we read one admin address. You can expand this if needed.
-        address admin = vm.envAddress("ADMIN_WALLETS"); 
-
-        address[] memory admins = new address[](1);
-        admins[0] = admin;
+        string memory adminsRaw = vm.envString("ADMIN_WALLETS");
+        
+        address[] memory admins;
+        // Check if there is a comma
+        if (bytes(adminsRaw).length > 42) {
+            // Very simple split: take the first 42 characters (0x...addr)
+            bytes memory b = bytes(adminsRaw);
+            bytes memory firstAddr = new bytes(42);
+            for(uint i=0; i<42; i++) {
+                firstAddr[i] = b[i];
+            }
+            admins = new address[](1);
+            admins[0] = vm.parseAddress(string(firstAddr));
+        } else {
+            admins = new address[](1);
+            admins[0] = vm.parseAddress(adminsRaw);
+        }
 
         console.log("FundingPlatform Deployment");
         console.log("Deployer  :", deployer);
         console.log("Multisig  :", multisig);
-        console.log("Admin     :", admin);
+        console.log("Admin[0]  :", admins[0]);
         console.log("Chain ID  :", block.chainid);
-
+ 
         vm.startBroadcast(deployerPrivateKey);
         FundingPlatform platform = new FundingPlatform(multisig, admins);
         vm.stopBroadcast();

@@ -390,7 +390,7 @@ function CampaignsPageContent() {
                             const isPendingApproval = normalizedStatus === "pending_approval";
                             const isInProgress = normalizedStatus === "in_progress";
                             const isActive = !campaign.completed && !isPendingApproval;
-                            const isFailed = normalizedStatus === "failed" || normalizedStatus === "partial_failed";
+                            const isFailed = ["failed", "partial_failed", "cancelled", "refunded"].includes(normalizedStatus);
                             const isSuccess = campaign.completed && !isFailed;
 
                             let statusClasses = "bg-slate-100 text-slate-700 border-slate-200";
@@ -446,11 +446,13 @@ function CampaignsPageContent() {
                                                     ? "⏳ Chờ duyệt"
                                                     : normalizedStatus === "failed" || normalizedStatus === "partial_failed"
                                                         ? "❌ Thất bại"
-                                                        : isInProgress
-                                                            ? "🔵 Đang triển khai"
-                                                            : isActive
-                                                                ? "● Đang hoạt động"
-                                                                : "Thành công"}
+                                                        : normalizedStatus === "cancelled"
+                                                            ? "🚫 Bị từ chối"
+                                                            : isInProgress
+                                                                ? "🔵 Đang triển khai"
+                                                                : isActive
+                                                                    ? "● Đang hoạt động"
+                                                                    : "Thành công"}
                                             </span>
                                         </div>
                                     </div>

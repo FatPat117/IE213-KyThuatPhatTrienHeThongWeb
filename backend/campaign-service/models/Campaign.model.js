@@ -102,6 +102,14 @@ const CampaignSchema = new mongoose.Schema(
             ref: "Milestone",
             default: [],
         },
+        rejectionReason: {
+            type: String,
+            default: null,
+        },
+        rejectedAt: {
+            type: Date,
+            default: null,
+        },
     },
     { timestamps: true },
 );
