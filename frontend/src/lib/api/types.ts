@@ -19,7 +19,7 @@ export interface CampaignRecord {
   deadline: string;
   status: 'pending_approval' | 'active' | 'in_progress' | 'completed' | 'partial_failed' | 'failed' | 'cancelled';
   milestoneCount?: number;
-  milestones?: any[];
+  milestones?: unknown[];
   rejectionReason?: string | null;
   rejectedAt?: string | null;
   createdAt: string;
