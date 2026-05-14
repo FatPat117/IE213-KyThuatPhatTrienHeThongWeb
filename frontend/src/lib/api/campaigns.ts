@@ -1,7 +1,7 @@
 "use client";
 
 import { API_BASE_URL, apiRequest, trackedFetch } from "./client";
-import type { CampaignRecord } from "./types";
+import type { CampaignRecord, CampaignMilestoneRecord } from "./types";
 
 export interface PublicCampaignItem {
     onChainId: number;
@@ -90,26 +90,6 @@ export interface PublicCampaignMilestonesResponse {
     milestones: PublicCampaignMilestone[];
 }
 
-interface CampaignMilestoneRecord {
-    milestoneId?: number;
-    milestoneIndex?: number;
-    title?: string;
-    description?: string;
-    allocationBps?: number;
-    financialTargetWei?: string;
-    amountWei?: string;
-    deadline?: string;
-    status?: string;
-    reportCids?: Array<{ cid?: string; submittedAt?: string }>;
-    approvedAt?: string | null;
-    approvedBy?: string;
-    disbursedAt?: string | null;
-    lastRejectionReason?: string;
-    rejectionCount?: number;
-    maxRetries?: number;
-    pendingRejections?: number;
-    rejectionVoters?: string[];
-}
 
 interface MilestoneServiceResponse {
     success?: boolean;
