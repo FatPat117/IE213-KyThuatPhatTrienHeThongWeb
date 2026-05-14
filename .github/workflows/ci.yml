@@ -26,6 +26,11 @@ jobs:
           cd frontend
           npm ci
 
+      - name: Sync Contract Artifacts
+        run: |
+          cd frontend
+          npm run sync:contract-artifacts
+
       - name: Lint Frontend
         run: |
           cd frontend
@@ -46,6 +51,11 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: nightly
+
+      - name: Install Dependencies
+        run: |
+          cd smart-contracts
+          forge install
 
       - name: Run Forge Tests
         run: |
@@ -94,6 +104,11 @@ jobs:
           cd frontend
           npm ci
 
+      - name: Sync Contract Artifacts
+        run: |
+          cd frontend
+          npm run sync:contract-artifacts
+
       - name: Run Unit Tests
         run: |
           cd frontend
@@ -115,6 +130,11 @@ jobs:
         run: |
           cd frontend
           npm ci
+
+      - name: Sync Contract Artifacts
+        run: |
+          cd frontend
+          npm run sync:contract-artifacts
 
       - name: Build Next.js App
         run: |
