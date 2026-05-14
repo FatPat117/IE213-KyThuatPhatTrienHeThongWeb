@@ -473,7 +473,7 @@ export default function ReviewerWorkspacePage() {
     const isRefreshingRef = useRef(false);
     const lastRefreshRef = useRef<number>(0);
     const lastBlurRef = useRef<number>(0);
-    const notificationTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const notificationTimerRef = useRef<number | null>(null);
 
     useEffect(() => {
         approvalStatusMapRef.current = approvalStatusMap;
@@ -595,7 +595,6 @@ export default function ReviewerWorkspacePage() {
                 }
             }
             return hasChanges ? next : prev;
-        });
         });
         } finally {
             isRefreshingRef.current = false;
