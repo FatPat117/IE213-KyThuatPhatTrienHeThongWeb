@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import BackButton from "@/components/navigation/BackButton";
 import {
@@ -17,27 +17,35 @@ import { useAccount, useChainId } from "wagmi";
 import { showErrorToast } from "@/lib/ui/toast";
 
 function formatEthAmount(value: number) {
-    if (!Number.isFinite(value) || value <= 0) return '0';
-    if (value < 0.01) return value.toFixed(4).replace(/\.?0+$/, '');
+    if (!Number.isFinite(value) || value <= 0) return "0";
+    if (value < 0.01) return value.toFixed(4).replace(/\.?0+$/, "");
     return value.toFixed(2);
 }
 
 function CampaignCardSkeleton() {
     return (
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm animate-pulse">
-            <div className="flex items-center gap-3">
-                <div className="h-12 w-12 rounded-full bg-slate-200" />
-                <div className="flex-1 space-y-2">
-                    <div className="h-5 w-2/3 rounded bg-slate-200" />
-                    <div className="h-3 w-1/2 rounded bg-slate-200" />
+            {/* Image Placeholder */}
+            <div className="w-full h-48 bg-slate-200 rounded-t-xl mb-0" />
+
+            {/* Content Placeholder */}
+            <div className="p-6 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 space-y-2">
+                        <div className="h-5 w-3/4 rounded bg-slate-200" />
+                        <div className="h-3 w-1/2 rounded bg-slate-200" />
+                    </div>
+                    <div className="h-6 w-16 rounded-full bg-slate-200" />
+                </div>
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                    <div className="h-12 bg-slate-200 rounded" />
+                    <div className="h-12 bg-slate-200 rounded" />
+                </div>
+                <div className="space-y-2 pt-2">
+                    <div className="h-2 w-full bg-slate-200 rounded-full" />
+                    <div className="h-3 w-1/3 bg-slate-200 rounded" />
                 </div>
             </div>
-            <div className="mt-5 space-y-3">
-                <div className="h-3 w-2/5 rounded bg-slate-200" />
-                <div className="h-3 w-3/5 rounded bg-slate-200" />
-            </div>
-            <div className="mt-5 h-2 w-full rounded-full bg-slate-200" />
-            <div className="mt-4 h-10 w-32 rounded-lg bg-slate-200" />
         </div>
     );
 }
@@ -45,12 +53,19 @@ function CampaignCardSkeleton() {
 const ITEMS_PER_PAGE = 9;
 
 function CampaignsPageContent() {
-    const { data: campaigns, isLoading, error, refetch } = useBackendCampaigns();
+    const {
+        data: campaigns,
+        isLoading,
+        error,
+        refetch,
+    } = useBackendCampaigns();
     const { isConnected } = useAccount();
     const chainId = useChainId();
     const [searchQuery, setSearchQuery] = useState("");
     const [filterStatus, setFilterStatus] = useState<string>("all");
-    const [sortBy, setSortBy] = useState<"newest" | "mostfunded" | "trending">("newest");
+    const [sortBy, setSortBy] = useState<"newest" | "mostfunded" | "trending">(
+        "newest",
+    );
     const [currentPage, setCurrentPage] = useState(1);
     const isSepoliaNetwork = chainId === SEPOLIA_CHAIN_ID;
     const canCreateCampaign = isConnected && isSepoliaNetwork;
@@ -67,20 +82,26 @@ function CampaignsPageContent() {
                 const status = (campaign.status || "").toLowerCase();
                 return {
                     id: campaign.onChainId,
-                    title: !isPlaceholderCampaignTitle(campaign.title, campaign.onChainId)
+                    title: !isPlaceholderCampaignTitle(
+                        campaign.title,
+                        campaign.onChainId,
+                    )
                         ? campaign.title
-                        : (cached?.title || `Chiến dịch #${campaign.onChainId}`),
-                    description: !isPlaceholderCampaignDescription(campaign.description)
+                        : cached?.title || `Chiến dịch #${campaign.onChainId}`,
+                    description: !isPlaceholderCampaignDescription(
+                        campaign.description,
+                    )
                         ? campaign.description
-                        : (cached?.description || "Dữ liệu đang được đồng bộ..."),
+                        : cached?.description || "Dữ liệu đang được đồng bộ...",
                     creator: campaign.creator,
+                    thumbnailUrl: campaign.thumbnailUrl || "",
                     goal: BigInt(campaign.goal || "0"),
                     raised: BigInt(campaign.raised || "0"),
                     status: campaign.status,
                     completed: TERMINAL_STATUSES.has(status),
                 };
             }),
-        [campaigns]
+        [campaigns],
     );
 
     // Filter and search campaigns
@@ -92,31 +113,38 @@ function CampaignsPageContent() {
             const queryStatus = filterStatus.toLowerCase();
             if (queryStatus === "active") {
                 // Chỉ lấy các chiến dịch đang trong giai đoạn gọi vốn (status chính xác là active)
-                result = result.filter(c => (c.status || "").toLowerCase() === "active");
+                result = result.filter(
+                    (c) => c.status.toLowerCase() === "active",
+                );
             } else if (queryStatus === "ended") {
-                // Chỉ lấy các chiến dịch đã kết thúc thành công
-                result = result.filter(c => {
+                result = result.filter((c) => {
                     const s = (c.status || "").toLowerCase();
                     return s === "completed" || s === "success";
                 });
             } else if (queryStatus === "failed") {
-                // Các chiến dịch thất bại hoặc bị dừng
-                result = result.filter(c => {
+                result = result.filter((c) => {
                     const s = (c.status || "").toLowerCase();
-                    return s === "failed" || s === "partial_failed" || s === "cancelled" || s === "refunded";
+                    return (
+                        s === "failed" ||
+                        s === "partial_failed" ||
+                        s === "cancelled" ||
+                        s === "refunded"
+                    );
                 });
             } else {
-                // Khớp chính xác cho các trạng thái khác (in_progress, pending_approval)
-                result = result.filter(c => (c.status || "").toLowerCase() === queryStatus);
+                result = result.filter(
+                    (c) => (c.status || "").toLowerCase() === queryStatus,
+                );
             }
         }
 
         // Apply search
         if (searchQuery.trim()) {
             const query = searchQuery.toLowerCase();
-            result = result.filter(c =>
-                c.title.toLowerCase().includes(query) ||
-                c.description.toLowerCase().includes(query)
+            result = result.filter(
+                (c) =>
+                    c.title.toLowerCase().includes(query) ||
+                    c.description.toLowerCase().includes(query),
             );
         }
 
@@ -126,8 +154,10 @@ function CampaignsPageContent() {
         } else if (sortBy === "trending") {
             // Sort by percentage funded
             result.sort((a, b) => {
-                const aPercent = Number(a.goal) > 0 ? Number(a.raised) / Number(a.goal) : 0;
-                const bPercent = Number(b.goal) > 0 ? Number(b.raised) / Number(b.goal) : 0;
+                const aPercent =
+                    Number(a.goal) > 0 ? Number(a.raised) / Number(a.goal) : 0;
+                const bPercent =
+                    Number(b.goal) > 0 ? Number(b.raised) / Number(b.goal) : 0;
                 return bPercent - aPercent;
             });
         } else {
@@ -139,16 +169,24 @@ function CampaignsPageContent() {
     }, [normalizedCampaigns, searchQuery, filterStatus, sortBy]);
 
     // Pagination derived values
-    const totalPages = Math.max(Math.ceil(filteredCampaigns.length / ITEMS_PER_PAGE), 1);
+    const totalPages = Math.max(
+        Math.ceil(filteredCampaigns.length / ITEMS_PER_PAGE),
+        1,
+    );
     const safePage = Math.min(currentPage, totalPages);
     const paginatedCampaigns = useMemo(
-        () => filteredCampaigns.slice((safePage - 1) * ITEMS_PER_PAGE, safePage * ITEMS_PER_PAGE),
-        [filteredCampaigns, safePage]
+        () =>
+            filteredCampaigns.slice(
+                (safePage - 1) * ITEMS_PER_PAGE,
+                safePage * ITEMS_PER_PAGE,
+            ),
+        [filteredCampaigns, safePage],
     );
 
     // Reset to page 1 whenever filters or search change
-    useEffect(() => { setCurrentPage(1); }, [searchQuery, filterStatus, sortBy]);
-
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchQuery, filterStatus, sortBy]);
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
@@ -161,18 +199,21 @@ function CampaignsPageContent() {
                 {/* Status Bar */}
                 {!isConnected && (
                     <div className="mb-6 rounded-lg border border-blue-300 bg-blue-50 p-4">
-                        <p className="text-sm font-semibold text-blue-900">👁️ Chế độ xem (chỉ đọc)</p>
                         <p className="text-xs text-blue-800 mt-1">
-                            Bạn đang xem dữ liệu ở chế độ chỉ đọc. Kết nối ví để tạo chiến dịch và quyên góp.
+                            Bạn đang xem dữ liệu ở chế độ chỉ đọc. Kết nối ví để
+                            tạo chiến dịch và quyên góp.
                         </p>
                     </div>
                 )}
 
                 {isConnected && !isSepoliaNetwork && (
                     <div className="mb-6 rounded-lg border border-red-300 bg-red-50 p-4">
-                        <p className="text-sm font-semibold text-red-900">⚠️ Mạng lưới sai</p>
+                        <p className="text-sm font-semibold text-red-900">
+                            ⚠️ Mạng lưới sai
+                        </p>
                         <p className="text-xs text-red-800 mt-1">
-                            Vui lòng chuyển sang mạng Sepolia để tạo chiến dịch hoặc quyên góp.
+                            Vui lòng chuyển sang mạng Sepolia để tạo chiến dịch
+                            hoặc quyên góp.
                         </p>
                     </div>
                 )}
@@ -186,9 +227,12 @@ function CampaignsPageContent() {
                                     🔗 Dữ liệu on-chain
                                 </span>
                             </div>
-                            <h1 className="text-4xl font-bold text-slate-900 mb-3">Tất cả chiến dịch</h1>
+                            <h1 className="text-4xl font-bold text-slate-900 mb-3">
+                                Tất cả chiến dịch
+                            </h1>
                             <p className="text-lg text-slate-600">
-                                Khám phá các chiến dịch gây quỹ được ghi nhận trên Ethereum Sepolia
+                                Khám phá các chiến dịch gây quỹ được ghi nhận
+                                trên Ethereum Sepolia
                             </p>
                         </div>
                         <div className="flex items-center gap-3 flex-wrap">
@@ -210,7 +254,11 @@ function CampaignsPageContent() {
                             ) : (
                                 <button
                                     disabled
-                                    title={!isConnected ? "Kết nối ví để tạo chiến dịch" : "Chuyển sang mạng Sepolia để tạo chiến dịch"}
+                                    title={
+                                        !isConnected
+                                            ? "Kết nối ví để tạo chiến dịch"
+                                            : "Chuyển sang mạng Sepolia để tạo chiến dịch"
+                                    }
                                     className="inline-flex items-center justify-center px-5 py-3 rounded-lg bg-slate-300 text-slate-600 font-semibold cursor-not-allowed"
                                 >
                                     + Tạo chiến dịch
@@ -222,28 +270,46 @@ function CampaignsPageContent() {
                     {/* Stats Summary */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="rounded-xl bg-white border border-slate-200 p-4 shadow-sm">
-                            <p className="text-sm font-medium text-slate-600">Tổng chiến dịch</p>
+                            <p className="text-sm font-medium text-slate-600">
+                                Tổng chiến dịch
+                            </p>
                             <p className="text-2xl font-bold text-slate-900 mt-1">
                                 {isLoading ? "..." : normalizedCampaigns.length}
                             </p>
                         </div>
                         <div className="rounded-xl bg-white border border-slate-200 p-4 shadow-sm">
-                            <p className="text-sm font-medium text-slate-600">Đang hoạt động</p>
+                            <p className="text-sm font-medium text-slate-600">
+                                Đang hoạt động
+                            </p>
                             <p className="text-2xl font-bold text-green-600 mt-1">
-                                {isLoading ? "..." : normalizedCampaigns.filter((c) => !c.completed).length}
+                                {isLoading
+                                    ? "..."
+                                    : normalizedCampaigns.filter(
+                                          (c) => !c.completed,
+                                      ).length}
                             </p>
                         </div>
                         <div className="rounded-xl bg-white border border-slate-200 p-4 shadow-sm">
-                            <p className="text-sm font-medium text-slate-600">Đã kết thúc</p>
+                            <p className="text-sm font-medium text-slate-600">
+                                Đã kết thúc
+                            </p>
                             <p className="text-2xl font-bold text-slate-600 mt-1">
-                                {isLoading ? "..." : normalizedCampaigns.filter((c) => c.completed).length}
+                                {isLoading
+                                    ? "..."
+                                    : normalizedCampaigns.filter(
+                                          (c) => c.completed,
+                                      ).length}
                             </p>
                         </div>
                         <div className="rounded-xl bg-white border border-slate-200 p-4 shadow-sm">
-                            <p className="text-sm font-medium text-slate-600">Mạng</p>
+                            <p className="text-sm font-medium text-slate-600">
+                                Mạng
+                            </p>
                             <div className="flex items-center gap-2 mt-1">
                                 <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                                <p className="text-sm font-bold text-slate-900">Sepolia</p>
+                                <p className="text-sm font-bold text-slate-900">
+                                    Sepolia
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -266,36 +332,62 @@ function CampaignsPageContent() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {/* Status Filter */}
                         <div>
-                            <label className="text-xs font-semibold text-slate-600 mb-2 block">Trạng thái</label>
+                            <label className="text-xs font-semibold text-slate-600 mb-2 block">
+                                Trạng thái
+                            </label>
                             <select
                                 value={filterStatus}
-                                onChange={(e) => setFilterStatus(e.target.value)}
+                                onChange={(e) =>
+                                    setFilterStatus(e.target.value)
+                                }
                                 aria-label="Lọc theo trạng thái chiến dịch"
                                 className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2 text-slate-900 focus:border-blue-600 focus:outline-none transition"
                             >
                                 <option value="all">Tất cả</option>
-                                <option value="active">🟢 Đang gây quỹ (Hoạt động)</option>
-                                <option value="pending_approval">⏳ Chờ duyệt</option>
-                                <option value="in_progress">🔵 Đang triển khai (Milestones)</option>
-                                <option value="failed">❌ Thất bại / Bị từ chối</option>
-                                <option value="ended">  Chiến dịch thành công</option>
+                                <option value="active">
+                                    🟢 Đang gây quỹ (Hoạt động)
+                                </option>
+                                <option value="pending_approval">
+                                    ⏳ Chờ duyệt
+                                </option>
+                                <option value="in_progress">
+                                    🔵 Đang triển khai (Milestones)
+                                </option>
+                                <option value="failed">
+                                    ❌ Thất bại / Bị từ chối
+                                </option>
+                                <option value="ended">
+                                    {" "}
+                                    Chiến dịch thành công
+                                </option>
                             </select>
                         </div>
 
                         {/* Sort By */}
                         <div>
-                            <label className="text-xs font-semibold text-slate-600 mb-2 block">Sắp xếp</label>
+                            <label className="text-xs font-semibold text-slate-600 mb-2 block">
+                                Sắp xếp
+                            </label>
                             <select
                                 value={sortBy}
                                 onChange={(e) =>
-                                    setSortBy(e.target.value as "newest" | "mostfunded" | "trending")
+                                    setSortBy(
+                                        e.target.value as
+                                            | "newest"
+                                            | "mostfunded"
+                                            | "trending",
+                                    )
                                 }
                                 aria-label="Sắp xếp danh sách chiến dịch"
                                 className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2 text-slate-900 focus:border-blue-600 focus:outline-none transition"
                             >
                                 <option value="newest">Mới nhất</option>
-                                <option value="mostfunded">Gây quỹ nhiều nhất</option>
-                                <option value="trending">Tăng trưởng (% đạt)</option>
+                                <option value="mostfunded">
+                                    Gây quỹ nhiều nhất
+                                </option>
+                                <option value="trending">
+                                    Tăng trưởng (% đạt)
+                                </option>
                             </select>
                         </div>
 
@@ -303,7 +395,8 @@ function CampaignsPageContent() {
                         <div className="flex items-end">
                             <div className="w-full rounded-lg bg-blue-50 border border-blue-200 px-3 py-2">
                                 <p className="text-sm font-medium text-blue-600">
-                                    Tìm thấy {filteredCampaigns.length} chiến dịch
+                                    Tìm thấy {filteredCampaigns.length} chiến
+                                    dịch
                                     {filteredCampaigns.length > 0 && (
                                         <span className="text-blue-400 font-normal ml-1">
                                             (trang {safePage}/{totalPages})
@@ -317,93 +410,134 @@ function CampaignsPageContent() {
                 {/* Campaign Grid */}
                 <section className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                     {/* Loading State */}
-                    {isLoading && normalizedCampaigns.length === 0 &&
+                    {isLoading &&
+                        normalizedCampaigns.length === 0 &&
                         Array.from({ length: 6 }).map((_, index) => (
                             <CampaignCardSkeleton key={`skeleton-${index}`} />
                         ))}
 
                     {/* Error State */}
-                    {!isLoading && error && normalizedCampaigns.length === 0 && (
-                        <div className="col-span-full rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
-                            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4">
-                                <span className="text-2xl">⚠️</span>
+                    {!isLoading &&
+                        error &&
+                        normalizedCampaigns.length === 0 && (
+                            <div className="col-span-full rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
+                                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4">
+                                    <span className="text-2xl">⚠️</span>
+                                </div>
+                                <p className="text-lg font-semibold text-red-900 mb-2">
+                                    Không thể tải chiến dịch
+                                </p>
+                                <p className="text-sm text-red-700 mb-4">
+                                    Đã xảy ra lỗi tải dữ liệu chiến dịch.
+                                </p>
+                                <button
+                                    onClick={() => {
+                                        refetch();
+                                    }}
+                                    className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700 transition"
+                                >
+                                    Thử lại
+                                </button>
                             </div>
-                            <p className="text-lg font-semibold text-red-900 mb-2">Không thể tải chiến dịch</p>
-                            <p className="text-sm text-red-700 mb-4">
-                                Đã xảy ra lỗi tải dữ liệu chiến dịch.
-                            </p>
-                            <button
-                                onClick={() => {
-                                    refetch();
-                                }}
-                                className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700 transition"
-                            >
-                                Thử lại
-                            </button>
-                        </div>
-                    )}
+                        )}
 
                     {/* Empty State - No Campaigns */}
-                    {!isLoading && !error && normalizedCampaigns.length === 0 && (
-                        <div className="col-span-full rounded-2xl border border-blue-200 bg-blue-50 p-12 text-center">
-                            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 mb-4">
-                                <span className="text-3xl">🚀</span>
+                    {!isLoading &&
+                        !error &&
+                        normalizedCampaigns.length === 0 && (
+                            <div className="col-span-full rounded-2xl border border-blue-200 bg-blue-50 p-12 text-center">
+                                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 mb-4">
+                                    <span className="text-3xl">🚀</span>
+                                </div>
+                                <p className="text-xl font-semibold text-slate-900 mb-2">
+                                    Chưa có chiến dịch
+                                </p>
+                                <p className="text-slate-600 mb-6">
+                                    Hãy là người đầu tiên tạo chiến dịch gây quỹ
+                                    trên blockchain.
+                                </p>
+                                <Link
+                                    href="/campaigns/create"
+                                    className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition"
+                                >
+                                    Tạo chiến dịch đầu tiên
+                                </Link>
                             </div>
-                            <p className="text-xl font-semibold text-slate-900 mb-2">Chưa có chiến dịch</p>
-                            <p className="text-slate-600 mb-6">Hãy là người đầu tiên tạo chiến dịch gây quỹ trên blockchain.</p>
-                            <Link
-                                href="/campaigns/create"
-                                className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition"
-                            >
-                                Tạo chiến dịch đầu tiên
-                            </Link>
-                        </div>
-                    )}
+                        )}
 
                     {/* Empty State - No Search Results */}
-                    {!isLoading && normalizedCampaigns.length > 0 && filteredCampaigns.length === 0 && (
-                        <div className="col-span-full rounded-2xl border border-slate-200 bg-slate-50 p-12 text-center">
-                            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
-                                <span className="text-3xl">🔍</span>
+                    {!isLoading &&
+                        normalizedCampaigns.length > 0 &&
+                        filteredCampaigns.length === 0 && (
+                            <div className="col-span-full rounded-2xl border border-slate-200 bg-slate-50 p-12 text-center">
+                                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
+                                    <span className="text-3xl">🔍</span>
+                                </div>
+                                <p className="text-xl font-semibold text-slate-900 mb-2">
+                                    Không tìm thấy chiến dịch
+                                </p>
+                                <p className="text-slate-600 mb-6">
+                                    Hãy thử điều chỉnh bộ lọc hoặc từ khóa.
+                                </p>
+                                <button
+                                    onClick={() => {
+                                        setSearchQuery("");
+                                        setFilterStatus("all");
+                                    }}
+                                    className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-slate-900 text-white font-semibold hover:bg-slate-800 transition"
+                                >
+                                    Xóa bộ lọc
+                                </button>
                             </div>
-                            <p className="text-xl font-semibold text-slate-900 mb-2">Không tìm thấy chiến dịch</p>
-                            <p className="text-slate-600 mb-6">Hãy thử điều chỉnh bộ lọc hoặc từ khóa.</p>
-                            <button
-                                onClick={() => {
-                                    setSearchQuery("");
-                                    setFilterStatus("all");
-                                }}
-                                className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-slate-900 text-white font-semibold hover:bg-slate-800 transition"
-                            >
-                                Xóa bộ lọc
-                            </button>
-                        </div>
-                    )}
+                        )}
 
                     {/* Campaign Cards */}
-                    {!isLoading && !error && paginatedCampaigns.length > 0 &&
+                    {!isLoading &&
+                        !error &&
+                        paginatedCampaigns.length > 0 &&
                         paginatedCampaigns.map((campaign) => {
                             const goalEth = Number(formatEther(campaign.goal));
-                            const raisedEth = Number(formatEther(campaign.raised));
-                            const progress = goalEth > 0 ? Math.min((raisedEth / goalEth) * 100, 100) : 0;
-                            const normalizedStatus = (campaign.status || "").toLowerCase();
-                            const isPendingApproval = normalizedStatus === "pending_approval";
-                            const isInProgress = normalizedStatus === "in_progress";
-                            const isActive = !campaign.completed && !isPendingApproval;
-                            const isFailed = ["failed", "partial_failed", "cancelled", "refunded"].includes(normalizedStatus);
+                            const raisedEth = Number(
+                                formatEther(campaign.raised),
+                            );
+                            const progress =
+                                goalEth > 0
+                                    ? Math.min((raisedEth / goalEth) * 100, 100)
+                                    : 0;
+                            const normalizedStatus = (
+                                campaign.status || ""
+                            ).toLowerCase();
+                            const isPendingApproval =
+                                normalizedStatus === "pending_approval";
+                            const isInProgress =
+                                normalizedStatus === "in_progress";
+                            const isActive =
+                                !campaign.completed && !isPendingApproval;
+                            const isFailed = [
+                                "failed",
+                                "partial_failed",
+                                "cancelled",
+                                "refunded",
+                            ].includes(normalizedStatus);
                             const isSuccess = campaign.completed && !isFailed;
 
-                            let statusClasses = "bg-slate-100 text-slate-700 border-slate-200";
+                            let statusClasses =
+                                "bg-slate-100 text-slate-700 border-slate-200";
                             if (isPendingApproval) {
-                                statusClasses = "bg-amber-50 text-amber-700 border-amber-200";
+                                statusClasses =
+                                    "bg-amber-50 text-amber-700 border-amber-200";
                             } else if (isFailed) {
-                                statusClasses = "bg-red-50 text-red-700 border-red-200";
+                                statusClasses =
+                                    "bg-red-50 text-red-700 border-red-200";
                             } else if (isInProgress) {
-                                statusClasses = "bg-blue-50 text-blue-700 border-blue-200";
+                                statusClasses =
+                                    "bg-blue-50 text-blue-700 border-blue-200";
                             } else if (isActive) {
-                                statusClasses = "bg-emerald-50 text-emerald-700 border-emerald-200";
+                                statusClasses =
+                                    "bg-emerald-50 text-emerald-700 border-emerald-200";
                             } else if (isSuccess) {
-                                statusClasses = "bg-green-50 text-green-700 border-green-200";
+                                statusClasses =
+                                    "bg-green-50 text-green-700 border-green-200";
                             }
 
                             let progressBarColor = "bg-slate-400";
@@ -421,89 +555,138 @@ function CampaignsPageContent() {
                                 <Link
                                     key={campaign.id}
                                     href={`/campaigns/${campaign.id}`}
-                                    className="group relative flex h-full flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:border-blue-300"
+                                    className="group relative flex h-full flex-col rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:border-blue-300"
                                 >
-                                    {/* Campaign Header */}
-                                    <div className="mb-4">
-                                        <div className="flex items-start gap-3">
-                                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-sm font-bold text-white shadow-lg">
-                                                #{campaign.id}
+                                    {/* Thumbnail Image */}
+                                    <div className="relative w-full h-48 bg-gradient-to-br from-indigo-400 to-blue-500 overflow-hidden">
+                                        {campaign.thumbnailUrl ? (
+                                            <img
+                                                src={campaign.thumbnailUrl}
+                                                alt={campaign.title}
+                                                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                                                onError={(e) => {
+                                                    e.currentTarget.style.display =
+                                                        "none";
+                                                }}
+                                            />
+                                        ) : null}
+                                    </div>
+
+                                    {/* Campaign Content */}
+                                    <div className="p-5 flex-1 flex flex-col">
+                                        {/* Campaign Header */}
+                                        <div className="mb-4">
+                                            <div className="flex items-start gap-3">
+                                                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-sm font-bold text-white shadow-lg">
+                                                    #{campaign.id}
+                                                </div>
+                                                <div className="min-w-0 flex-1 flex-col gap-1">
+                                                    <h3 className="line-clamp-2 text-lg font-bold leading-snug text-slate-900 transition group-hover:text-blue-600">
+                                                        {campaign.title ||
+                                                            `Chiến dịch #${campaign.id}`}
+                                                    </h3>
+                                                    <p className="min-w-0 truncate text-xs text-slate-500">
+                                                        bởi{" "}
+                                                        {campaign.creator.slice(
+                                                            0,
+                                                            6,
+                                                        )}
+                                                        ...
+                                                        {campaign.creator.slice(
+                                                            -4,
+                                                        )}
+                                                    </p>
+                                                </div>
                                             </div>
-                                            <div className="min-w-0 flex-1 flex-col gap-1">
-                                                <h3 className="line-clamp-2 text-lg font-bold leading-snug text-slate-900 transition group-hover:text-blue-600">
-                                                    {campaign.title || `Chiến dịch #${campaign.id}`}
-                                                </h3>
-                                                <p className="min-w-0 truncate text-xs text-slate-500">
-                                                    bởi {campaign.creator.slice(0, 6)}...{campaign.creator.slice(-4)}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <div className="mt-2 flex items-center gap-2">
-                                            <span
-                                                className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold ${statusClasses}`}
-                                            >
-                                                {isPendingApproval
-                                                    ? "⏳ Chờ duyệt"
-                                                    : normalizedStatus === "failed" || normalizedStatus === "partial_failed"
-                                                        ? "❌ Thất bại"
-                                                        : normalizedStatus === "cancelled"
+                                            <div className="mt-2 flex items-center gap-2">
+                                                <span
+                                                    className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold ${statusClasses}`}
+                                                >
+                                                    {isPendingApproval
+                                                        ? "⏳ Chờ duyệt"
+                                                        : normalizedStatus ===
+                                                                "failed" ||
+                                                            normalizedStatus ===
+                                                                "partial_failed"
+                                                          ? "❌ Thất bại"
+                                                          : normalizedStatus ===
+                                                              "cancelled"
                                                             ? "🚫 Bị từ chối"
                                                             : isInProgress
-                                                                ? "🔵 Đang triển khai"
-                                                                : isActive
-                                                                    ? "● Đang hoạt động"
-                                                                    : "Thành công"}
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    {/* Description */}
-                                    <p className="mb-4 line-clamp-3 text-sm text-slate-600">
-                                        {campaign.description || "Không có mô tả"}
-                                    </p>
-
-                                    {/* Campaign Stats */}
-                                    <div className="mb-4 rounded-xl bg-slate-50 p-4">
-                                        <div className="grid grid-cols-2 gap-4 text-sm">
-                                            <div>
-                                                <p className="mb-1 text-slate-600">Mục tiêu</p>
-                                                <p className="text-xl font-bold text-slate-900">
-                                                    {formatEthAmount(goalEth)}{" "}
-                                                    <span className="text-sm font-normal text-slate-600">ETH</span>
-                                                </p>
+                                                              ? "🔵 Đang triển khai"
+                                                              : isActive
+                                                                ? "● Đang hoạt động"
+                                                                : "Thành công"}
+                                                </span>
                                             </div>
-                                            <div>
-                                                <p className="mb-1 text-slate-600">Đã gây quỹ</p>
-                                                <p className="text-xl font-bold text-blue-600">
+                                        </div>
+
+                                        {/* Description */}
+                                        <p className="mb-4 line-clamp-3 text-sm text-slate-600">
+                                            {campaign.description ||
+                                                "Không có mô tả"}
+                                        </p>
+
+                                        {/* Campaign Stats */}
+                                        <div className="mb-4 rounded-xl bg-slate-50 p-4">
+                                            <div className="grid grid-cols-2 gap-4 text-sm">
+                                                <div>
+                                                    <p className="mb-1 text-slate-600">
+                                                        Mục tiêu
+                                                    </p>
+                                                    <p className="text-xl font-bold text-slate-900">
+                                                        {formatEthAmount(
+                                                            goalEth,
+                                                        )}{" "}
+                                                        <span className="text-sm font-normal text-slate-600">
+                                                            ETH
+                                                        </span>
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <p className="mb-1 text-slate-600">
+                                                        Đã gây quỹ
+                                                    </p>
+                                                    <p className="text-xl font-bold text-blue-600">
+                                                        {formatEthAmount(
+                                                            raisedEth,
+                                                        )}{" "}
+                                                        <span className="text-sm font-normal text-slate-600">
+                                                            ETH
+                                                        </span>
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Progress Bar */}
+                                        <div className="mb-4">
+                                            <div className="mb-2 flex items-center justify-between text-sm">
+                                                <span className="font-medium text-slate-900">
+                                                    {progress.toFixed(1)}% đạt
+                                                    được
+                                                </span>
+                                                <span className="text-slate-600">
                                                     {formatEthAmount(raisedEth)}{" "}
-                                                    <span className="text-sm font-normal text-slate-600">ETH</span>
-                                                </p>
+                                                    / {formatEthAmount(goalEth)}{" "}
+                                                    ETH
+                                                </span>
+                                            </div>
+                                            <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
+                                                <div
+                                                    className={`h-full rounded-full transition-all duration-500 ${progressBarColor}`}
+                                                    style={{
+                                                        width: `${progress}%`,
+                                                    }}
+                                                />
                                             </div>
                                         </div>
-                                    </div>
 
-                                    {/* Progress Bar */}
-                                    <div className="mb-4">
-                                        <div className="mb-2 flex items-center justify-between text-sm">
-                                            <span className="font-medium text-slate-900">
-                                                {progress.toFixed(1)}% đạt được
-                                            </span>
-                                            <span className="text-slate-600">
-                                                {formatEthAmount(raisedEth)} / {formatEthAmount(goalEth)} ETH
-                                            </span>
+                                        {/* View Details Button */}
+                                        <div className="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-5 py-2.5 text-sm font-semibold text-slate-900 transition-all duration-200 group-hover:bg-blue-600 group-hover:text-white">
+                                            Xem chi tiết
+                                            <span className="text-lg">→</span>
                                         </div>
-                                        <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
-                                            <div
-                                                className={`h-full rounded-full transition-all duration-500 ${progressBarColor}`}
-                                                style={{ width: `${progress}%` }}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* View Details Button */}
-                                    <div className="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-5 py-2.5 text-sm font-semibold text-slate-900 transition-all duration-200 group-hover:bg-blue-600 group-hover:text-white">
-                                        Xem chi tiết
-                                        <span className="text-lg">→</span>
                                     </div>
 
                                     {/* On-chain Badge */}
@@ -532,7 +715,9 @@ function CampaignsPageContent() {
 
                         {/* Previous page */}
                         <button
-                            onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                            onClick={() =>
+                                setCurrentPage((p) => Math.max(p - 1, 1))
+                            }
                             disabled={safePage === 1}
                             aria-label="Trang trước"
                             className="flex h-9 w-9 items-center justify-center rounded-lg border-2 border-slate-200 bg-white text-slate-600 font-semibold text-sm transition hover:border-blue-600 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -542,13 +727,17 @@ function CampaignsPageContent() {
 
                         {/* Page numbers */}
                         {Array.from({ length: totalPages }, (_, i) => i + 1)
-                            .filter(p =>
-                                p === 1 ||
-                                p === totalPages ||
-                                Math.abs(p - safePage) <= 1
+                            .filter(
+                                (p) =>
+                                    p === 1 ||
+                                    p === totalPages ||
+                                    Math.abs(p - safePage) <= 1,
                             )
                             .reduce<(number | "...")[]>((acc, p, idx, arr) => {
-                                if (idx > 0 && (p as number) - (arr[idx - 1] as number) > 1) {
+                                if (
+                                    idx > 0 &&
+                                    (p as number) - (arr[idx - 1] as number) > 1
+                                ) {
                                     acc.push("...");
                                 }
                                 acc.push(p);
@@ -565,9 +754,15 @@ function CampaignsPageContent() {
                                 ) : (
                                     <button
                                         key={item}
-                                        onClick={() => setCurrentPage(item as number)}
+                                        onClick={() =>
+                                            setCurrentPage(item as number)
+                                        }
                                         aria-label={`Trang ${item}`}
-                                        aria-current={item === safePage ? "page" : undefined}
+                                        aria-current={
+                                            item === safePage
+                                                ? "page"
+                                                : undefined
+                                        }
                                         className={`flex h-9 w-9 items-center justify-center rounded-lg border-2 text-sm font-semibold transition ${
                                             item === safePage
                                                 ? "border-blue-600 bg-blue-600 text-white shadow-md"
@@ -576,13 +771,16 @@ function CampaignsPageContent() {
                                     >
                                         {item}
                                     </button>
-                                )
-                            )
-                        }
+                                ),
+                            )}
 
                         {/* Next page */}
                         <button
-                            onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+                            onClick={() =>
+                                setCurrentPage((p) =>
+                                    Math.min(p + 1, totalPages),
+                                )
+                            }
                             disabled={safePage === totalPages}
                             aria-label="Trang sau"
                             className="flex h-9 w-9 items-center justify-center rounded-lg border-2 border-slate-200 bg-white text-slate-600 font-semibold text-sm transition hover:border-blue-600 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -601,7 +799,6 @@ function CampaignsPageContent() {
                         </button>
                     </div>
                 )}
-
             </main>
         </div>
     );

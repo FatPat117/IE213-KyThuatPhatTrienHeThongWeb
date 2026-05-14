@@ -191,6 +191,7 @@ export function CampaignListDisplay({
                 id: campaign.onChainId,
                 title: campaign.title || `Chiến dịch #${campaign.onChainId}`,
                 creator: campaign.creator,
+                   thumbnailUrl: campaign.thumbnailUrl || "",
                 goal: BigInt(campaign.goal || "0"),
                 raised: BigInt(campaign.raised || "0"),
                 completed: TERMINAL_STATUSES.has(status),
@@ -227,13 +228,25 @@ export function CampaignListDisplay({
                         key={idx}
                         className="bg-white border border-slate-200 rounded-xl p-5 animate-pulse shadow-sm"
                     >
-                        <div className="h-5 bg-slate-200 rounded w-3/4 mb-3" />
-                        <div className="h-3 bg-slate-200 rounded w-1/2 mb-4" />
-                        <div className="grid grid-cols-2 gap-2">
-                            <div className="h-10 bg-slate-200 rounded" />
-                            <div className="h-10 bg-slate-200 rounded" />
-                        </div>
-                        <div className="h-2 bg-slate-200 rounded-full mt-4" />
+                           {/* Image Placeholder */}
+                           <div className="w-full h-40 bg-slate-200 rounded-t-xl mb-0" />
+
+                           {/* Content Placeholder */}
+                           <div className="p-5 space-y-3">
+                               <div className="flex items-start justify-between gap-2">
+                                   <div className="flex-1 space-y-2">
+                                       <div className="h-5 bg-slate-200 rounded w-3/4" />
+                                       <div className="h-3 bg-slate-200 rounded w-1/2" />
+                                   </div>
+                                   <div className="h-5 bg-slate-200 rounded w-12" />
+                               </div>
+                               <div className="grid grid-cols-2 gap-2">
+                                   <div className="h-10 bg-slate-200 rounded" />
+                                   <div className="h-10 bg-slate-200 rounded" />
+                               </div>
+                               <div className="h-1.5 bg-slate-200 rounded-full mt-2" />
+                               <div className="h-3 bg-slate-200 rounded w-1/4" />
+                           </div>
                     </div>
                 ))}
             </div>
@@ -296,8 +309,24 @@ export function CampaignListDisplay({
                         <Link
                             key={campaign.id}
                             href={`/campaigns/${campaign.id}`}
-                            className="group block rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200 hover:border-indigo-200 hover:shadow-lg"
+                               className="group block rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm transition-all duration-200 hover:border-indigo-200 hover:shadow-lg"
                         >
+                               {/* Thumbnail Image */}
+                               <div className="relative w-full h-48 bg-gradient-to-br from-indigo-400 to-blue-500 overflow-hidden">
+                                   {campaign.thumbnailUrl ? (
+                                       <img
+                                           src={campaign.thumbnailUrl}
+                                           alt={campaign.title}
+                                           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                                           onError={(e) => {
+                                               e.currentTarget.style.display = 'none';
+                                           }}
+                                       />
+                                   ) : null}
+                               </div>
+
+                               {/* Card Content */}
+                               <div className="p-5">
                             <div className="flex justify-between items-start mb-3">
                                 <div className="flex-1 min-w-0">
                                     <h4 className="font-semibold text-slate-900 truncate transition-colors group-hover:text-indigo-600">
@@ -380,6 +409,7 @@ export function CampaignListDisplay({
                                     % đạt được
                                 </p>
                             </div>
+                               </div>
                         </Link>
                     );
                 })}
