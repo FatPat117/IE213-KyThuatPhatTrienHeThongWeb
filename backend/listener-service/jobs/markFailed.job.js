@@ -9,7 +9,7 @@ const CAMPAIGN_STATUS_IN_PROGRESS = 2;
 const MILESTONE_STATUS_PENDING_VERIFICATION = 1;
 const MILESTONE_STATUS_FAILED = 4;
 
-const DEFAULT_CRON = "0 0 * * *";
+const DEFAULT_CRON = "*/10 * * * *";
 const DEFAULT_TIMEZONE = "UTC";
 
 function shouldMarkCampaignFailed(campaign, nowSec) {

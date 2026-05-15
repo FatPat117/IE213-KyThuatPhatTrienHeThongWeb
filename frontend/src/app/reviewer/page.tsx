@@ -470,6 +470,10 @@ export default function ReviewerWorkspacePage() {
         Record<string, MilestoneApprovalStatus>
     >({});
     const approvalStatusMapRef = useRef(approvalStatusMap);
+    const isRefreshingRef = useRef(false);
+    const lastRefreshRef = useRef<number>(0);
+    const lastBlurRef = useRef<number>(0);
+    const notificationTimerRef = useRef<number | null>(null);
 
     useEffect(() => {
         approvalStatusMapRef.current = approvalStatusMap;
@@ -483,6 +487,7 @@ export default function ReviewerWorkspacePage() {
     const [rejectingKey, setRejectingKey] = useState<string | null>(null);
     const [executingKey, setExecutingKey] = useState<string | null>(null);
     const [isFocusRefreshing, setIsFocusRefreshing] = useState(false);
+    const [indexingKeys, setIndexingKeys] = useState<Set<string>>(new Set());
     const [actionMessage, setActionMessage] = useState<string | null>(null);
     const [actionIsSuccess, setActionIsSuccess] = useState(false);
     const [rejectModalTarget, setRejectModalTarget] = useState<{ campaignId: number; milestoneId: number } | null>(null);
@@ -526,7 +531,10 @@ export default function ReviewerWorkspacePage() {
     }, [rejectError]);
 
     const refreshApprovalStatuses = useCallback(async (forceRefresh = false) => {
-        if (!token || rows.length === 0) return;
+        if (!token || rows.length === 0 || isRefreshingRef.current) return;
+        isRefreshingRef.current = true;
+        
+        try {
 
         const pendingTargets = rows.flatMap((row) =>
             row.milestones
@@ -588,6 +596,9 @@ export default function ReviewerWorkspacePage() {
             }
             return hasChanges ? next : prev;
         });
+        } finally {
+            isRefreshingRef.current = false;
+        }
     }, [rows, token]);
 
     useEffect(() => {
@@ -597,29 +608,76 @@ export default function ReviewerWorkspacePage() {
     useEffect(() => {
         if (!hasReviewerAccess || rows.length === 0) return;
 
+        // Clean up indexingKeys if the status in rows has changed from 'pending' ones
+        if (indexingKeys.size > 0) {
+            setIndexingKeys(prev => {
+                const next = new Set(prev);
+                let changed = false;
+                rows.forEach(row => {
+                    row.milestones.forEach(m => {
+                        const key = toApprovalKey(row.campaign.onChainId, m.milestoneId);
+                        if (next.has(key)) {
+                            // If it's no longer in a "clearly pending" state we were tracking
+                            // Or if it's already approved/disbursed in DB
+                            const isProcessed = !CLEARLY_PENDING_STATUSES.has(m.status) || Boolean(m.approvedAt);
+                            if (isProcessed) {
+                                next.delete(key);
+                                changed = true;
+                            }
+                        }
+                    });
+                });
+                return changed ? next : prev;
+            });
+        }
+
         refreshApprovalStatuses();
         const timer = window.setInterval(() => {
             refreshApprovalStatuses();
-        }, 20_000); // 20 seconds (reduced from 2m for better responsiveness)
+        }, 45_000); // 45 seconds (increased from 20s to prevent 429)
 
         return () => window.clearInterval(timer);
-    }, [hasReviewerAccess, refreshApprovalStatuses, rows.length]);
+    }, [hasReviewerAccess, refreshApprovalStatuses, rows, indexingKeys.size]);
 
     // Force refresh when window regains focus (useful after signing in Safe tab)
     useEffect(() => {
         if (!hasReviewerAccess) return;
+
+        const handleBlur = () => {
+            lastBlurRef.current = Date.now();
+        };
+
         const handleFocus = async () => {
-            console.log('[ReviewerPage] Window focused, triggering refresh...');
-            setIsFocusRefreshing(true);
-            try {
-                await refreshApprovalStatuses(true);
-                await refresh(true);
-            } finally {
-                setIsFocusRefreshing(false);
+            const now = Date.now();
+            const timeSinceBlur = now - lastBlurRef.current;
+            const timeSinceLastRefresh = now - lastRefreshRef.current;
+
+            // Only refresh if:
+            // 1. User was away for more than 5 seconds (avoid flickering on quick task switching)
+            // 2. We haven't refreshed in the last 15 seconds
+            if (timeSinceBlur > 5000 && timeSinceLastRefresh > 15000) {
+                console.log('[ReviewerPage] Window focused after gap, triggering silent refresh...');
+                lastRefreshRef.current = now;
+                
+                // Silent background refresh - do not set isFocusRefreshing=true
+                // to avoid annoying the user with loading spinners while they work
+                try {
+                    await Promise.allSettled([
+                        refreshApprovalStatuses(true),
+                        refresh(true)
+                    ]);
+                } catch (e) {
+                    console.error('[ReviewerPage] Background refresh failed', e);
+                }
             }
         };
+
+        window.addEventListener('blur', handleBlur);
         window.addEventListener('focus', handleFocus);
-        return () => window.removeEventListener('focus', handleFocus);
+        return () => {
+            window.removeEventListener('blur', handleBlur);
+            window.removeEventListener('focus', handleFocus);
+        };
     }, [hasReviewerAccess, refreshApprovalStatuses, refresh]);
 
     // Listen for SSE notifications
@@ -644,7 +702,14 @@ export default function ReviewerWorkspacePage() {
                     (notification) => {
                         if (!active) return;
                         if (RELOAD_TYPES.has(notification.type)) {
-                            refresh(true);
+                            // Debounce reload to handle bursts of notifications
+                            if (notificationTimerRef.current) {
+                                window.clearTimeout(notificationTimerRef.current);
+                            }
+                            notificationTimerRef.current = window.setTimeout(() => {
+                                console.log('[ReviewerPage] SSE notification received, debounced refresh...');
+                                refresh(true);
+                            }, 1500);
                         }
                     },
                     undefined,
@@ -663,6 +728,7 @@ export default function ReviewerWorkspacePage() {
         return () => {
             active = false;
             controller.abort();
+            if (notificationTimerRef.current) window.clearTimeout(notificationTimerRef.current);
         };
     }, [token, walletAddress, refresh]);
 
@@ -679,9 +745,14 @@ export default function ReviewerWorkspacePage() {
             const timer = window.setInterval(() => {
                 attempts += 1;
                 refresh(true);
-                if (attempts >= 5) window.clearInterval(timer);
+                if (attempts >= 8) window.clearInterval(timer);
             }, 3000);
             setTxHash(undefined);
+            // setExecutingKey(null); // Keep executingKey or add to indexingKeys
+            const key = executingKey;
+            if (key) {
+                setIndexingKeys(prev => new Set(prev).add(key));
+            }
             setExecutingKey(null);
             return;
         }
@@ -844,6 +915,10 @@ export default function ReviewerWorkspacePage() {
                 const successMsg = (result as any).message || "Đã ghi nhận từ chối milestone. Creator đã được thông báo.";
                 setActionMessage(successMsg);
                 showSuccessToast(successMsg);
+
+                // Add to indexing keys to show "Syncing"
+                setIndexingKeys(prev => new Set(prev).add(key));
+
                 await refresh(true);
                 await refreshApprovalStatuses();
                 return true;
@@ -1147,12 +1222,12 @@ export default function ReviewerWorkspacePage() {
                                                         <div className="mb-2 inline-flex items-center gap-2">
                                                             <span className="text-xs font-semibold uppercase tracking-wide text-blue-700">
                                                                 Mốc #
-                                                                {milestone.milestoneId}
+                                                                {milestone.milestoneId + 1}
                                                             </span>
                                                             <span
-                                                                className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${STATUS_BADGE[milestone.status] || "bg-slate-100 text-slate-700 border-slate-200"}`}
+                                                                className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${indexingKeys.has(key) ? "bg-indigo-100 text-indigo-700 border-indigo-200 animate-pulse" : (STATUS_BADGE[milestone.status] || "bg-slate-100 text-slate-700 border-slate-200")}`}
                                                             >
-                                                                {STATUS_LABELS[milestone.status] || milestone.status}
+                                                                {indexingKeys.has(key) ? "🔄 Đang đồng bộ..." : (STATUS_LABELS[milestone.status] || milestone.status)}
                                                             </span>
                                                         </div>
                                                         <h3 className="text-xl font-bold text-slate-900">
@@ -1210,7 +1285,7 @@ export default function ReviewerWorkspacePage() {
                                                     handleReject={openRejectModal}
                                                     handleExecute={handleExecute}
                                                     hasSigned={hasSigned}
-                                                    isFocusRefreshing={isFocusRefreshing}
+                                                    isFocusRefreshing={isFocusRefreshing || indexingKeys.has(key)}
                                                 />
                                             </article>
                                         );

@@ -1,6 +1,7 @@
 const { getChannel, EXCHANGE } = require("../config/rabbitmq");
-const { Milestone } = require("../models");
+const { Campaign, Milestone, Donation } = require("../models");
 const { recordTransaction } = require("../utils/recordTransaction");
+const notificationService = require("../services/notification.service");
 
 const QUEUE =
     process.env.RABBITMQ_QUEUE_MILESTONE_FAILED || "milestone.failed.queue";
@@ -53,6 +54,47 @@ async function startMilestoneFailedConsumer() {
             // Call handleCampaignCascadeFailure to ensure campaign also fails and refunds are created
             const { handleCampaignCascadeFailure } = require("../services/refundService");
             await handleCampaignCascadeFailure(campaignOnChainId, payload.txHash || "");
+
+            const campaign = await Campaign.findOne({ onChainId: campaignOnChainId });
+
+            // --- Notify Creator ---
+            if (campaign?.creator) {
+                await notificationService.createNotification({
+                    recipientWallet: campaign.creator,
+                    type: "campaign_failed",
+                    title: "Chiến dịch thất bại (Mốc không đạt)",
+                    message: `Chiến dịch "${campaign.title || `#${campaignOnChainId}`}" đã thất bại do Milestone #${milestoneId + 1} không hoàn thành đúng hạn hoặc bị từ chối.`,
+                    campaignOnChainId: Number(campaignOnChainId),
+                    txHash: payload.txHash || "",
+                });
+            }
+
+            // --- Notify Donors ---
+            try {
+                const uniqueDonors = await Donation.distinct("donorWallet", {
+                    campaignOnChainId: Number(campaignOnChainId),
+                });
+
+                if (uniqueDonors.length > 0) {
+                    const donorTitle = "Chiến dịch bạn ủng hộ đã thất bại";
+                    const donorMessage = `Chiến dịch "${campaign?.title || `#${campaignOnChainId}`}" đã dừng lại do một cột mốc không đạt yêu cầu. Bạn có thể yêu cầu hoàn lại phần tiền còn lại.`;
+
+                    await Promise.all(
+                        uniqueDonors.map((donorWallet) =>
+                            notificationService.createNotification({
+                                recipientWallet: donorWallet,
+                                type: "campaign_failed",
+                                title: donorTitle,
+                                message: donorMessage,
+                                campaignOnChainId: Number(campaignOnChainId),
+                                txHash: payload.txHash || "",
+                            }),
+                        ),
+                    );
+                }
+            } catch (notifyErr) {
+                console.error(`[campaign-service] Failed to notify donors for milestone failure ${campaignOnChainId}:`, notifyErr.message);
+            }
 
             await recordTransaction({
                 txHash: payload.txHash,
