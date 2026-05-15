@@ -41,7 +41,7 @@ async function startCampaignFailedConsumer() {
             // Call handleCampaignCascadeFailure to update status and create refund records
             const { handleCampaignCascadeFailure } = require("../services/refundService");
             const campaign = await handleCampaignCascadeFailure(campaignOnChainId);
-            
+
             console.log(
                 `[campaign-service] Campaign ${campaignOnChainId} -> failed (via cascade)`,
             );
@@ -57,7 +57,7 @@ async function startCampaignFailedConsumer() {
             if (campaign?.creator) {
                 const isFundingFailure = payload.reason === "funding_deadline_not_reached_goal" || payload.reason === "AUTO_EXPIRATION_SYNC";
                 const failureTitle = isFundingFailure ? "Chiến dịch thất bại (Không đủ vốn)" : "Chiến dịch thất bại (Mốc hỏng)";
-                const failureMessage = isFundingFailure 
+                const failureMessage = isFundingFailure
                     ? `Chiến dịch "${campaign.title || `#${campaignOnChainId}`}" đã kết thúc nhưng không đạt được mục tiêu gây quỹ (Goal). Hệ thống đã tự động chuyển sang trạng thái thất bại và chuẩn bị hoàn tiền cho nhà hảo tâm.`
                     : `Chiến dịch "${campaign.title || `#${campaignOnChainId}`}" đã thất bại tại một cột mốc. Nhà hảo tâm có thể yêu cầu hoàn lại phần tiền chưa sử dụng.`;
 
@@ -80,7 +80,7 @@ async function startCampaignFailedConsumer() {
                 if (uniqueDonors.length > 0) {
                     const donorTitle = "Chiến dịch bạn quyên góp đã thất bại";
                     const donorMessage = `Chiến dịch "${campaign?.title || `#${campaignOnChainId}`}" đã thất bại. Bạn có thể thực hiện yêu cầu hoàn lại tiền tại trang chi tiết chiến dịch.`;
-                    
+
                     await Promise.all(
                         uniqueDonors.map((donorWallet) =>
                             notificationService.createNotification({

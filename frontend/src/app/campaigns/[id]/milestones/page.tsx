@@ -219,7 +219,7 @@ export default function CampaignMilestonesPage() {
         eventName: "Donated",
         onLogs: (logs) => {
             const relevant = logs.some(
-                (log) => Number((log as any).args?.campaignId ?? 0n) === id,
+                (log) => Number((log as { args?: { campaignId?: bigint } }).args?.campaignId ?? 0n) === id,
             );
             if (!relevant) return;
             refetch();
@@ -231,7 +231,7 @@ export default function CampaignMilestonesPage() {
         eventName: "FundingComplete",
         onLogs: (logs) => {
             const relevant = logs.some(
-                (log) => Number((log as any).args?.campaignId ?? 0n) === id,
+                (log) => Number((log as { args?: { campaignId?: bigint } }).args?.campaignId ?? 0n) === id,
             );
             if (!relevant) return;
             refetch();
@@ -249,7 +249,7 @@ export default function CampaignMilestonesPage() {
         eventName: "CampaignFailed",
         onLogs: (logs) => {
             const relevant = logs.some(
-                (log) => Number((log as any).args?.campaignId ?? 0n) === id,
+                (log) => Number((log as { args?: { campaignId?: bigint } }).args?.campaignId ?? 0n) === id,
             );
             if (!relevant) return;
             refetch();
@@ -267,7 +267,7 @@ export default function CampaignMilestonesPage() {
         eventName: "MilestoneFailed",
         onLogs: (logs) => {
             const relevant = logs.some(
-                (log) => Number((log as any).args?.campaignId ?? 0n) === id,
+                (log) => Number((log as { args?: { campaignId?: bigint } }).args?.campaignId ?? 0n) === id,
             );
             if (!relevant) return;
             refetch();

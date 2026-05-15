@@ -146,9 +146,6 @@ function CampaignsPageContent() {
         [filteredCampaigns, safePage]
     );
 
-    // Reset to page 1 whenever filters or search change
-    useEffect(() => { setCurrentPage(1); }, [searchQuery, filterStatus, sortBy]);
-
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
@@ -257,7 +254,10 @@ function CampaignsPageContent() {
                             type="text"
                             placeholder="🔍 Tìm theo tiêu đề hoặc mô tả..."
                             value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
+                            onChange={(e) => {
+                                setSearchQuery(e.target.value);
+                                setCurrentPage(1);
+                            }}
                             className="w-full rounded-lg border-2 border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder-slate-400 focus:border-blue-600 focus:outline-none transition"
                         />
                     </div>
@@ -269,7 +269,10 @@ function CampaignsPageContent() {
                             <label className="text-xs font-semibold text-slate-600 mb-2 block">Trạng thái</label>
                             <select
                                 value={filterStatus}
-                                onChange={(e) => setFilterStatus(e.target.value)}
+                                onChange={(e) => {
+                                    setFilterStatus(e.target.value);
+                                    setCurrentPage(1);
+                                }}
                                 aria-label="Lọc theo trạng thái chiến dịch"
                                 className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2 text-slate-900 focus:border-blue-600 focus:outline-none transition"
                             >
@@ -287,9 +290,10 @@ function CampaignsPageContent() {
                             <label className="text-xs font-semibold text-slate-600 mb-2 block">Sắp xếp</label>
                             <select
                                 value={sortBy}
-                                onChange={(e) =>
-                                    setSortBy(e.target.value as "newest" | "mostfunded" | "trending")
-                                }
+                                onChange={(e) => {
+                                    setSortBy(e.target.value as "newest" | "mostfunded" | "trending");
+                                    setCurrentPage(1);
+                                }}
                                 aria-label="Sắp xếp danh sách chiến dịch"
                                 className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2 text-slate-900 focus:border-blue-600 focus:outline-none transition"
                             >

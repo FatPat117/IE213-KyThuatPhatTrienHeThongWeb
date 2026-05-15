@@ -84,7 +84,7 @@ export function useOwnerSafes(): UseOwnerSafesReturn {
         const result = await existingPending;
         setSafes(result);
         setError(null);
-      } catch (err) {
+      } catch {
         // Error already handled in the original request
       }
       return;

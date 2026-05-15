@@ -147,7 +147,7 @@ function MyDonationsContent() {
                 {!isConnected && (
                     <div className="mb-6 rounded-2xl border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-900">
                         Bạn đang xem lịch sử quyên góp toàn hệ thống (on-chain).
-                        Kết nối ví để xem thêm mục "Quyên góp của tôi".
+                        Kết nối ví để xem thêm mục &quot;Quyên góp của tôi&quot;.
                     </div>
                 )}
                 {isConnected && chain?.id !== 11155111 && (

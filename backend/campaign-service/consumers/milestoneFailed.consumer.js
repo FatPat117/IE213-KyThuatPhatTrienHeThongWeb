@@ -53,7 +53,7 @@ async function startMilestoneFailedConsumer() {
 
             // Call handleCampaignCascadeFailure to ensure campaign also fails and refunds are created
             const { handleCampaignCascadeFailure } = require("../services/refundService");
-            await handleCampaignCascadeFailure(campaignOnChainId);
+            await handleCampaignCascadeFailure(campaignOnChainId, payload.txHash || "");
 
             const campaign = await Campaign.findOne({ onChainId: campaignOnChainId });
 

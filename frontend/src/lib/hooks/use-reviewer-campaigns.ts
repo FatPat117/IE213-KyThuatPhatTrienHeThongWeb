@@ -184,14 +184,14 @@ export function useReviewerCampaigns() {
 
       // Collect all campaigns
       const allCampaigns: Array<{
-        campaign: any;
+        campaign: ReviewerCampaignRow["campaign"];
         safe: string;
       }> = [];
 
       campaignsResults.forEach((result, index) => {
         if (result.status === "fulfilled") {
           const safe = myReviewerSafes[index];
-          result.value.forEach((campaign: any) => {
+          result.value.forEach((campaign: ReviewerCampaignRow["campaign"]) => {
             allCampaigns.push({ campaign, safe });
           });
         }

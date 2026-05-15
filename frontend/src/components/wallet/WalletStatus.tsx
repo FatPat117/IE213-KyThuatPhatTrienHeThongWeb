@@ -18,9 +18,6 @@ export default function WalletStatus() {
   const safeAddress = isHydrated ? address : undefined;
   const safeBalance = isHydrated ? balance : undefined;
   
-  const hasProvider =
-    typeof window !== 'undefined' && Boolean((window as Window & { ethereum?: unknown }).ethereum);
-
   if (!safeIsConnected) {
     return (
       <div className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg space-y-2">
