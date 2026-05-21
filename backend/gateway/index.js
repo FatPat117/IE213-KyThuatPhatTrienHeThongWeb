@@ -163,7 +163,15 @@ app.put(/^\/api\/campaigns\/(0x[a-fA-F0-9]+|[a-fA-F0-9]{24}|[0-9]+)\/metadata$/,
 app.patch(/^\/api\/campaigns\/(0x[a-fA-F0-9]+|[a-fA-F0-9]{24}|[0-9]+)\/status$/, verifyToken, requireRole("admin"), proxy(CAMPAIGN_SERVICE_URL));
 app.post(/^\/api\/campaigns\/(0x[a-fA-F0-9]+|[a-fA-F0-9]{24}|[0-9]+)\/reject$/, verifyToken, requireRole("admin"), proxy(CAMPAIGN_SERVICE_URL));
 
-//   Milestones
+//   Milestone approval-status (correct path under /api/campaigns)
+app.get(
+    /^\/api\/campaigns\/([0-9]+|0x[a-fA-F0-9]+)\/milestones\/([0-9]+)\/approval-status$/,
+    verifyToken,
+    requireAuth,
+    proxy(CAMPAIGN_SERVICE_URL),
+);
+
+//   Milestones (legacy prefix kept for backward compat)
 app.get("/api/milestones/:id/approval-status", verifyToken, requireAuth, proxy(CAMPAIGN_SERVICE_URL));
 app.use("/api/milestones", verifyToken, proxy(CAMPAIGN_SERVICE_URL)); // Các route milestone khác mặc định public
 
