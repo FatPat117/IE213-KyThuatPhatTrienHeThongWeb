@@ -836,8 +836,12 @@ export default function ReviewerWorkspacePage() {
 
             try {
                 console.log('[handleApprove] Calling proposeSafeTx with:', { campaignId, milestoneId, safe: campaignReviewerSafe });
+                // Read existing confirmed count before proposing (for accurate message)
+                const currentApprovalStatus = approvalStatusMap[key];
+                const alreadyConfirmed = currentApprovalStatus?.confirmed ?? 0;
+
                 // Propose transaction FROM the Safe address (not the wallet)
-                const result = await proposeSafeTx(campaignId, milestoneId, campaignReviewerSafe as `0x${string}`);
+                const result = await proposeSafeTx(campaignId, milestoneId, campaignReviewerSafe as `0x${string}`, alreadyConfirmed);
                 console.log('[handleApprove] Proposal SUCCESS:', result);
                 setActionIsSuccess(true);
                 setActionMessage(`  ${result.message}`);
@@ -861,8 +865,9 @@ export default function ReviewerWorkspacePage() {
                 setApprovingKey(null);
             }
         },
-        [proposeSafeTx, isConnected, refresh, refreshApprovalStatuses, rows, walletAddress, myReviewerSafes],
+        [proposeSafeTx, isConnected, refresh, refreshApprovalStatuses, rows, walletAddress, myReviewerSafes, approvalStatusMap],
     );
+
 
     const openRejectModal = useCallback(
         (campaignId: number, milestoneId: number) => {

@@ -1520,7 +1520,8 @@ export function useProposeSafeTransaction() {
     const propose = async (
         campaignId: number,
         milestoneId: number | null,
-        reviewerSafe: Address
+        reviewerSafe: Address,
+        alreadyConfirmed = 0
     ): Promise<{
         safeTxHash: string;
         safeUiUrl: string;
@@ -1778,10 +1779,16 @@ export function useProposeSafeTransaction() {
         const returnedSafeTxHash = result.safeTxHash || result.transactionHash || safeTxHash;
 
         // 9. Return success info
+        // After signing, confirmed count increases by 1. Compute remaining accurately.
+        const newConfirmed = alreadyConfirmed + 1;
+        const remaining = Math.max(0, threshold - newConfirmed);
+        const message = remaining === 0
+            ? `  Đã đủ chữ ký (${newConfirmed}/${threshold})! Nhấn "Thực thi" để hoàn tất phê duyệt.`
+            : `Đã ký thành công (${newConfirmed}/${threshold}). Cần thêm ${remaining} chữ ký nữa để thực thi.`;
         return {
             safeTxHash: returnedSafeTxHash,
             safeUiUrl: `https://app.safe.global/sep:${checksumSafe}/transactions/queue`,
-            message: `Đã đề xuất phê duyệt. Cần thêm ${threshold - 1} chữ ký nữa để thực thi.`,
+            message,
         };
     };
 
