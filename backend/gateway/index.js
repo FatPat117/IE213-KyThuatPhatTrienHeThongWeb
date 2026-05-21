@@ -142,8 +142,20 @@ app.get(/^\/api\/campaigns\/public\/.*/, verifyToken, proxy(CAMPAIGN_SERVICE_URL
 app.get(/^\/api\/campaigns\/(0x[a-fA-F0-9]+|[a-fA-F0-9]{24}|[0-9]+)$/, verifyToken, proxy(CAMPAIGN_SERVICE_URL));
 app.get(/^\/api\/campaigns\/(0x[a-fA-F0-9]+|[a-fA-F0-9]{24}|[0-9]+)\/status$/, verifyToken, proxy(CAMPAIGN_SERVICE_URL));
 
-//   Reviewers (Admin & Auth)
-app.use("/api/campaigns/reviewers/admin", verifyToken, requireRole("admin"), proxy(CAMPAIGN_SERVICE_URL));
+//   Reviewers — danh sách hồ sơ cho mọi user đã đăng nhập (vd. trang tạo chiến dịch)
+app.get(
+    "/api/campaigns/reviewers/admin/profiles",
+    verifyToken,
+    requireAuth,
+    proxy(CAMPAIGN_SERVICE_URL),
+);
+//   Reviewers — chỉnh/sửa admin
+app.use(
+    "/api/campaigns/reviewers/admin",
+    verifyToken,
+    requireRole("admin"),
+    proxy(CAMPAIGN_SERVICE_URL),
+);
 app.use("/api/campaigns/reviewers", verifyToken, requireAuth, proxy(CAMPAIGN_SERVICE_URL));
 
 //   Write operations (Auth)
