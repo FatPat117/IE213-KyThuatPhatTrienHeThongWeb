@@ -8,6 +8,7 @@ node_modules/
 .env.local
 .env.development
 .env.development.local
+.env.staging
 .env.test.local
 .env.production.local
 .env.production
