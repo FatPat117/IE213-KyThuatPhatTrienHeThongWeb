@@ -3,6 +3,7 @@
 type CachedCampaignMetadata = {
   title?: string;
   description?: string;
+  thumbnailUrl?: string;
   updatedAt: number;
 };
 
@@ -27,13 +28,14 @@ function writeCache(next: Record<string, CachedCampaignMetadata>) {
 
 export function saveCampaignMetadataToCache(
   campaignId: number,
-  metadata: { title?: string; description?: string }
+  metadata: { title?: string; description?: string; thumbnailUrl?: string }
 ) {
   if (!Number.isFinite(campaignId) || campaignId <= 0) return;
   const cache = readCache();
   cache[String(campaignId)] = {
     title: metadata.title?.trim() || undefined,
     description: metadata.description?.trim() || undefined,
+    thumbnailUrl: metadata.thumbnailUrl?.trim() || undefined,
     updatedAt: Date.now(),
   };
   writeCache(cache);
@@ -59,5 +61,12 @@ export function isPlaceholderCampaignDescription(description?: string) {
   if (!normalized) return true;
   if (normalized === 'no description') return true;
   if (normalized.includes('stored on-chain without off-chain metadata')) return true;
+  return false;
+}
+
+export function isPlaceholderThumbnailUrl(url?: string) {
+  if (!url) return true;
+  // Detected if it's a placehold.co URL or empty
+  if (url.includes('placehold.co')) return true;
   return false;
 }

@@ -6,21 +6,15 @@ import {
     isPlaceholderCampaignDescription,
     isPlaceholderCampaignTitle,
     useBackendCampaigns,
-    useReadAllCampaigns
+    TERMINAL_STATUSES,
+    SEPOLIA_CHAIN_ID,
 } from "@/lib";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formatEther } from "viem";
 import { useAccount, useChainId } from "wagmi";
-
-const SEPOLIA_CHAIN_ID = 11155111;
-const TERMINAL_STATUSES = new Set([
-    "completed",
-    "partial_failed",
-    "failed",
-    "cancelled",
-]);
+import { showErrorToast } from "@/lib/ui/toast";
 
 function formatEthAmount(value: number) {
     if (!Number.isFinite(value) || value <= 0) return '0';
@@ -48,26 +42,29 @@ function CampaignCardSkeleton() {
     );
 }
 
+const ITEMS_PER_PAGE = 9;
+
 function CampaignsPageContent() {
     const { data: campaigns, isLoading, error, refetch } = useBackendCampaigns();
-    const {
-        campaigns: onChainCampaigns,
-        isLoading: isOnChainLoading,
-        error: onChainError,
-        refetch: refetchOnChain,
-    } = useReadAllCampaigns();
     const { isConnected } = useAccount();
     const chainId = useChainId();
     const [searchQuery, setSearchQuery] = useState("");
-    const [filterStatus, setFilterStatus] = useState<"all" | "active" | "ended">("all");
+    const [filterStatus, setFilterStatus] = useState<string>("all");
     const [sortBy, setSortBy] = useState<"newest" | "mostfunded" | "trending">("newest");
+    const [currentPage, setCurrentPage] = useState(1);
     const isSepoliaNetwork = chainId === SEPOLIA_CHAIN_ID;
     const canCreateCampaign = isConnected && isSepoliaNetwork;
 
-    const backendCampaigns = useMemo(
+    useEffect(() => {
+        if (!error) return;
+        showErrorToast(error || "Có lỗi xảy ra khi tải dữ liệu từ backend.");
+    }, [error]);
+
+    const normalizedCampaigns = useMemo(
         () =>
             campaigns.map((campaign) => {
                 const cached = getCampaignMetadataFromCache(campaign.onChainId);
+                const status = (campaign.status || "").toLowerCase();
                 return {
                     id: campaign.onChainId,
                     title: !isPlaceholderCampaignTitle(campaign.title, campaign.onChainId)
@@ -75,77 +72,43 @@ function CampaignsPageContent() {
                         : (cached?.title || `Chiến dịch #${campaign.onChainId}`),
                     description: !isPlaceholderCampaignDescription(campaign.description)
                         ? campaign.description
-                        : (cached?.description || ""),
+                        : (cached?.description || "Dữ liệu đang được đồng bộ..."),
                     creator: campaign.creator,
                     goal: BigInt(campaign.goal || "0"),
                     raised: BigInt(campaign.raised || "0"),
                     status: campaign.status,
-                    completed: TERMINAL_STATUSES.has(
-                        (campaign.status || "").toLowerCase(),
-                    ),
+                    completed: TERMINAL_STATUSES.has(status),
                 };
             }),
         [campaigns]
     );
-
-    const normalizedCampaigns = useMemo(() => {
-        const campaignMap = new Map<
-            number,
-            {
-                id: number;
-                title: string;
-                description: string;
-                creator: string;
-                goal: bigint;
-                raised: bigint;
-                status?: string;
-                completed: boolean;
-            }
-        >();
-
-        // Backend-first for metadata (title/description), then on-chain overrides numeric fields for freshness.
-        backendCampaigns.forEach((campaign) => {
-            campaignMap.set(campaign.id, campaign);
-        });
-
-        onChainCampaigns.forEach((campaign) => {
-            const existing = campaignMap.get(campaign.id);
-            if (existing) {
-                campaignMap.set(campaign.id, {
-                    ...existing,
-                    creator: campaign.creator || existing.creator,
-                    goal: campaign.goal,
-                    raised: campaign.raised,
-                    status: campaign.statusLabel,
-                    completed: campaign.completed,
-                });
-            } else {
-                const cached = getCampaignMetadataFromCache(campaign.id);
-                campaignMap.set(campaign.id, {
-                    id: campaign.id,
-                    title: cached?.title || `Chiến dịch #${campaign.id}`,
-                    description: cached?.description || "Dữ liệu chiến dịch hiện chỉ có on-chain, chưa có metadata off-chain.",
-                    creator: campaign.creator,
-                    goal: campaign.goal,
-                    raised: campaign.raised,
-                    status: campaign.statusLabel,
-                    completed: campaign.completed,
-                });
-            }
-        });
-
-        return Array.from(campaignMap.values());
-    }, [backendCampaigns, onChainCampaigns]);
 
     // Filter and search campaigns
     const filteredCampaigns = useMemo(() => {
         let result = [...normalizedCampaigns];
 
         // Apply status filter
-        if (filterStatus === "active") {
-            result = result.filter(c => !c.completed);
-        } else if (filterStatus === "ended") {
-            result = result.filter(c => c.completed);
+        if (filterStatus !== "all") {
+            const queryStatus = filterStatus.toLowerCase();
+            if (queryStatus === "active") {
+                // Chỉ lấy các chiến dịch đang trong giai đoạn gọi vốn (status chính xác là active)
+                result = result.filter(c => (c.status || "").toLowerCase() === "active");
+            } else if (queryStatus === "ended") {
+                // Chỉ lấy các chiến dịch đã kết thúc thành công
+                result = result.filter(c => {
+                    const s = (c.status || "").toLowerCase();
+                    return s === "completed" || s === "success";
+                });
+            } else if (queryStatus === "failed") {
+                // Các chiến dịch thất bại hoặc bị dừng
+                result = result.filter(c => {
+                    const s = (c.status || "").toLowerCase();
+                    return s === "failed" || s === "partial_failed" || s === "cancelled" || s === "refunded";
+                });
+            } else {
+                // Khớp chính xác cho các trạng thái khác (in_progress, pending_approval)
+                result = result.filter(c => (c.status || "").toLowerCase() === queryStatus);
+            }
         }
 
         // Apply search
@@ -174,6 +137,15 @@ function CampaignsPageContent() {
 
         return result;
     }, [normalizedCampaigns, searchQuery, filterStatus, sortBy]);
+
+    // Pagination derived values
+    const totalPages = Math.max(Math.ceil(filteredCampaigns.length / ITEMS_PER_PAGE), 1);
+    const safePage = Math.min(currentPage, totalPages);
+    const paginatedCampaigns = useMemo(
+        () => filteredCampaigns.slice((safePage - 1) * ITEMS_PER_PAGE, safePage * ITEMS_PER_PAGE),
+        [filteredCampaigns, safePage]
+    );
+
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
@@ -220,7 +192,6 @@ function CampaignsPageContent() {
                             <button
                                 onClick={() => {
                                     refetch();
-                                    refetchOnChain();
                                 }}
                                 className="inline-flex items-center justify-center px-5 py-3 rounded-lg border-2 border-slate-200 text-slate-900 font-semibold hover:border-blue-600 hover:text-blue-600 transition duration-200"
                             >
@@ -250,20 +221,19 @@ function CampaignsPageContent() {
                         <div className="rounded-xl bg-white border border-slate-200 p-4 shadow-sm">
                             <p className="text-sm font-medium text-slate-600">Tổng chiến dịch</p>
                             <p className="text-2xl font-bold text-slate-900 mt-1">
-
-                                {isLoading && isOnChainLoading ? "..." : normalizedCampaigns.length}
+                                {isLoading ? "..." : normalizedCampaigns.length}
                             </p>
                         </div>
                         <div className="rounded-xl bg-white border border-slate-200 p-4 shadow-sm">
                             <p className="text-sm font-medium text-slate-600">Đang hoạt động</p>
                             <p className="text-2xl font-bold text-green-600 mt-1">
-                                {isLoading && isOnChainLoading ? "..." : normalizedCampaigns.filter((c) => !c.completed).length}
+                                {isLoading ? "..." : normalizedCampaigns.filter((c) => !c.completed).length}
                             </p>
                         </div>
                         <div className="rounded-xl bg-white border border-slate-200 p-4 shadow-sm">
                             <p className="text-sm font-medium text-slate-600">Đã kết thúc</p>
                             <p className="text-2xl font-bold text-slate-600 mt-1">
-                                {isLoading && isOnChainLoading ? "..." : normalizedCampaigns.filter((c) => c.completed).length}
+                                {isLoading ? "..." : normalizedCampaigns.filter((c) => c.completed).length}
                             </p>
                         </div>
                         <div className="rounded-xl bg-white border border-slate-200 p-4 shadow-sm">
@@ -284,7 +254,10 @@ function CampaignsPageContent() {
                             type="text"
                             placeholder="🔍 Tìm theo tiêu đề hoặc mô tả..."
                             value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
+                            onChange={(e) => {
+                                setSearchQuery(e.target.value);
+                                setCurrentPage(1);
+                            }}
                             className="w-full rounded-lg border-2 border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder-slate-400 focus:border-blue-600 focus:outline-none transition"
                         />
                     </div>
@@ -296,13 +269,19 @@ function CampaignsPageContent() {
                             <label className="text-xs font-semibold text-slate-600 mb-2 block">Trạng thái</label>
                             <select
                                 value={filterStatus}
-                                onChange={(e) => setFilterStatus(e.target.value as "all" | "active" | "ended")}
+                                onChange={(e) => {
+                                    setFilterStatus(e.target.value);
+                                    setCurrentPage(1);
+                                }}
                                 aria-label="Lọc theo trạng thái chiến dịch"
                                 className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2 text-slate-900 focus:border-blue-600 focus:outline-none transition"
                             >
                                 <option value="all">Tất cả</option>
-                                <option value="active">🔴 Đang hoạt động</option>
-                                <option value="ended">Đã kết thúc</option>
+                                <option value="active">🟢 Đang gây quỹ (Hoạt động)</option>
+                                <option value="pending_approval">⏳ Chờ duyệt</option>
+                                <option value="in_progress">🔵 Đang triển khai (Milestones)</option>
+                                <option value="failed">❌ Thất bại / Bị từ chối</option>
+                                <option value="ended">  Chiến dịch thành công</option>
                             </select>
                         </div>
 
@@ -311,9 +290,10 @@ function CampaignsPageContent() {
                             <label className="text-xs font-semibold text-slate-600 mb-2 block">Sắp xếp</label>
                             <select
                                 value={sortBy}
-                                onChange={(e) =>
-                                    setSortBy(e.target.value as "newest" | "mostfunded" | "trending")
-                                }
+                                onChange={(e) => {
+                                    setSortBy(e.target.value as "newest" | "mostfunded" | "trending");
+                                    setCurrentPage(1);
+                                }}
                                 aria-label="Sắp xếp danh sách chiến dịch"
                                 className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2 text-slate-900 focus:border-blue-600 focus:outline-none transition"
                             >
@@ -328,6 +308,11 @@ function CampaignsPageContent() {
                             <div className="w-full rounded-lg bg-blue-50 border border-blue-200 px-3 py-2">
                                 <p className="text-sm font-medium text-blue-600">
                                     Tìm thấy {filteredCampaigns.length} chiến dịch
+                                    {filteredCampaigns.length > 0 && (
+                                        <span className="text-blue-400 font-normal ml-1">
+                                            (trang {safePage}/{totalPages})
+                                        </span>
+                                    )}
                                 </p>
                             </div>
                         </div>
@@ -336,25 +321,24 @@ function CampaignsPageContent() {
                 {/* Campaign Grid */}
                 <section className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                     {/* Loading State */}
-                    {(isLoading || isOnChainLoading) && normalizedCampaigns.length === 0 &&
+                    {isLoading && normalizedCampaigns.length === 0 &&
                         Array.from({ length: 6 }).map((_, index) => (
                             <CampaignCardSkeleton key={`skeleton-${index}`} />
                         ))}
 
                     {/* Error State */}
-                    {!isLoading && !isOnChainLoading && error && normalizedCampaigns.length === 0 && (
+                    {!isLoading && error && normalizedCampaigns.length === 0 && (
                         <div className="col-span-full rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
                             <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4">
                                 <span className="text-2xl">⚠️</span>
                             </div>
                             <p className="text-lg font-semibold text-red-900 mb-2">Không thể tải chiến dịch</p>
                             <p className="text-sm text-red-700 mb-4">
-                                {error || onChainError || "Có lỗi xảy ra. Vui lòng kiểm tra backend/on-chain RPC."}
+                                Đã xảy ra lỗi tải dữ liệu chiến dịch.
                             </p>
                             <button
                                 onClick={() => {
                                     refetch();
-                                    refetchOnChain();
                                 }}
                                 className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700 transition"
                             >
@@ -364,7 +348,7 @@ function CampaignsPageContent() {
                     )}
 
                     {/* Empty State - No Campaigns */}
-                    {!isLoading && !isOnChainLoading && !error && normalizedCampaigns.length === 0 && (
+                    {!isLoading && !error && normalizedCampaigns.length === 0 && (
                         <div className="col-span-full rounded-2xl border border-blue-200 bg-blue-50 p-12 text-center">
                             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 mb-4">
                                 <span className="text-3xl">🚀</span>
@@ -381,7 +365,7 @@ function CampaignsPageContent() {
                     )}
 
                     {/* Empty State - No Search Results */}
-                    {!isLoading && !isOnChainLoading && normalizedCampaigns.length > 0 && filteredCampaigns.length === 0 && (
+                    {!isLoading && normalizedCampaigns.length > 0 && filteredCampaigns.length === 0 && (
                         <div className="col-span-full rounded-2xl border border-slate-200 bg-slate-50 p-12 text-center">
                             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
                                 <span className="text-3xl">🔍</span>
@@ -401,8 +385,8 @@ function CampaignsPageContent() {
                     )}
 
                     {/* Campaign Cards */}
-                    {!isLoading && !error && filteredCampaigns.length > 0 &&
-                        filteredCampaigns.map((campaign) => {
+                    {!isLoading && !error && paginatedCampaigns.length > 0 &&
+                        paginatedCampaigns.map((campaign) => {
                             const goalEth = Number(formatEther(campaign.goal));
                             const raisedEth = Number(formatEther(campaign.raised));
                             const progress = goalEth > 0 ? Math.min((raisedEth / goalEth) * 100, 100) : 0;
@@ -410,14 +394,32 @@ function CampaignsPageContent() {
                             const isPendingApproval = normalizedStatus === "pending_approval";
                             const isInProgress = normalizedStatus === "in_progress";
                             const isActive = !campaign.completed && !isPendingApproval;
-                            const statusClasses = isActive
-                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                : "bg-slate-100 text-slate-700 border-slate-200";
-                            const progressBarColor = isActive
-                                ? "bg-emerald-500"
-                                : progress >= 100
-                                ? "bg-green-500"
-                                : "bg-slate-400";
+                            const isFailed = ["failed", "partial_failed", "cancelled", "refunded"].includes(normalizedStatus);
+                            const isSuccess = campaign.completed && !isFailed;
+
+                            let statusClasses = "bg-slate-100 text-slate-700 border-slate-200";
+                            if (isPendingApproval) {
+                                statusClasses = "bg-amber-50 text-amber-700 border-amber-200";
+                            } else if (isFailed) {
+                                statusClasses = "bg-red-50 text-red-700 border-red-200";
+                            } else if (isInProgress) {
+                                statusClasses = "bg-blue-50 text-blue-700 border-blue-200";
+                            } else if (isActive) {
+                                statusClasses = "bg-emerald-50 text-emerald-700 border-emerald-200";
+                            } else if (isSuccess) {
+                                statusClasses = "bg-green-50 text-green-700 border-green-200";
+                            }
+
+                            let progressBarColor = "bg-slate-400";
+                            if (isFailed) {
+                                progressBarColor = "bg-red-500";
+                            } else if (isInProgress) {
+                                progressBarColor = "bg-blue-500";
+                            } else if (isActive) {
+                                progressBarColor = "bg-emerald-500";
+                            } else if (isSuccess) {
+                                progressBarColor = "bg-green-500";
+                            }
 
                             return (
                                 <Link
@@ -446,11 +448,15 @@ function CampaignsPageContent() {
                                             >
                                                 {isPendingApproval
                                                     ? "⏳ Chờ duyệt"
-                                                    : isInProgress
-                                                      ? "🔵 Đang triển khai"
-                                                      : isActive
-                                                        ? "● Đang hoạt động"
-                                                        : "Đã kết thúc"}
+                                                    : normalizedStatus === "failed" || normalizedStatus === "partial_failed"
+                                                        ? "❌ Thất bại"
+                                                        : normalizedStatus === "cancelled"
+                                                            ? "🚫 Bị từ chối"
+                                                            : isInProgress
+                                                                ? "🔵 Đang triển khai"
+                                                                : isActive
+                                                                    ? "● Đang hoạt động"
+                                                                    : "Thành công"}
                                             </span>
                                         </div>
                                     </div>
@@ -514,6 +520,91 @@ function CampaignsPageContent() {
                             );
                         })}
                 </section>
+
+                {/* Pagination Controls */}
+                {!isLoading && filteredCampaigns.length > ITEMS_PER_PAGE && (
+                    <div className="mt-10 flex items-center justify-center gap-2">
+                        {/* First page */}
+                        <button
+                            onClick={() => setCurrentPage(1)}
+                            disabled={safePage === 1}
+                            aria-label="Trang đầu"
+                            className="flex h-9 w-9 items-center justify-center rounded-lg border-2 border-slate-200 bg-white text-slate-600 font-semibold text-sm transition hover:border-blue-600 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            «
+                        </button>
+
+                        {/* Previous page */}
+                        <button
+                            onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                            disabled={safePage === 1}
+                            aria-label="Trang trước"
+                            className="flex h-9 w-9 items-center justify-center rounded-lg border-2 border-slate-200 bg-white text-slate-600 font-semibold text-sm transition hover:border-blue-600 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            ‹
+                        </button>
+
+                        {/* Page numbers */}
+                        {Array.from({ length: totalPages }, (_, i) => i + 1)
+                            .filter(p =>
+                                p === 1 ||
+                                p === totalPages ||
+                                Math.abs(p - safePage) <= 1
+                            )
+                            .reduce<(number | "...")[]>((acc, p, idx, arr) => {
+                                if (idx > 0 && (p as number) - (arr[idx - 1] as number) > 1) {
+                                    acc.push("...");
+                                }
+                                acc.push(p);
+                                return acc;
+                            }, [])
+                            .map((item, idx) =>
+                                item === "..." ? (
+                                    <span
+                                        key={`ellipsis-${idx}`}
+                                        className="flex h-9 w-9 items-center justify-center text-slate-400 text-sm select-none"
+                                    >
+                                        …
+                                    </span>
+                                ) : (
+                                    <button
+                                        key={item}
+                                        onClick={() => setCurrentPage(item as number)}
+                                        aria-label={`Trang ${item}`}
+                                        aria-current={item === safePage ? "page" : undefined}
+                                        className={`flex h-9 w-9 items-center justify-center rounded-lg border-2 text-sm font-semibold transition ${
+                                            item === safePage
+                                                ? "border-blue-600 bg-blue-600 text-white shadow-md"
+                                                : "border-slate-200 bg-white text-slate-700 hover:border-blue-600 hover:text-blue-600"
+                                        }`}
+                                    >
+                                        {item}
+                                    </button>
+                                )
+                            )
+                        }
+
+                        {/* Next page */}
+                        <button
+                            onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+                            disabled={safePage === totalPages}
+                            aria-label="Trang sau"
+                            className="flex h-9 w-9 items-center justify-center rounded-lg border-2 border-slate-200 bg-white text-slate-600 font-semibold text-sm transition hover:border-blue-600 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            ›
+                        </button>
+
+                        {/* Last page */}
+                        <button
+                            onClick={() => setCurrentPage(totalPages)}
+                            disabled={safePage === totalPages}
+                            aria-label="Trang cuối"
+                            className="flex h-9 w-9 items-center justify-center rounded-lg border-2 border-slate-200 bg-white text-slate-600 font-semibold text-sm transition hover:border-blue-600 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            »
+                        </button>
+                    </div>
+                )}
 
             </main>
         </div>

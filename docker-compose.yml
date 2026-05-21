@@ -34,6 +34,19 @@ services:
             timeout: 5s
             retries: 5
 
+    redis:
+        image: redis:7-alpine
+        ports:
+            - "6379:6379"
+        volumes:
+            - redis_data:/data
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+
     # ─────────────────────────────────────────────────────────
     # API Gateway – single entrypoint cho Frontend
     # ─────────────────────────────────────────────────────────
@@ -77,8 +90,9 @@ services:
             - MONGO_URI=${MONGO_URI_USERS}
             - JWT_SECRET=${JWT_SECRET}
             - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
-            - INITIAL_ADMIN_WALLET=${INITIAL_ADMIN_WALLET}
             - ADMIN_WALLETS=${ADMIN_WALLETS}
+            - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}
+            - CROWDFUNDING_CONTRACT_ADDRESS=${NEXT_PUBLIC_CROWDFUNDING_CONTRACT_ADDRESS}
         volumes:
             - ./backend/auth-service:/app
             - /app/node_modules
@@ -99,7 +113,7 @@ services:
             - PORT=${USER_SERVICE_PORT}
             - NODE_ENV=${NODE_ENV}
             - MONGO_URI=${MONGO_URI_USERS}
-            - INITIAL_ADMIN_WALLET=${INITIAL_ADMIN_WALLET}
+            - ADMIN_WALLETS=${ADMIN_WALLETS}
             - BODY_SIZE_LIMIT=${USER_SERVICE_BODY_SIZE_LIMIT:-25mb}
         volumes:
             - ./backend/user-service:/app
@@ -134,6 +148,10 @@ services:
             - PINATA_API_KEY=${PINATA_API_KEY}
             - PINATA_API_SECRET=${PINATA_API_SECRET}
             - PINATA_GATEWAY_URL=${PINATA_GATEWAY_URL}
+            - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}
+            - CROWDFUNDING_CONTRACT_ADDRESS=${CROWDFUNDING_CONTRACT_ADDRESS}
+            - ADMIN_WALLETS=${ADMIN_WALLETS}
+            - REDIS_URL=${REDIS_URL}
         volumes:
             - ./backend/campaign-service:/app
             - /app/node_modules
@@ -141,6 +159,8 @@ services:
             mongodb:
                 condition: service_healthy
             rabbitmq:
+                condition: service_healthy
+            redis:
                 condition: service_healthy
         restart: unless-stopped
 
@@ -154,6 +174,7 @@ services:
             - NODE_ENV=${NODE_ENV}
             - MONGO_URI=${MONGO_URI_DONATIONS}
             - CROWDFUNDING_CONTRACT_ADDRESS=${CROWDFUNDING_CONTRACT_ADDRESS}
+            - ADMIN_WALLETS=${ADMIN_WALLETS}
             - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY}
             - ETHERSCAN_LOGS_API_URL=${ETHERSCAN_LOGS_API_URL}
             - ETHERSCAN_CHAIN_ID=${ETHERSCAN_CHAIN_ID}
@@ -163,6 +184,7 @@ services:
             - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE}
             - RABBITMQ_QUEUE_DONATED_SVC=${RABBITMQ_QUEUE_DONATED_SVC}
             - RABBITMQ_RKEY_DONATED=${RABBITMQ_RKEY_DONATED}
+            - REDIS_URL=${REDIS_URL}
         volumes:
             - ./backend/donation-service:/app
             - /app/node_modules
@@ -170,6 +192,8 @@ services:
             mongodb:
                 condition: service_healthy
             rabbitmq:
+                condition: service_healthy
+            redis:
                 condition: service_healthy
         restart: unless-stopped
 
@@ -231,6 +255,7 @@ services:
             - NODE_ENV=${NODE_ENV}
             - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}
             - CROWDFUNDING_CONTRACT_ADDRESS=${CROWDFUNDING_CONTRACT_ADDRESS}
+            - ADMIN_WALLETS=${ADMIN_WALLETS}
             - USE_DYNAMIC_CONTRACT_ADDRESS=${USE_DYNAMIC_CONTRACT_ADDRESS}
             - MARK_FAILED_JOB_ENABLED=${MARK_FAILED_JOB_ENABLED}
             - MARK_FAILED_JOB_CRON=${MARK_FAILED_JOB_CRON}
@@ -246,6 +271,7 @@ services:
             - RABBITMQ_RKEY_CERT_MINTED=${RABBITMQ_RKEY_CERT_MINTED}
             - RABBITMQ_RKEY_CAMP_FAILED=${RABBITMQ_RKEY_CAMP_FAILED}
             - RABBITMQ_RKEY_REFUND_ISSUED=${RABBITMQ_RKEY_REFUND_ISSUED}
+            - CAMPAIGN_SERVICE_URL=${CAMPAIGN_SERVICE_URL}
         volumes:
             - ./backend/listener-service:/app
             - /app/node_modules
@@ -264,9 +290,10 @@ services:
             dockerfile: Dockerfile
             args:
                 NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-                NEXT_PUBLIC_ADMIN_WALLETS: ${NEXT_PUBLIC_ADMIN_WALLETS}
                 NEXT_PUBLIC_CROWDFUNDING_CONTRACT_ADDRESS: ${NEXT_PUBLIC_CROWDFUNDING_CONTRACT_ADDRESS}  # thêm
                 NEXT_PUBLIC_SEPOLIA_RPC_URL: ${NEXT_PUBLIC_SEPOLIA_RPC_URL}
+                NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: ${NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}
+                NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET: ${NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET}
         container_name: frontend
         env_file:
             - ./.env
@@ -279,7 +306,7 @@ services:
         env_file:
             - ./.env
         ports:
-            - "80:80"
+            - "8080:80"
             - "443:443"
         volumes:
             - ./caddy/Caddyfile.prod:/etc/caddy/Caddyfile:ro
@@ -292,6 +319,7 @@ services:
 volumes:
     mongo_data:
     rabbitmq_data:
+    redis_data:
     shared_data:
     caddy_data:
     caddy_config:

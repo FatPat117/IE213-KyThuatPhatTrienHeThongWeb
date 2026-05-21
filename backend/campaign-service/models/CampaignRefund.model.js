@@ -21,17 +21,14 @@ const CampaignRefundSchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: "Campaign",
             required: [true, "campaignId is required"],
-            index: true,
         },
         campaignOnChainId: {
             type: Number,
             required: [true, "campaignOnChainId is required"],
-            index: true,
         },
         milestoneId: {
             type: Number,
             default: null,
-            index: true,
         },
         donorAddress: {
             type: String,
@@ -39,7 +36,6 @@ const CampaignRefundSchema = new mongoose.Schema(
             lowercase: true,
             trim: true,
             match: [/^0x[a-fA-F0-9]{40}$/, "Invalid donor wallet address"],
-            index: true,
         },
         // Refund amount calculated by: (donor_contribution / total_raised) * refund_pool
         eligibleRefundWei: {
@@ -61,7 +57,6 @@ const CampaignRefundSchema = new mongoose.Schema(
             type: String,
             enum: ["eligible", "prepared", "refunded", "rejected"],
             default: "eligible",
-            index: true,
         },
         // Timestamps for state transitions
         preparedAt: {
@@ -85,8 +80,6 @@ const CampaignRefundSchema = new mongoose.Schema(
         // Prevents duplicate processing of same blockchain event
         refundEventId: {
             type: String,
-            default: null,
-            index: { unique: true, sparse: true },
         },
         // Audit trail for refund preparation request
         prepareRequestId: {
@@ -102,12 +95,9 @@ const CampaignRefundSchema = new mongoose.Schema(
     { timestamps: true },
 );
 
-// Unique constraint: 1 campaign refund record per donor
-CampaignRefundSchema.index(
-    { campaignId: 1, donorAddress: 1 },
-    { unique: true },
-);
-
+// Unique constraint: 1 campaign refund record per donor per milestone failure
+// If milestoneId is null, it's a general campaign failure.
+// If milestoneId is set, it's a specific milestone failure.
 CampaignRefundSchema.index(
     { campaignOnChainId: 1, milestoneId: 1, donorAddress: 1 },
     { unique: true, sparse: true },

@@ -25,7 +25,7 @@ export default function CreateCampaignSuccessCard({
       </div>
 
       <h3 className="text-2xl font-bold text-green-900 mb-3">🎉 Tạo chiến dịch thành công!</h3>
-      <p className="text-green-800 mb-6">Chiến dịch đã được ghi nhận trên Sepolia và sẵn sàng nhận đóng góp.</p>
+      <p className="text-green-800 mb-6">Chiến dịch đã được tạo thành công và đang chờ được duyệt.</p>
 
       <div className="bg-white rounded-lg p-4 mb-6">
         <p className="text-sm font-medium text-slate-600 mb-1">Mã giao dịch</p>

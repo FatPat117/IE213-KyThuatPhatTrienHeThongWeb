@@ -106,3 +106,61 @@ html {
     background-color: #3b82f6;
     color: white;
 }
+
+/* Toast: enter animation (react-hot-toast custom) */
+@keyframes toast-in {
+    from {
+        opacity: 0;
+        transform: translateY(-12px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.animate-toast-in {
+    animation: toast-in 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes status-banner-in {
+    from {
+        opacity: 0;
+        transform: translateY(-100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Toast Animations */
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideOutRight {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
+
+.animate-enter {
+    animation: slideInRight 0.35s cubic-bezier(0.21, 1.02, 0.73, 1) forwards;
+}
+
+.animate-leave {
+    animation: slideOutRight 0.3s cubic-bezier(0.06, 0.71, 0.55, 1) forwards;
+}

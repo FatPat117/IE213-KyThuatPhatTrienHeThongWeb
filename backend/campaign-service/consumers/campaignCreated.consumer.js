@@ -2,6 +2,7 @@ const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const { ethers } = require("ethers");
 const { Milestone, Campaign } = require("../models");
 const notificationService = require("../services/notification.service");
+const { getSafeOwners } = require("../utils/safeUtils");
 
 const QUEUE = process.env.RABBITMQ_QUEUE_CAMP_CREATED || "campaign.created.queue";
 const ROUTING_KEY = process.env.RABBITMQ_RKEY_CAMP_CREATED || "campaign.created";
@@ -30,7 +31,8 @@ const MILESTONE_READER_ABI = [
                     { name: "id", type: "uint256" },
                     { name: "allocationBps", type: "uint16" },
                     { name: "deadline", type: "uint256" },
-                    { name: "proofIpfsCid", type: "string" },
+                    { name: "proofCids", type: "string[]" },
+                    { name: "proofSubmissionCount", type: "uint256" },
                     { name: "status", type: "uint8" },
                     { name: "approvedBy", type: "address" },
                     { name: "approvedAt", type: "uint256" },
@@ -45,11 +47,7 @@ const MILESTONE_READER_ABI = [
 let milestoneReader = null;
 
 function resolveAdminWalletsFromEnv() {
-    const combined = [
-        process.env.ADMIN_WALLETS || "",
-        process.env.INITIAL_ADMIN_WALLET || "",
-    ]
-        .join(",")
+    const combined = (process.env.ADMIN_WALLETS || "")
         .split(/[,\s;]+/)
         .map((item) => item.trim().toLowerCase())
         .filter((item) => /^0x[a-f0-9]{40}$/.test(item));
@@ -66,7 +64,7 @@ async function loadAdminWalletsFromUserService() {
     const userServiceUrl =
         process.env.USER_SERVICE_URL || "http://user-service:4001";
     const requesterWallet = normalizeWallet(
-        process.env.INITIAL_ADMIN_WALLET ||
+        (process.env.ADMIN_WALLETS || "").split(",")[0] ||
             process.env.DEFAULT_ADMIN_WALLET ||
             "",
     );
@@ -278,13 +276,13 @@ async function startCampaignCreatedConsumer() {
                                     deadline: milestone.deadline,
                                     financialTargetWei:
                                         milestone.financialTargetWei || "0",
-                                },
-                                $setOnInsert: {
                                     status: "pending_funding",
-                                    title: "",
-                                    description: "",
                                     reportCids: [],
                                     evidenceCids: [],
+                                },
+                                $setOnInsert: {
+                                    title: "",
+                                    description: "",
                                 },
                             },
                             upsert: true,
@@ -305,9 +303,9 @@ async function startCampaignCreatedConsumer() {
                         notificationService.createNotification({
                             recipientWallet: adminWallet,
                             type: "campaign_created",
-                            title: "Có campaign mới cần duyệt",
+                            title: "Có chiến dịch mới cần duyệt",
                             message:
-                                "Một campaign mới vừa được tạo và đang chờ phê duyệt.",
+                                "Một chiến dịch mới vừa được tạo và đang chờ phê duyệt.",
                             campaignOnChainId: onChainId,
                             txHash: payload.txHash || "",
                         }),
@@ -315,16 +313,23 @@ async function startCampaignCreatedConsumer() {
                 );
             }
 
+            // Gửi thông báo cho từng EOA owner của reviewerSafe (không phải Safe address)
             const reviewerWallet = normalizeWallet(reviewerSafe);
             if (reviewerWallet) {
-                await notificationService.createNotification({
-                    recipientWallet: reviewerWallet,
-                    type: "campaign_assigned",
-                    title: "New campaign assigned",
-                    message: "You have been assigned to review a new campaign.",
-                    campaignOnChainId: onChainId,
-                    txHash: payload.txHash || "",
-                });
+                const safeOwners = await getSafeOwners(reviewerWallet);
+                const notifyTargets = safeOwners.length > 0 ? safeOwners : [reviewerWallet];
+                await Promise.all(
+                    notifyTargets.map((ownerWallet) =>
+                        notificationService.createNotification({
+                            recipientWallet: ownerWallet,
+                            type: "campaign_assigned",
+                            title: "Chiến dịch mới được giao",
+                            message: `Bạn đã được giao nhiệm vụ kiểm duyệt chiến dịch #${onChainId} mới tạo.`,
+                            campaignOnChainId: onChainId,
+                            txHash: payload.txHash || "",
+                        }),
+                    ),
+                );
             }
 
             channel.ack(msg);

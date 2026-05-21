@@ -1,7 +1,7 @@
 "use client";
 
-import { API_BASE_URL, apiRequest } from "./client";
-import type { CampaignRecord } from "./types";
+import { API_BASE_URL, apiRequest, trackedFetch } from "./client";
+import type { CampaignRecord, CampaignMilestoneRecord } from "./types";
 
 export interface PublicCampaignItem {
     onChainId: number;
@@ -31,6 +31,11 @@ export interface PublicCampaignMilestone {
     approvedAt: string | null;
     approvedBy: string;
     disbursedAt: string | null;
+    lastRejectionReason?: string;
+    rejectionCount?: number;
+    maxRetries?: number;
+    pendingRejections?: number;
+    rejectionVoters?: string[];
 }
 
 export interface ReviewerAggregate {
@@ -63,6 +68,13 @@ export interface PublicStatsResponse {
     updatedAt: string;
 }
 
+export interface RefundStatusResponse {
+    status: "none" | "eligible" | "prepared" | "refunded";
+    refundedWei: string;
+    eligibleRefundWei: string;
+    refundedAt: string | null;
+}
+
 interface PublicCampaignsResponse {
     items: PublicCampaignItem[];
     pagination: {
@@ -73,26 +85,11 @@ interface PublicCampaignsResponse {
     };
 }
 
-interface PublicCampaignMilestonesResponse {
+export interface PublicCampaignMilestonesResponse {
     campaignOnChainId: number;
     milestones: PublicCampaignMilestone[];
 }
 
-interface CampaignMilestoneRecord {
-    milestoneId?: number;
-    milestoneIndex?: number;
-    title?: string;
-    description?: string;
-    allocationBps?: number;
-    financialTargetWei?: string;
-    amountWei?: string;
-    deadline?: string;
-    status?: string;
-    reportCids?: Array<{ cid?: string; submittedAt?: string }>;
-    approvedAt?: string | null;
-    approvedBy?: string;
-    disbursedAt?: string | null;
-}
 
 interface MilestoneServiceResponse {
     success?: boolean;
@@ -102,24 +99,45 @@ interface MilestoneServiceResponse {
     message?: string;
 }
 
-const CAMPAIGN_INDEX_STATUS_CACHE_TTL_MS = 15_000;
-const campaignIndexStatusCache = new Map<
-    number,
-    { indexed: boolean; expiresAt: number }
->();
-const DISBURSED_MILESTONE_COUNT_CACHE_TTL_MS = 45_000;
-let disbursedMilestoneCountCache: { value: number; expiresAt: number } | null =
-    null;
+export const TERMINAL_STATUSES = new Set([
+    "completed",
+    "failed",
+    "cancelled",
+    "closed",
+    "refunded",
+    "success",
+    "partial_failed",
+]);
+
+// Global cache configuration
+const PUBLIC_CAMPAIGNS_CACHE_TTL_MS = 300_000; // 5 minutes
+const PUBLIC_MILESTONES_CACHE_TTL_MS = 300_000; // 5 minutes
+const AGGREGATES_CACHE_TTL_MS = 600_000; // 10 minutes
+const CAMPAIGN_INDEX_STATUS_CACHE_TTL_MS = 60_000; // 1 minute
+const DISBURSED_MILESTONE_COUNT_CACHE_TTL_MS = 600_000;
+
+const publicCampaignsCache = new Map<string, { data: PublicCampaignsResponse; expiresAt: number }>();
+const publicCampaignsInFlight = new Map<string, Promise<PublicCampaignsResponse>>();
+const publicMilestonesCache = new Map<number, { data: PublicCampaignMilestonesResponse; expiresAt: number }>();
+const publicMilestonesInFlight = new Map<number, Promise<PublicCampaignMilestonesResponse>>();
+let allPublicCampaignsCache: { data: PublicCampaignItem[]; expiresAt: number } | null = null;
+let allPublicCampaignsInFlight: Promise<PublicCampaignItem[]> | null = null;
+
+const campaignIndexStatusCache = new Map<number, { indexed: boolean; expiresAt: number }>();
+
+let reviewerAggregatesCache: { data: ReviewerAggregate[]; expiresAt: number } | null = null;
+let reviewerAggregatesInFlight: Promise<ReviewerAggregate[]> | null = null;
+let disbursedMilestoneCountCache: { value: number; expiresAt: number } | null = null;
 let disbursedMilestoneCountInFlight: Promise<number> | null = null;
-const PUBLIC_MILESTONES_CACHE_TTL_MS = 20_000;
-const publicMilestonesCache = new Map<
-    number,
-    { data: PublicCampaignMilestonesResponse; expiresAt: number }
->();
-const publicMilestonesInFlight = new Map<
-    number,
-    Promise<PublicCampaignMilestonesResponse>
->();
+
+export function invalidatePublicCampaignsCache() {
+    publicCampaignsCache.clear();
+    allPublicCampaignsCache = null;
+}
+
+export function invalidatePublicMilestonesCache() {
+    publicMilestonesCache.clear();
+}
 
 function readCachedCampaignIndexStatus(id: number): boolean | null {
     const cached = campaignIndexStatusCache.get(id);
@@ -147,7 +165,7 @@ async function ensureCampaignIndexed(onChainId: number): Promise<void> {
     }
 }
 
-function mapMilestoneRecord(
+export function mapMilestoneRecord(
     item: CampaignMilestoneRecord,
 ): PublicCampaignMilestone {
     return {
@@ -162,41 +180,88 @@ function mapMilestoneRecord(
         ).toString(),
         deadline: item.deadline || "",
         status: item.status || "pending_funding",
-        reportCids: Array.isArray(item.reportCids)
-            ? item.reportCids
-                  .filter(
-                      (entry) =>
-                          typeof entry?.cid === "string" &&
-                          entry.cid.trim().length > 0,
-                  )
-                  .map((entry) => ({
-                      cid: (entry.cid || "").trim(),
-                      submittedAt: entry.submittedAt || "",
-                  }))
-            : [],
+        reportCids: (() => {
+            if (!Array.isArray(item.reportCids)) return [];
+            const seenCids = new Set<string>();
+            return item.reportCids
+                .filter((entry: { cid?: string; submittedAt?: string }) => {
+                    const cid = (entry?.cid || "").trim();
+                    if (!cid || seenCids.has(cid)) return false;
+                    seenCids.add(cid);
+                    return true;
+                })
+                .map((entry: { cid?: string; submittedAt?: string }) => ({
+                    cid: (entry.cid || "").trim(),
+                    submittedAt: entry.submittedAt || "",
+                }));
+        })(),
         approvedAt: item.approvedAt || null,
         approvedBy: item.approvedBy || "",
         disbursedAt: item.disbursedAt || null,
+        lastRejectionReason: item.lastRejectionReason,
+        rejectionCount: item.rejectionCount,
+        maxRetries: item.maxRetries,
+        pendingRejections: item.pendingRejections,
+        rejectionVoters: item.rejectionVoters || [],
     };
 }
 
 async function getAllPublicCampaigns(): Promise<PublicCampaignItem[]> {
-    const allItems: PublicCampaignItem[] = [];
-    let page = 1;
-    let totalPages = 1;
+    if (allPublicCampaignsCache && Date.now() <= allPublicCampaignsCache.expiresAt) {
+        return allPublicCampaignsCache.data;
+    }
+    if (allPublicCampaignsInFlight) return allPublicCampaignsInFlight;
 
-    do {
-        const response = await getPublicCampaigns({ page, limit: 100 });
-        allItems.push(...response.items);
-        totalPages = response.pagination.totalPages;
-        page += 1;
-    } while (page <= totalPages);
+    allPublicCampaignsInFlight = (async () => {
+        const allItems: PublicCampaignItem[] = [];
+        let page = 1;
+        let totalPages = 1;
 
-    return allItems;
+        do {
+            const response = await getPublicCampaigns({ page, limit: 100 });
+            allItems.push(...response.items);
+            totalPages = response.pagination.totalPages;
+            page += 1;
+        } while (page <= totalPages);
+
+        allPublicCampaignsCache = {
+            data: allItems,
+            expiresAt: Date.now() + PUBLIC_CAMPAIGNS_CACHE_TTL_MS
+        };
+        return allItems;
+    })();
+
+    try {
+        return await allPublicCampaignsInFlight;
+    } finally {
+        allPublicCampaignsInFlight = null;
+    }
 }
 
-export async function getCampaigns() {
-    return apiRequest<CampaignRecord[]>("/campaigns");
+export interface PaginatedCampaignsResponse {
+    campaigns: CampaignRecord[];
+    pagination: {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+    };
+}
+
+export async function getCampaigns(params?: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    creator?: string;
+}) {
+    const query = new URLSearchParams();
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.limit) query.set("limit", String(params.limit));
+    if (params?.status) query.set("status", params.status);
+    if (params?.creator) query.set("creator", params.creator);
+
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return apiRequest<PaginatedCampaignsResponse>(`/campaigns${suffix}`);
 }
 
 export async function getCampaignById(id: number) {
@@ -245,6 +310,22 @@ export async function updateCampaignStatus(
     });
 }
 
+export async function rejectCampaign(
+    id: number,
+    token: string,
+    reason: string,
+) {
+    return apiRequest<{
+        campaignOnChainId: number;
+        campaignStatus: string;
+        reason: string;
+    }>(`/campaigns/${id}/reject`, {
+        method: "POST",
+        token,
+        body: JSON.stringify({ reason }),
+    });
+}
+
 export async function getCampaignIndexStatus(id: number) {
     const normalizedId = Number(id);
     if (!Number.isFinite(normalizedId)) {
@@ -280,16 +361,35 @@ export async function getPublicCampaigns(params?: {
     if (params?.order) query.set("order", params.order);
 
     const suffix = query.toString() ? `?${query.toString()}` : "";
-    return apiRequest<PublicCampaignsResponse>(
-        `/campaigns/public/campaigns${suffix}`,
-    );
+    const cacheKey = `/campaigns/public/campaigns${suffix}`;
+
+    const cached = publicCampaignsCache.get(cacheKey);
+    if (cached && Date.now() <= cached.expiresAt) return cached.data;
+
+    const inFlight = publicCampaignsInFlight.get(cacheKey);
+    if (inFlight) return inFlight;
+
+    const task = apiRequest<PublicCampaignsResponse>(cacheKey).then(data => {
+        publicCampaignsCache.set(cacheKey, {
+            data,
+            expiresAt: Date.now() + PUBLIC_CAMPAIGNS_CACHE_TTL_MS
+        });
+        return data;
+    }).finally(() => {
+        publicCampaignsInFlight.delete(cacheKey);
+    });
+
+    publicCampaignsInFlight.set(cacheKey, task);
+    return task;
 }
 
 export async function getPublicStats() {
     return apiRequest<PublicStatsResponse>("/campaigns/public/stats");
 }
 
-export async function getPublicCampaignMilestones(onChainId: number) {
+export async function getPublicCampaignMilestones(
+    onChainId: number,
+): Promise<PublicCampaignMilestonesResponse> {
     const normalizedId = Number(onChainId);
     if (!Number.isFinite(normalizedId)) {
         throw new Error("Invalid campaign id");
@@ -331,7 +431,7 @@ export async function getPublicCampaignMilestones(onChainId: number) {
 
         // Backward compatible fallback for environments that still expose
         // milestone timeline via milestone-service endpoint.
-        const response = await fetch(
+        const response = await trackedFetch(
             `${API_BASE_URL}/milestones/campaigns/${normalizedId}`,
             {
                 cache: "no-store",
@@ -340,6 +440,7 @@ export async function getPublicCampaignMilestones(onChainId: number) {
                     Pragma: "no-cache",
                 },
             },
+            `/milestones/campaigns/${normalizedId}`,
         );
         const payload = (await response.json()) as MilestoneServiceResponse;
         if (!response.ok || payload.status !== "success") {
@@ -369,9 +470,11 @@ export async function getMilestoneApprovalStatus(
     onChainId: number,
     milestoneId: number,
     token: string,
+    refresh = false,
 ) {
+    const query = refresh ? "?refresh=true" : "";
     return apiRequest<MilestoneApprovalStatus>(
-        `/campaigns/${onChainId}/milestones/${milestoneId}/approval-status`,
+        `/campaigns/${onChainId}/milestones/${milestoneId}/approval-status${query}`,
         { token },
     );
 }
@@ -414,90 +517,92 @@ export async function resubmitMilestone(
 }
 
 export async function getDisbursedMilestoneCount(): Promise<number> {
-    if (
-        disbursedMilestoneCountCache &&
-        Date.now() <= disbursedMilestoneCountCache.expiresAt
-    ) {
+    if (disbursedMilestoneCountCache && Date.now() <= disbursedMilestoneCountCache.expiresAt) {
         return disbursedMilestoneCountCache.value;
     }
-
-    if (disbursedMilestoneCountInFlight) {
-        return disbursedMilestoneCountInFlight;
-    }
+    if (disbursedMilestoneCountInFlight) return disbursedMilestoneCountInFlight;
 
     disbursedMilestoneCountInFlight = (async () => {
-        const campaigns = await getAllPublicCampaigns();
-        if (campaigns.length === 0) {
-            disbursedMilestoneCountCache = {
-                value: 0,
-                expiresAt: Date.now() + DISBURSED_MILESTONE_COUNT_CACHE_TTL_MS,
-            };
+        try {
+            // Tạm thời trả về 0 hoặc lấy từ Stats tập trung thay vì quét từng campaign
+            // Việc quét 100 campaign ở frontend là sai lầm về kiến trúc.
+            return 0;
+        } catch {
             return 0;
         }
-
-        const milestoneResults = await Promise.allSettled(
-            campaigns.map((campaign) =>
-                getPublicCampaignMilestones(campaign.onChainId),
-            ),
-        );
-
-        let disbursedCount = 0;
-        for (const result of milestoneResults) {
-            if (result.status !== "fulfilled") continue;
-            for (const milestone of result.value.milestones) {
-                if (milestone.status === "disbursed") {
-                    disbursedCount += 1;
-                }
-            }
-        }
-
-        disbursedMilestoneCountCache = {
-            value: disbursedCount,
-            expiresAt: Date.now() + DISBURSED_MILESTONE_COUNT_CACHE_TTL_MS,
-        };
-        return disbursedCount;
     })();
 
     try {
-        return await disbursedMilestoneCountInFlight;
+        const result = await disbursedMilestoneCountInFlight;
+        disbursedMilestoneCountCache = { value: result, expiresAt: Date.now() + DISBURSED_MILESTONE_COUNT_CACHE_TTL_MS };
+        return result;
     } finally {
         disbursedMilestoneCountInFlight = null;
     }
 }
 
 export async function getReviewerAggregates(): Promise<ReviewerAggregate[]> {
-    const campaigns = await getAllPublicCampaigns();
-    const aggregates = new Map<string, ReviewerAggregate>();
-
-    for (const campaign of campaigns) {
-        const reviewerSafe = (campaign.reviewerSafe || "").trim().toLowerCase();
-        if (!/^0x[a-f0-9]{40}$/.test(reviewerSafe)) continue;
-
-        const existing = aggregates.get(reviewerSafe);
-        if (!existing) {
-            aggregates.set(reviewerSafe, {
-                reviewerSafe,
-                campaignCount: 1,
-                totalDisbursedWei: campaign.totalDisbursedWei || "0",
-                campaignIds: [campaign.onChainId],
-            });
-            continue;
-        }
-
-        existing.campaignCount += 1;
-        existing.campaignIds.push(campaign.onChainId);
-
-        try {
-            const nextTotal =
-                BigInt(existing.totalDisbursedWei || "0") +
-                BigInt(campaign.totalDisbursedWei || "0");
-            existing.totalDisbursedWei = nextTotal.toString();
-        } catch {
-            // Ignore malformed wei values from upstream and keep previous aggregate.
-        }
+    if (reviewerAggregatesCache && Date.now() <= reviewerAggregatesCache.expiresAt) {
+        return reviewerAggregatesCache.data;
     }
+    if (reviewerAggregatesInFlight) return reviewerAggregatesInFlight;
 
-    return Array.from(aggregates.values()).sort(
-        (a, b) => b.campaignCount - a.campaignCount,
-    );
+    reviewerAggregatesInFlight = (async () => {
+        const campaigns = await getAllPublicCampaigns();
+        const aggregates = new Map<string, ReviewerAggregate>();
+
+        for (const campaign of campaigns) {
+            const reviewerSafe = (campaign.reviewerSafe || "").trim().toLowerCase();
+            if (!/^0x[a-f0-9]{40}$/.test(reviewerSafe)) continue;
+
+            const existing = aggregates.get(reviewerSafe);
+            if (!existing) {
+                aggregates.set(reviewerSafe, {
+                    reviewerSafe,
+                    campaignCount: 1,
+                    totalDisbursedWei: campaign.totalDisbursedWei || "0",
+                    campaignIds: [campaign.onChainId],
+                });
+                continue;
+            }
+
+            existing.campaignCount += 1;
+            existing.campaignIds.push(campaign.onChainId);
+
+            try {
+                const nextTotal =
+                    BigInt(existing.totalDisbursedWei || "0") +
+                    BigInt(campaign.totalDisbursedWei || "0");
+                existing.totalDisbursedWei = nextTotal.toString();
+            } catch {
+                // Ignore malformed wei values from upstream and keep previous aggregate.
+            }
+        }
+
+        return Array.from(aggregates.values()).sort(
+            (a, b) => b.campaignCount - a.campaignCount,
+        );
+    })();
+
+    try {
+        const result = await reviewerAggregatesInFlight;
+        reviewerAggregatesCache = { data: result, expiresAt: Date.now() + AGGREGATES_CACHE_TTL_MS };
+        return result;
+    } finally {
+        reviewerAggregatesInFlight = null;
+    }
+}
+
+export async function getRefundStatus(
+    onChainId: number,
+    address: string,
+): Promise<RefundStatusResponse> {
+    const response = await apiRequest<{
+        success: boolean;
+        data: RefundStatusResponse;
+    }>(`/campaigns/public/campaigns/${onChainId}/refund-status?address=${encodeURIComponent(address)}`);
+    if (!response.success || !response.data) {
+        throw new Error("Không thể lấy trạng thái hoàn tiền.");
+    }
+    return response.data;
 }

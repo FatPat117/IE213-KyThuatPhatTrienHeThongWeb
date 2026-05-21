@@ -19,6 +19,7 @@ const NotificationSchema = new mongoose.Schema(
                 "campaign_succeeded", // chiến dịch đạt mục tiêu
                 "campaign_failed", // chiến dịch thất bại après deadline
                 "campaign_cancelled", // chiến dịch bị hủy
+                "campaign_rejected", // chiến dịch bị từ chối bởi admin
                 "funding_complete", // campaign đủ vốn, chuyển in_progress
                 "milestone_report_submitted", // reviewer có report mới cần duyệt
                 "milestone_approved", // creator được duyệt milestone

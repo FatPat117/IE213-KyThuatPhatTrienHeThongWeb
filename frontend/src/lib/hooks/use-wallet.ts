@@ -1,8 +1,18 @@
 'use client';
 
 import { useAccount, useChainId } from 'wagmi';
+import { useSyncExternalStore } from 'react';
 
 const SEPOLIA_CHAIN_ID = 11155111;
+
+const emptySubscribe = () => () => {};
+export function useIsHydrated() {
+  return useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  );
+}
 
 /**
  * Hook để định dạng địa chỉ ví dưới dạng rút gọn
@@ -31,13 +41,14 @@ export function useWalletStatus() {
   const { address, isConnected } = useAccount();
   const isSepoliaNetwork = useIsSepoliaNetwork();
   const shortenedAddress = useShortenAddress(address);
+  const isHydrated = useIsHydrated();
 
   return {
-    address,
-    shortenedAddress,
-    isConnected,
-    isSepoliaNetwork,
-    isValidNetwork: isConnected && isSepoliaNetwork,
+    address: isHydrated ? address : undefined,
+    shortenedAddress: isHydrated ? shortenedAddress : '',
+    isConnected: isHydrated ? isConnected : false,
+    isSepoliaNetwork: isHydrated ? isSepoliaNetwork : false,
+    isValidNetwork: isHydrated ? isConnected && isSepoliaNetwork : false,
   };
 }
 
@@ -48,22 +59,26 @@ export function useWalletStatus() {
 export function useWalletValidation() {
   const { isConnected } = useAccount();
   const isSepoliaNetwork = useIsSepoliaNetwork();
+  const isHydrated = useIsHydrated();
 
-  const isValid = isConnected && isSepoliaNetwork;
+  const safeIsConnected = isHydrated ? isConnected : false;
+  const safeIsSepoliaNetwork = isHydrated ? isSepoliaNetwork : false;
+
+  const isValid = safeIsConnected && safeIsSepoliaNetwork;
   const errors: string[] = [];
 
-  if (!isConnected) {
+  if (!safeIsConnected) {
     errors.push('Ví chưa được kết nối. Vui lòng kết nối MetaMask.');
   }
 
-  if (isConnected && !isSepoliaNetwork) {
+  if (safeIsConnected && !safeIsSepoliaNetwork) {
     errors.push('Mạng lưới sai. Vui lòng chuyển sang mạng Sepolia.');
   }
 
   return {
     isValid,
     errors,
-    isConnected,
-    isSepoliaNetwork,
+    isConnected: safeIsConnected,
+    isSepoliaNetwork: safeIsSepoliaNetwork,
   };
 }

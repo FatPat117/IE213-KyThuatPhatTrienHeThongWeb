@@ -11,14 +11,30 @@ import {
     openNotificationStream,
     type NotificationItem,
 } from "@/lib/api/notifications";
+import { showNotificationToast } from "@/lib/ui/toast";
 
 export default function NotificationBell({ token }: { token: string | null }) {
     const [open, setOpen] = useState(false);
     const [items, setItems] = useState<NotificationItem[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [realtimeConnected, setRealtimeConnected] = useState(false);
+    const realtimeConnectedRef = useRef(false);
+    const loadNotificationsRef = useRef<(() => void) | null>(null);
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const toastedRef = useRef<Set<string>>(new Set());
+    const initialLoadDone = useRef(false);
     const router = useRouter();
+
+    const setRealtimeStatus = (connected: boolean) => {
+        realtimeConnectedRef.current = connected;
+        setRealtimeConnected(connected);
+    };
+
+    const triggerFallbackPoll = () => {
+        realtimeConnectedRef.current = false;
+        setRealtimeConnected(false);
+        loadNotificationsRef.current?.();
+    };
 
     const mergeNotification = (
         prev: NotificationItem[],
@@ -49,24 +65,44 @@ export default function NotificationBell({ token }: { token: string | null }) {
             try {
                 setIsLoading(true);
                 const data = await getMyNotifications(token, 20);
-                if (!cancelled) setItems(data);
+                if (!cancelled) {
+                    setItems(data);
+                    data.forEach((item) => toastedRef.current.add(item._id));
+                    initialLoadDone.current = true;
+                }
             } catch {
                 if (!cancelled) setItems([]);
             } finally {
-                if (!cancelled) setIsLoading(false);
+                if (!cancelled) {
+                    setIsLoading(false);
+                    initialLoadDone.current = true;
+                }
             }
         };
+
+        loadNotificationsRef.current = () => {
+            if (!cancelled) void load();
+        };
+
         load();
-        const timer = window.setInterval(load, 10_000);
+
+        const pollTimer = window.setInterval(() => {
+            if (!realtimeConnectedRef.current) load();
+        }, 10_000);
+
         const onVisible = () => {
-            if (document.visibilityState === "visible") {
+            if (
+                document.visibilityState === "visible" &&
+                !realtimeConnectedRef.current
+            ) {
                 load();
             }
         };
         document.addEventListener("visibilitychange", onVisible);
         return () => {
             cancelled = true;
-            window.clearInterval(timer);
+            loadNotificationsRef.current = null;
+            window.clearInterval(pollTimer);
             document.removeEventListener("visibilitychange", onVisible);
         };
     }, [token]);
@@ -79,23 +115,41 @@ export default function NotificationBell({ token }: { token: string | null }) {
 
         const connect = async () => {
             try {
-                setRealtimeConnected(false);
+                setRealtimeStatus(false);
                 await openNotificationStream(
                     token,
                     (incoming) => {
                         if (!active) return;
+
+                        // Deduplicate toasts using a ref to avoid issues with React StrictMode 
+                        // or simultaneous stream/poll updates.
+                        if (toastedRef.current.has(incoming._id)) {
+                            return;
+                        }
+                        toastedRef.current.add(incoming._id);
+
+                        // Only show toast if initial load is complete to avoid "burst" on refresh
+                        if (initialLoadDone.current) {
+                            showNotificationToast(
+                                incoming.title,
+                                incoming.message,
+                                incoming._id,
+                            );
+                        }
+
                         setItems((prev) => mergeNotification(prev, incoming));
                     },
                     () => {
-                        if (active) setRealtimeConnected(true);
+                        if (active) setRealtimeStatus(true);
                     },
                     controller.signal,
                 );
                 if (active && !controller.signal.aborted) {
+                    triggerFallbackPoll();
                     reconnectTimer = window.setTimeout(connect, 1500);
                 }
             } catch {
-                if (active) setRealtimeConnected(false);
+                if (active) triggerFallbackPoll();
                 if (active && !controller.signal.aborted) {
                     reconnectTimer = window.setTimeout(connect, 3000);
                 }
@@ -108,6 +162,7 @@ export default function NotificationBell({ token }: { token: string | null }) {
             active = false;
             controller.abort();
             if (reconnectTimer) window.clearTimeout(reconnectTimer);
+            realtimeConnectedRef.current = false;
             setRealtimeConnected(false);
         };
     }, [token]);
@@ -185,7 +240,7 @@ export default function NotificationBell({ token }: { token: string | null }) {
                 🔔
                 {unreadCount > 0 && (
                     <span className="absolute -right-1 -top-1 rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
-                        {unreadCount}
+                        {unreadCount > 9 ? "9+" : unreadCount}
                     </span>
                 )}
             </button>
@@ -268,16 +323,16 @@ export default function NotificationBell({ token }: { token: string | null }) {
 
                                         if (isMilestoneApproved && hasCampaignId) {
                                             href = `/campaigns/${campaignId}/milestones`;
-                                            linkLabel = "View milestone";
+                                            linkLabel = "Xem chi tiết mốc";
                                         } else if (reviewerTypes.has(item.type || "")) {
                                             href = "/reviewer";
-                                            linkLabel = "Vào trang Reviewer";
+                                            linkLabel = "Vào trang duyệt mốc";
                                         } else if (adminTypes.has(item.type || "")) {
                                             href = "/admin/campaigns";
-                                            linkLabel = "Duyệt campaign";
+                                            linkLabel = "Duyệt các chiến dịch mới";
                                         } else if (hasCampaignId) {
                                             href = `/campaigns/${campaignId}`;
-                                            linkLabel = "Mở campaign";
+                                            linkLabel = "Mở chiến dịch";
                                         }
 
                                         if (!href) return null;

@@ -4,6 +4,7 @@ const { Campaign } = require("../models");
 const { ethers } = require("ethers");
 const { recordTransaction } = require("../utils/recordTransaction");
 const notificationService = require("../services/notification.service");
+const { getSafeOwners } = require("../utils/safeUtils");
 
 const QUEUE =
     process.env.RABBITMQ_QUEUE_MILESTONE_REPORT_SUBMITTED ||
@@ -95,21 +96,62 @@ async function startMilestoneReportSubmittedConsumer() {
             const cid = (payload.cid || payload.ipfsCid || "").toString();
             const submittedAt = new Date();
 
-            const update = {
+            // 1. Luôn cập nhật status và thêm vào evidenceCids (nếu chưa có)
+            const baseUpdate = {
                 $set: {
                     status: "pending_verification",
                 },
             };
-
             if (cid) {
-                update.$push = { reportCids: { cid, submittedAt } };
-                update.$addToSet = { evidenceCids: cid };
+                baseUpdate.$addToSet = { evidenceCids: cid };
             }
 
             await Milestone.updateOne(
                 { campaignOnChainId, milestoneId },
-                update,
+                baseUpdate,
             );
+
+            // 2. Chỉ push vào reportCids nếu CID này chưa từng xuất hiện (tránh double minh chứng)
+            if (cid) {
+                const existingMilestone = await Milestone.findOne({
+                    campaignOnChainId,
+                    milestoneId,
+                });
+
+                if (existingMilestone) {
+                    const isNewCid = !existingMilestone.reportCids?.some(r => r.cid === cid);
+                    const submissionCount = existingMilestone.reportCids?.length || 0;
+
+                    const updateData = {
+                        $push: {
+                            reportCids: { cid, submittedAt },
+                        },
+                    };
+
+                    // Logic gia hạn: Tối đa 3 lần nộp đầu tiên, mỗi lần cộng 3 ngày
+                    if (isNewCid && submissionCount < 3) {
+                        const currentDeadline = existingMilestone.deadline
+                            ? new Date(existingMilestone.deadline)
+                            : new Date();
+                        const newDeadline = new Date(currentDeadline.getTime() + (3 * 24 * 60 * 60 * 1000));
+
+                        updateData.$set = {
+                            ...baseUpdate.$set,
+                            deadline: newDeadline
+                        };
+                        console.log(`[campaign-service] Extended deadline for campaign ${campaignOnChainId} milestone ${milestoneId} by 3 days. New: ${newDeadline.toISOString()}`);
+                    }
+
+                    await Milestone.updateOne(
+                        {
+                            campaignOnChainId,
+                            milestoneId,
+                            "reportCids.cid": { $ne: cid },
+                        },
+                        updateData
+                    );
+                }
+            }
             const campaign = await Campaign.findOne({ onChainId: campaignOnChainId });
             let reviewerSafe = normalizeWallet(campaign?.reviewerSafe);
             if (!reviewerSafe) {
@@ -120,14 +162,21 @@ async function startMilestoneReportSubmittedConsumer() {
                 }
             }
             if (reviewerSafe) {
-                await notificationService.createNotification({
-                    recipientWallet: reviewerSafe,
-                    type: "milestone_report_submitted",
-                    title: "Có bằng chứng mới cần xét duyệt",
-                    message: "Creator vừa nộp minh chứng mới cho milestone.",
-                    campaignOnChainId,
-                    txHash: payload.txHash || "",
-                });
+                // Gửi notification đến từng EOA owner của Safe (không phải Safe address)
+                const safeOwners = await getSafeOwners(reviewerSafe);
+                const notifyTargets = safeOwners.length > 0 ? safeOwners : [reviewerSafe];
+                await Promise.all(
+                    notifyTargets.map((ownerWallet) =>
+                        notificationService.createNotification({
+                            recipientWallet: ownerWallet,
+                            type: "milestone_report_submitted",
+                            title: "Có bằng chứng mới cần xét duyệt",
+                            message: `Creator vừa nộp minh chứng mới cho milestone #${milestoneId + 1} của chiến dịch #${campaignOnChainId}.`,
+                            campaignOnChainId,
+                            txHash: payload.txHash || "",
+                        }),
+                    ),
+                );
             }
 
             await recordTransaction({

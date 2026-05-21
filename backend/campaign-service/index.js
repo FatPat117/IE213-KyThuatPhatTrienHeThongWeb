@@ -37,6 +37,9 @@ const {
 const {
     startMilestoneRefundedConsumer,
 } = require("./consumers/milestoneRefunded.consumer");
+const {
+    startCampaignRejectedConsumer,
+} = require("./consumers/campaignRejected.consumer");
 const { startDeadlineCheckerJob } = require("./jobs/deadlineChecker.job");
 const { startReviewTimeoutJob } = require("./jobs/reviewTimeout.job");
 const campaignRoutes = require("./routes/campaign.routes");
@@ -103,6 +106,7 @@ async function start() {
         await startCampaignApprovedConsumer();
         await startCampaignStoppedConsumer();
         await startMilestoneRefundedConsumer();
+        await startCampaignRejectedConsumer();
         boundConsumerChannel = currentChannel;
         console.log("[campaign-service] Consumers bound to active RabbitMQ channel");
     };

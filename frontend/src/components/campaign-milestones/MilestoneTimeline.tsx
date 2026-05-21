@@ -10,8 +10,15 @@ interface MilestoneTimelineProps {
     campaignId: number;
     contractAddress: string;
     canUploadEvidence: boolean;
-    /** Tổng đã huy động — hiển thị mục tiêu mốc = raised * allocationBps / 10000 */
+    /** Tổng đã huy động — tính mục tiêu thực tế khi campaign đang InProgress */
     raisedWei?: bigint;
+    /** Mục tiêu gây quỹ — dùng để tính mục tiêu mốc khi chưa có ai donate */
+    goalWei?: bigint;
+    userDonatedWei?: bigint;
+    /** ID mốc hiện tại đang hoạt động (0-indexed) — dùng để disable upload cho mốc chưa đến lượt */
+    currentMilestoneId?: number;
+    /** Trạng thái chiến dịch — dùng để disable upload khi campaign không đang in_progress */
+    campaignStatusLabel?: string;
 }
 
 function formatDate(value: Date) {
@@ -19,12 +26,14 @@ function formatDate(value: Date) {
         day: "2-digit",
         month: "2-digit",
         year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
     }).format(value);
 }
 
 function formatEthAmount(value: number) {
     if (!Number.isFinite(value) || value <= 0) return "0";
-    if (value < 0.01) return value.toFixed(4).replace(/\.?0+$/, "");
+    if (value % 0.01 !== 0) return value.toFixed(4).replace(/\.?0+$/, "");
     return value.toFixed(2);
 }
 
@@ -44,6 +53,14 @@ function normalizeIpfsUrl(value: string) {
 
 function getStatusMeta(status: string) {
     switch (status) {
+        case "pending_funding":
+            return {
+                label: "Chờ đủ vốn",
+                badgeClass:
+                    "bg-emerald-100 text-emerald-700 border-emerald-200",
+                dotClass: "bg-emerald-500 ring-emerald-100",
+                cardClass: "border-emerald-100",
+            };
         case "disbursed":
             return {
                 label: "Đã giải ngân chờ xác nhận bằng chứng",
@@ -59,15 +76,27 @@ function getStatusMeta(status: string) {
                 dotClass: "bg-blue-500 ring-blue-100",
                 cardClass: "border-blue-100",
             };
-        case "submitted":
         case "resubmittable":
-        case "review_timeout":
-        case "approved":
             return {
-                label: "Đã hoàn thành",
+                label: "Bị từ chối / Cần nộp lại",
+                badgeClass: "bg-orange-100 text-orange-700 border-orange-200",
+                dotClass: "bg-orange-500 ring-orange-100",
+                cardClass: "border-orange-100",
+            };
+        case "submitted":
+        case "review_timeout":
+            return {
+                label: "Đã nộp bằng chứng",
                 badgeClass: "bg-blue-100 text-blue-700 border-blue-200",
                 dotClass: "bg-blue-500 ring-blue-100",
                 cardClass: "border-blue-100",
+            };
+        case "approved":
+            return {
+                label: "Đã phê duyệt",
+                badgeClass: "bg-teal-100 text-teal-700 border-teal-200",
+                dotClass: "bg-teal-500 ring-teal-100",
+                cardClass: "border-teal-100",
             };
         case "deadline_exceeded":
             return {
@@ -91,6 +120,13 @@ function getStatusMeta(status: string) {
                 dotClass: "bg-fuchsia-500 ring-fuchsia-100",
                 cardClass: "border-fuchsia-100",
             };
+        case "in_progress":
+            return {
+                label: "Đang thực hiện",
+                badgeClass: "bg-blue-100 text-blue-700 border-blue-200",
+                dotClass: "bg-blue-500 ring-blue-100",
+                cardClass: "border-blue-100",
+            };
         default:
             return {
                 label: "Sắp tới",
@@ -102,7 +138,9 @@ function getStatusMeta(status: string) {
 }
 
 function chainIndexForMilestone(milestoneId: number) {
-    return milestoneId >= 1 ? milestoneId - 1 : milestoneId;
+    // Backend và Contract đều dùng 0-indexed cho ID/Index.
+    // Nếu ID nhận được là 0, 1, 2... thì dùng trực tiếp.
+    return milestoneId;
 }
 
 export default function MilestoneTimeline({
@@ -111,11 +149,28 @@ export default function MilestoneTimeline({
     contractAddress,
     canUploadEvidence,
     raisedWei = 0n,
+    goalWei = 0n,
+    userDonatedWei,
+    currentMilestoneId,
+    campaignStatusLabel,
 }: MilestoneTimelineProps) {
     const { proofCidsByIndex } = useReadMilestonesOnChain(
         campaignId,
         milestones.length,
     );
+
+    const isCampaignInProgress = campaignStatusLabel === "in_progress" || campaignStatusLabel === "completed";
+
+    // Helper to determine if a specific milestone's evidence upload should be enabled
+    const canUploadForMilestone = (milestoneId: number, milestoneStatus: string): boolean => {
+        if (!canUploadEvidence) return false;
+        if (!isCampaignInProgress) return false;
+
+        const allowedStatuses = ["in_progress", "resubmittable", "disbursed"];
+        if (allowedStatuses.includes(milestoneStatus)) return true;
+
+        return false;
+    };
 
     return (
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -129,18 +184,41 @@ export default function MilestoneTimeline({
             </div>
 
             <div className="relative ml-2 border-l-2 border-slate-200 pl-6">
-                {milestones.map((milestone) => {
+                {milestones.map((milestone, index) => {
                     const statusMeta = getStatusMeta(milestone.status);
                     const idx = chainIndexForMilestone(milestone.milestoneId);
                     const onChainCids = proofCidsByIndex.get(idx) ?? [];
                     const bps = milestone.allocationBps || 0;
-                    const milestoneTargetWei =
+                    // Sử dụng targetWei từ backend, fallback tính toán từ goalWei nếu DB chưa có giá trị
+                    let milestoneTargetWei = BigInt(milestone.amountWei || "0");
+                    if (milestoneTargetWei === 0n && goalWei > 0n && bps > 0) {
+                        milestoneTargetWei = (goalWei * BigInt(bps)) / 10000n;
+                    }
+                    const milestoneTargetEth = Number(formatEther(milestoneTargetWei));
+
+                    // Số tiền đã thực tế quyên góp được phân bổ cho mốc này
+                    const raisedAllocationWei =
                         raisedWei > 0n && bps > 0
                             ? (raisedWei * BigInt(bps)) / 10000n
-                            : BigInt(milestone.amountWei || "0");
-                    const milestoneTargetEth = Number(
-                        formatEther(milestoneTargetWei),
-                    );
+                            : 0n;
+                    const raisedAllocationEth = Number(formatEther(raisedAllocationWei));
+
+                    // Tính tổng % đã giải ngân trước mốc này
+                    let accumulatedBps = 0;
+                    for (let j = 0; j <= index; j++) {
+                        if (milestones[j].status !== "pending_funding") {
+                            accumulatedBps += milestones[j].allocationBps || 0;
+                        }
+                    }
+                    const remainingBps = 10000 - accumulatedBps;
+
+                    // Số tiền hoàn lại nếu mốc thất bại = Toàn bộ quỹ còn lại chưa giải ngân
+                    const refundWei =
+                        raisedWei > 0n
+                            ? (raisedWei * BigInt(remainingBps)) / 10000n
+                            : 0n;
+                    const refundEth = Number(formatEther(refundWei));
+
                     const allocationPercent = (milestone.allocationBps / 100)
                         .toFixed(2)
                         .replace(/\.00$/, "");
@@ -172,6 +250,9 @@ export default function MilestoneTimeline({
                             Boolean(item.url),
                         );
 
+                    // Check if this milestone allows evidence upload
+                    const milestoneCanUpload = canUploadForMilestone(milestone.milestoneId, milestone.status);
+
                     return (
                         <article
                             key={milestone.milestoneId}
@@ -199,7 +280,7 @@ export default function MilestoneTimeline({
                                 </span>
                             </div>
 
-                            <div className="grid gap-3 text-sm sm:grid-cols-3">
+                            <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
                                 <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
                                     <p className="text-xs text-slate-500">
                                         Hạn chót dự kiến
@@ -210,40 +291,90 @@ export default function MilestoneTimeline({
                                         )}
                                     </p>
                                 </div>
-                                <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                                    <p className="text-xs text-slate-500">
+                                <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
+                                    <p className="text-xs text-blue-600">
                                         Mục tiêu tài chính mốc
                                     </p>
-                                    <p className="font-semibold text-slate-900">
+                                    <p className="font-semibold text-blue-900">
                                         {formatEthAmount(milestoneTargetEth)}{" "}
                                         ETH ({allocationPercent}%)
                                     </p>
                                 </div>
-                                <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                                    <p className="text-xs text-slate-500">
-                                        Mã mốc on-chain
+                                <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
+                                    <p className="text-xs text-emerald-600">
+                                        Đã quyên góp cho mốc
                                     </p>
-                                    <p className="font-semibold text-slate-900">
-                                        #{milestone.milestoneId}
+                                    <p className="font-semibold text-emerald-900">
+                                        {raisedWei > 0n
+                                            ? `${formatEthAmount(raisedAllocationEth)} ETH`
+                                            : "Chưa có"}
                                     </p>
                                 </div>
+                                <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
+                                    <p className="text-xs text-amber-600">
+                                        Hoàn lại nếu thất bại
+                                    </p>
+                                    <p className="font-semibold text-amber-900">
+                                        {raisedWei > 0n
+                                            ? `${formatEthAmount(refundEth)} ETH`
+                                            : "Chưa xác định"}
+                                    </p>
+                                    {userDonatedWei && userDonatedWei > 0n && raisedWei && raisedWei > 0n && (
+                                        <div className="mt-1 pt-1 border-t border-amber-200">
+                                            <p className="text-[10px] text-amber-700">Của bạn: {formatEthAmount(Number(formatEther((userDonatedWei * milestoneTargetWei) / goalWei || 0n)))} ETH</p>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
+
+                                     {milestone.status === "resubmittable" && (
+                                <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 p-4 shadow-sm animate-pulse">
+                                    <div className="flex items-center gap-2 mb-2 text-orange-800">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                        </svg>
+                                        <span className="font-bold">Cần nộp lại minh chứng</span>
+                                        <span className="ml-auto rounded-full bg-orange-200 px-2 py-0.5 text-[10px] font-bold text-orange-800">
+                                            Lần từ chối: {milestone.rejectionCount || 0}/{milestone.maxRetries || 3}
+                                        </span>
+                                    </div>
+                                    <p className="text-sm text-orange-700 leading-relaxed mb-3">
+                                        <strong>Lý do từ chối:</strong> {milestone.lastRejectionReason || "Reviewer yêu cầu bổ sung thông tin."}
+                                    </p>
+                                    {milestoneCanUpload && (
+                                        <Link
+                                            href={`/campaigns/${campaignId}/milestones/upload?milestone=${milestone.milestoneId}`}
+                                            className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-xs font-bold text-white hover:bg-orange-700 transition shadow-md shadow-orange-200"
+                                        >
+                                            Cập nhật báo cáo ngay →
+                                        </Link>
+                                    )}
+                                </div>
+                            )}
 
                             <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
                                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
                                     Đường dẫn bằng chứng
                                 </p>
                                 <div className="flex flex-wrap items-center gap-2 text-sm">
-                                    {canUploadEvidence ? (
+                                    {milestoneCanUpload ? (
                                         <Link
                                             href={`/campaigns/${campaignId}/milestones/upload?milestone=${milestone.milestoneId}`}
                                             className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 font-semibold text-blue-700 hover:bg-blue-100"
                                         >
-                                            Upload minh chứng
+                                            Đăng tải bằng chứng thi công
                                         </Link>
+                                    ) : canUploadEvidence && !isCampaignInProgress ? (
+                                        <span className="inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 font-semibold text-amber-700">
+                                            Chiến dịch chưa ở giai đoạn thực hiện hoặc đã thất bại
+                                        </span>
+                                    ) : canUploadEvidence && isCampaignInProgress && !["in_progress", "resubmittable", "disbursed"].includes(milestone.status) ? (
+                                        <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-100 px-3 py-1.5 font-semibold text-slate-500">
+                                            {["approved", "disbursed_done"].includes(milestone.status) ? "Mốc đã hoàn thành" : "Mốc chưa đến lượt thực hiện"}
+                                        </span>
                                     ) : (
                                         <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-100 px-3 py-1.5 font-semibold text-slate-500">
-                                            Chỉ creator được upload
+                                            Chỉ người tạo mới có thể đăng tải các minh chứng thi công
                                         </span>
                                     )}
                                     <a
@@ -255,25 +386,28 @@ export default function MilestoneTimeline({
                                         Xem smart contract
                                     </a>
                                     {ipfsLinks.map((item) => (
-                                        <Link
-                                            key={`${milestone.milestoneId}-${item.cid}`}
-                                            href={`/campaigns/${campaignId}/milestones/upload?milestone=${milestone.milestoneId}&sourceCid=${encodeURIComponent(item.cid)}`}
-                                            className="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 font-medium text-emerald-700 hover:bg-emerald-100"
-                                        >
-                                            IPFS: {item.cid.slice(0, 16)}...
-                                            (cập nhật minh chứng)
-                                        </Link>
-                                    ))}
-                                    {ipfsLinks.map((item) => (
-                                        <a
-                                            key={`${milestone.milestoneId}-${item.cid}-view`}
-                                            href={item.url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="font-medium text-blue-600 hover:text-blue-700"
-                                        >
-                                            Xem CID {item.cid.slice(0, 10)}...
-                                        </a>
+                                        <div key={`${milestone.milestoneId}-${item.cid}`} className="flex items-center gap-2">
+                                            <a
+                                                href={item.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
+                                            >
+                                                <svg className="mr-1.5 h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                </svg>
+                                                IPFS: {item.cid.slice(0, 8)}...{item.cid.slice(-4)}
+                                            </a>
+                                            {milestoneCanUpload && (
+                                                <Link
+                                                    href={`/campaigns/${campaignId}/milestones/upload?milestone=${milestone.milestoneId}&sourceCid=${encodeURIComponent(item.cid)}`}
+                                                    className="text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline"
+                                                >
+                                                    Cập nhật báo cáo
+                                                </Link>
+                                            )}
+                                        </div>
                                     ))}
                                 </div>
                             </div>

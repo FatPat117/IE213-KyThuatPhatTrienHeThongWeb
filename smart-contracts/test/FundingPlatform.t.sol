@@ -21,7 +21,9 @@ contract FundingPlatformTest is Test {
     string private constant CID_2 = "QmMilestoneProofHash2";
 
     function setUp() public {
-        platform = new FundingPlatform();
+        address[] memory initialAdmins = new address[](1);
+        initialAdmins[0] = address(this);
+        platform = new FundingPlatform(address(this), initialAdmins);
         safe = new MockSafe();
         reviewerSafe = address(safe);
         platform.addReviewerSafe(reviewerSafe);
@@ -432,5 +434,413 @@ contract FundingPlatformTest is Test {
 
         vm.expectRevert("Disbursement handled in approveMilestone");
         platform.disburseMilestone(campaignId, 1);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // DONATION EDGE CASES
+    // ══════════════════════════════════════════════════════════
+
+    function test_Donate_RevertsIfZeroValue() public {
+        uint256 campaignId = _createApprovedDefaultCampaign();
+
+        vm.prank(donor);
+        vm.expectRevert("Donation must be > 0");
+        platform.donate{value: 0}(campaignId);
+    }
+
+    function test_Donate_RevertsIfFundingDeadlinePassed() public {
+        uint256 campaignId = _createApprovedDefaultCampaign();
+
+        // Warp past the 7-day funding deadline
+        vm.warp(block.timestamp + 8 days);
+
+        vm.prank(donor);
+        vm.expectRevert("Funding deadline passed");
+        platform.donate{value: 1 ether}(campaignId);
+    }
+
+    function test_Donate_AccumulatesFromMultipleDonors() public {
+        uint256 campaignId = _createApprovedDefaultCampaign();
+
+        // Each donor donates 0.5 ETH → total 1 ETH = goal
+        vm.prank(donor);
+        platform.donate{value: 0.5 ether}(campaignId);
+
+        vm.prank(donor2);
+        platform.donate{value: 0.5 ether}(campaignId);
+
+        FundingPlatform.Campaign memory campaign = platform.getCampaign(campaignId);
+        assertEq(campaign.totalRaised, 1 ether);
+        assertEq(
+            uint256(campaign.status),
+            uint256(FundingPlatform.CampaignStatus.InProgress)
+        );
+        assertEq(platform.getDonation(campaignId, donor), 0.5 ether);
+        assertEq(platform.getDonation(campaignId, donor2), 0.5 ether);
+    }
+
+    function test_Donate_RevertsWhenCampaignAlreadyInProgress() public {
+        uint256 campaignId = _createApprovedDefaultCampaign();
+        _fundCampaign(campaignId); // goal met → status = InProgress
+
+        vm.prank(donor2);
+        vm.expectRevert("Campaign is not active");
+        platform.donate{value: 1 ether}(campaignId);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // CAMPAIGN CREATION VALIDATION
+    // ══════════════════════════════════════════════════════════
+
+    function test_CreateCampaign_RevertsIfFundingDeadlineInPast() public {
+        uint16[] memory bps = _defaultAllocationBps();
+        uint256[] memory deadlines = _defaultDeadlines();
+
+        vm.prank(creator);
+        vm.expectRevert("Invalid funding deadline");
+        platform.createCampaignWithMilestones(
+            bps,
+            deadlines,
+            block.timestamp - 1, // deadline in the past
+            reviewerSafe
+        );
+    }
+
+    function test_CreateCampaign_RevertsIfNoMilestones() public {
+        uint16[] memory bps = new uint16[](0);
+        uint256[] memory deadlines = new uint256[](0);
+
+        vm.prank(creator);
+        vm.expectRevert("At least one milestone is required");
+        platform.createCampaignWithMilestones(
+            bps,
+            deadlines,
+            block.timestamp + 7 days,
+            reviewerSafe
+        );
+    }
+
+    function test_CreateCampaign_RevertsIfMilestoneDeadlineBeforeFundingDeadline() public {
+        uint16[] memory bps = _defaultAllocationBps();
+        uint256[] memory deadlines = new uint256[](2);
+        uint256 fundingDeadline = block.timestamp + 7 days;
+        deadlines[0] = block.timestamp + 3 days; // BEFORE funding deadline
+        deadlines[1] = block.timestamp + 30 days;
+
+        vm.prank(creator);
+        vm.expectRevert("Milestone deadline must be after funding deadline");
+        platform.createCampaignWithMilestones(
+            bps,
+            deadlines,
+            fundingDeadline,
+            reviewerSafe
+        );
+    }
+
+    function test_CreateCampaign_RevertsIfReviewerNotApproved() public {
+        uint16[] memory bps = _defaultAllocationBps();
+        uint256[] memory deadlines = _defaultDeadlines();
+        address unapprovedReviewer = makeAddr("unapprovedReviewer");
+
+        vm.prank(creator);
+        vm.expectRevert("Reviewer not approved");
+        platform.createCampaignWithMilestones(
+            bps,
+            deadlines,
+            block.timestamp + 7 days,
+            unapprovedReviewer
+        );
+    }
+
+    function test_CreateCampaignWithGoal_SetsCorrectGoal() public {
+        uint16[] memory bps = _defaultAllocationBps();
+        uint256[] memory deadlines = _defaultDeadlines();
+        uint256 customGoal = 2 ether;
+
+        vm.prank(creator);
+        uint256 campaignId = platform.createCampaignWithGoal(
+            customGoal,
+            bps,
+            deadlines,
+            block.timestamp + 7 days,
+            reviewerSafe
+        );
+
+        FundingPlatform.Campaign memory campaign = platform.getCampaign(campaignId);
+        assertEq(campaign.goal, customGoal);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // CAMPAIGN FAILURE (markCampaignFailed)
+    // ══════════════════════════════════════════════════════════
+
+    function test_MarkCampaignFailed_WhenDeadlinePassedAndUnderGoal() public {
+        uint256 campaignId = _createApprovedDefaultCampaign();
+
+        // Donate partial amount
+        vm.prank(donor);
+        platform.donate{value: 0.5 ether}(campaignId);
+
+        // Warp past funding deadline
+        vm.warp(block.timestamp + 8 days);
+
+        vm.prank(outsider);
+        platform.markCampaignFailed(campaignId);
+
+        FundingPlatform.Campaign memory campaign = platform.getCampaign(campaignId);
+        assertEq(
+            uint256(campaign.status),
+            uint256(FundingPlatform.CampaignStatus.Failed)
+        );
+    }
+
+    function test_MarkCampaignFailed_RevertsIfGoalAlreadyReached() public {
+        uint256 campaignId = _createApprovedDefaultCampaign();
+        _fundCampaign(campaignId); // goal reached → InProgress
+
+        vm.warp(block.timestamp + 8 days);
+
+        vm.prank(outsider);
+        vm.expectRevert("Campaign is not active");
+        platform.markCampaignFailed(campaignId);
+    }
+
+    function test_MarkCampaignFailed_RevertsBeforeDeadline() public {
+        uint256 campaignId = _createApprovedDefaultCampaign();
+
+        vm.prank(donor);
+        platform.donate{value: 0.5 ether}(campaignId);
+
+        // Still before funding deadline
+        vm.prank(outsider);
+        vm.expectRevert("Funding deadline not reached");
+        platform.markCampaignFailed(campaignId);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // FUNDING REFUND (claimFundingRefund)
+    // ══════════════════════════════════════════════════════════
+
+    function test_ClaimFundingRefund_ReturnsFullAmountToEachDonor() public {
+        uint256 campaignId = _createApprovedDefaultCampaign();
+
+        vm.prank(donor);
+        platform.donate{value: 0.6 ether}(campaignId);
+        vm.prank(donor2);
+        platform.donate{value: 0.3 ether}(campaignId);
+
+        // Fail the campaign
+        vm.warp(block.timestamp + 8 days);
+        platform.markCampaignFailed(campaignId);
+
+        uint256 donorBefore = donor.balance;
+        uint256 donor2Before = donor2.balance;
+
+        vm.prank(donor);
+        platform.claimFundingRefund(campaignId);
+        vm.prank(donor2);
+        platform.claimFundingRefund(campaignId);
+
+        assertEq(donor.balance, donorBefore + 0.6 ether);
+        assertEq(donor2.balance, donor2Before + 0.3 ether);
+    }
+
+    function test_ClaimFundingRefund_RevertsIfAlreadyClaimed() public {
+        uint256 campaignId = _createApprovedDefaultCampaign();
+
+        vm.prank(donor);
+        platform.donate{value: 0.5 ether}(campaignId);
+
+        vm.warp(block.timestamp + 8 days);
+        platform.markCampaignFailed(campaignId);
+
+        vm.prank(donor);
+        platform.claimFundingRefund(campaignId);
+
+        // Try to claim again
+        vm.prank(donor);
+        vm.expectRevert("Nothing to refund");
+        platform.claimFundingRefund(campaignId);
+    }
+
+    function test_ClaimFundingRefund_RevertsIfNotDonor() public {
+        uint256 campaignId = _createApprovedDefaultCampaign();
+
+        vm.prank(donor);
+        platform.donate{value: 0.5 ether}(campaignId);
+
+        vm.warp(block.timestamp + 8 days);
+        platform.markCampaignFailed(campaignId);
+
+        // Outsider (never donated) tries to claim
+        vm.prank(outsider);
+        vm.expectRevert("Nothing to refund");
+        platform.claimFundingRefund(campaignId);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // MILESTONE REFUND EDGE CASES
+    // ══════════════════════════════════════════════════════════
+
+    function test_ClaimMilestoneRefund_RevertsIfAlreadyClaimed() public {
+        uint256 campaignId = _createApprovedDefaultCampaign();
+        _fundCampaign(campaignId);
+
+        FundingPlatform.Milestone memory m0 = platform.getMilestone(campaignId, 0);
+        vm.warp(m0.deadline + 1);
+        platform.markMilestoneFailed(campaignId, 0);
+
+        vm.prank(donor);
+        platform.claimMilestoneRefund(campaignId, 0);
+
+        // Second claim must revert
+        vm.prank(donor);
+        vm.expectRevert("Refund already claimed");
+        platform.claimMilestoneRefund(campaignId, 0);
+    }
+
+    function test_ClaimMilestoneRefund_RevertsIfNotDonor() public {
+        uint256 campaignId = _createApprovedDefaultCampaign();
+        _fundCampaign(campaignId);
+
+        FundingPlatform.Milestone memory m0 = platform.getMilestone(campaignId, 0);
+        vm.warp(m0.deadline + 1);
+        platform.markMilestoneFailed(campaignId, 0);
+
+        // Outsider never donated
+        vm.prank(outsider);
+        vm.expectRevert("No donation to refund");
+        platform.claimMilestoneRefund(campaignId, 0);
+    }
+
+    function test_ClaimMilestoneRefund_ProRataWith3Donors() public {
+        uint16[] memory bps = _threeMilestoneAllocationBps();
+        uint256[] memory deadlines = _threeMilestoneDeadlines();
+        uint256 campaignId = _createCampaign(bps, deadlines);
+        _approveCampaign(campaignId);
+
+        address donor3 = makeAddr("donor3");
+        vm.deal(donor3, 10 ether);
+
+        // 3 donors contributing 50%, 30%, 20%
+        vm.prank(donor);  platform.donate{value: 0.5 ether}(campaignId);
+        vm.prank(donor2); platform.donate{value: 0.3 ether}(campaignId);
+        vm.prank(donor3); platform.donate{value: 0.2 ether}(campaignId);
+
+        // Fail milestone 0
+        FundingPlatform.Milestone memory m0 = platform.getMilestone(campaignId, 0);
+        vm.warp(m0.deadline + 1);
+        platform.markMilestoneFailed(campaignId, 0);
+
+        uint256 d1Before = donor.balance;
+        uint256 d2Before = donor2.balance;
+        uint256 d3Before = donor3.balance;
+
+        vm.prank(donor);  platform.claimMilestoneRefund(campaignId, 0);
+        vm.prank(donor2); platform.claimMilestoneRefund(campaignId, 0);
+        vm.prank(donor3); platform.claimMilestoneRefund(campaignId, 0);
+
+        // totalRaised = 1 ether, m0 auto-disbursed 20% = 0.2 ether → remaining = 0.8 ether
+        // donor(50%) → 0.4, donor2(30%) → 0.24, donor3(20%) → 0.16
+        assertEq(donor.balance,  d1Before + 0.4 ether);
+        assertEq(donor2.balance, d2Before + 0.24 ether);
+        assertEq(donor3.balance, d3Before + 0.16 ether);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // CERTIFICATE NFT EDGE CASES
+    // ══════════════════════════════════════════════════════════
+
+    function test_MintCertificate_RevertsIfNotDonor() public {
+        uint256 campaignId = _createApprovedDefaultCampaign();
+        _fundCampaign(campaignId);
+
+        vm.prank(outsider); // never donated
+        vm.expectRevert("You have not donated");
+        platform.mintCertificate(campaignId);
+    }
+
+    function test_MintCertificate_RevertsIfDuplicateMint() public {
+        uint256 campaignId = _createApprovedDefaultCampaign();
+        _fundCampaign(campaignId);
+
+        vm.prank(donor);
+        platform.mintCertificate(campaignId);
+
+        vm.prank(donor);
+        vm.expectRevert("Certificate already minted");
+        platform.mintCertificate(campaignId);
+    }
+
+    function test_MintCertificate_RevertsIfCampaignNotStarted() public {
+        uint256 campaignId = _createApprovedDefaultCampaign();
+        // Campaign is Active (funded partially), not InProgress
+
+        vm.prank(donor);
+        vm.expectRevert("Certificate not available yet");
+        platform.mintCertificate(campaignId);
+    }
+
+    function test_GetCertificates_ReturnsAllTokenIds() public {
+        uint256 campaignId = _createApprovedDefaultCampaign();
+        _fundCampaign(campaignId);
+
+        vm.prank(donor);
+        platform.mintCertificate(campaignId);
+
+        uint256[] memory certs = platform.getCertificates(donor);
+        assertEq(certs.length, 1);
+        assertEq(platform.tokenToCampaign(certs[0]), campaignId);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // SAFE REVIEWER PERMISSIONS
+    // ══════════════════════════════════════════════════════════
+
+    function test_AddReviewerSafe_RevertsIfNotAdmin() public {
+        address newSafe = makeAddr("newSafe");
+
+        vm.prank(outsider);
+        vm.expectRevert();
+        platform.addReviewerSafe(newSafe);
+    }
+
+    function test_AddReviewerSafe_RevertsIfAlreadyApproved() public {
+        vm.expectRevert("Reviewer already approved");
+        platform.addReviewerSafe(reviewerSafe); // already added in setUp
+    }
+
+    function test_ReviewerSafe_CanApproveMilestone() public {
+        uint256 campaignId = _createApprovedDefaultCampaign();
+        _fundCampaign(campaignId);
+
+        vm.prank(creator);
+        platform.submitMilestoneProof(campaignId, 0, CID_1);
+
+        // Only the campaign-specific reviewer safe should work
+        vm.prank(reviewerSafe);
+        platform.approveMilestone(campaignId, 0);
+
+        assertEq(
+            uint256(platform.getMilestone(campaignId, 0).status),
+            uint256(FundingPlatform.MilestoneStatus.Disbursed)
+        );
+    }
+
+    function test_WrongReviewerSafe_CannotApproveMilestone() public {
+        uint256 campaignId = _createApprovedDefaultCampaign();
+        _fundCampaign(campaignId);
+
+        vm.prank(creator);
+        platform.submitMilestoneProof(campaignId, 0, CID_1);
+
+        // Create a second (different) approved safe
+        MockSafe safe2 = new MockSafe();
+        platform.addReviewerSafe(address(safe2));
+
+        // safe2 is approved globally but NOT this campaign's reviewer
+        vm.prank(address(safe2));
+        vm.expectRevert("Wrong reviewer");
+        platform.approveMilestone(campaignId, 0);
     }
 }

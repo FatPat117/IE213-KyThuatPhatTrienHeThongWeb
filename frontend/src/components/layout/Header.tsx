@@ -1,12 +1,12 @@
 "use client";
 
 import NotificationBell from "@/components/layout/NotificationBell";
-import WalletConnectButton from "@/components/wallet/WalletConnectButton";
-import { contractConfig, useAuth, useReadContractOwner } from "@/lib";
+import dynamic from "next/dynamic";
+const WalletConnectButton = dynamic(() => import("@/components/wallet/WalletConnectButton"), { ssr: false });
+import { useAuth, useIsReviewer, useReadContractOwner } from "@/lib";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useReadContract } from "wagmi";
 
 function isLinkActive(href: string, pathname: string): boolean {
     if (href === "/campaigns") {
@@ -27,9 +27,11 @@ export default function Header() {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
     const { token, user } = useAuth();
-    const { owner } = useReadContractOwner();
+    const { isAdminOnChain } = useReadContractOwner();
+    const { isReviewer } = useIsReviewer();
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setIsMounted(true);
     }, []);
 
@@ -39,42 +41,7 @@ export default function Header() {
     const isSignedIn = isMounted ? Boolean(token && user?.wallet) : false;
     const walletAddress = (user?.wallet || "").trim().toLowerCase();
 
-    // Contract exposes `reviewerSafes(address) => bool` (not `isActiveReviewer`)
-    const { data: isReviewerSafeOnChain } = useReadContract({
-        address: contractConfig.address,
-        abi: [
-            {
-                type: "function",
-                name: "reviewerSafes",
-                stateMutability: "view",
-                inputs: [{ name: "safe", type: "address" }],
-                outputs: [{ name: "", type: "bool" }],
-            },
-        ] as const,
-        functionName: "reviewerSafes",
-        args: walletAddress ? [walletAddress as `0x${string}`] : undefined,
-        query: {
-            enabled: Boolean(walletAddress),
-            staleTime: 30_000,
-            refetchOnWindowFocus: true,
-        },
-    });
-
-    const roleFromAuth = (user?.role || "").toString().trim().toLowerCase();
-    const isReviewerByRole = roleFromAuth === "reviewer";
-    const isReviewer = isSignedIn && (Boolean(isReviewerSafeOnChain) || isReviewerByRole);
-    const adminWallets = (process.env.NEXT_PUBLIC_ADMIN_WALLETS || "")
-        .split(",")
-        .map((item) => item.trim().toLowerCase())
-        .filter((item) => /^0x[a-f0-9]{40}$/.test(item));
-    const isAdminByOwner =
-        Boolean(walletAddress) && Boolean(owner) && walletAddress === owner;
-    const isAdminByRole = roleFromAuth === "admin";
-    const isAdminByConfig =
-        Boolean(walletAddress) && adminWallets.includes(walletAddress);
-    const isAdmin =
-        Boolean(walletAddress) &&
-        (isAdminByOwner || isAdminByRole || isAdminByConfig);
+    const isAdmin = Boolean(walletAddress) && isAdminOnChain;
 
     const publicLinks: Array<{ href: string; label: string }> = [
         { href: "/", label: "Trang chủ" },
@@ -85,14 +52,23 @@ export default function Header() {
     // Only compute role-based links on client to avoid hydration mismatch
     if (isMounted) {
         if (isSignedIn && !isAdmin) {
-            roleLinks.push({ href: "/my-campaigns", label: "Campaign của tôi" });
+            roleLinks.push({
+                href: "/my-campaigns",
+                label: "Các chiến dịch của tôi",
+            });
         }
         if (isReviewer && !isAdmin) {
-            roleLinks.push({ href: "/reviewer", label: "Duyệt milestone" });
+            roleLinks.push({ href: "/reviewer", label: "Các mốc đang chờ duyệt" });
         }
         if (isAdmin) {
-            roleLinks.push({ href: "/admin/campaigns", label: "Duyệt campaign" });
-            roleLinks.push({ href: "/admin/reviewers", label: "Quản lý Reviewer" });
+            roleLinks.push({
+                href: "/admin/campaigns",
+                label: "Duyệt các chiến dịch mới",
+            });
+            roleLinks.push({
+                href: "/admin/reviewers",
+                label: "Quản lý danh sách kiểm duyệt viên",
+            });
         }
     }
 
@@ -100,25 +76,20 @@ export default function Header() {
 
     // Các trang cá nhân gom vào nhóm "Tài khoản" để header gọn hơn
     const accountLinks = [
-        { href: "/my-campaigns", label: "Campaign của tôi" },
-        { href: "/campaigns/create", label: "Tạo campaign mới" },
         { href: "/donations", label: "Quyên góp của tôi" },
-        { href: "/settings", label: "Cài đặt" },
+        { href: "/settings", label: "Hồ sơ & cài đặt" },
     ];
     const visibleAccountLinks = isAdmin
         ? [
-              { href: "/admin/campaigns", label: "Duyệt campaign" },
-              { href: "/admin/reviewers", label: "Quản lý Reviewer" },
               { href: "/donations", label: "Quyên góp của tôi" },
-              { href: "/settings", label: "Cài đặt" },
+              { href: "/settings", label: "Hồ sơ & cài đặt" },
           ]
-        : isReviewer
-          ? [...accountLinks, { href: "/reviewer", label: "Duyệt milestone (Reviewer)" }]
-          : accountLinks;
+        : accountLinks;
+
 
     return (
         <>
-            <header className="sticky top-0 z-50 bg-gradient-to-r from-white via-slate-50 to-white border-b border-slate-200/50 shadow-sm backdrop-blur-md bg-opacity-95">
+            <header className="sticky top-0 z-90 bg-gradient-to-r from-white via-slate-50 to-white border-b border-slate-200/50 shadow-sm backdrop-blur-md bg-opacity-95">
                 {/* Alert Banner - Only show if no MetaMask */}
                 {!hasProvider && (
                     <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border-b border-amber-200 px-4 sm:px-6 lg:px-8">
@@ -136,7 +107,7 @@ export default function Header() {
                                 href="https://metamask.io/download/"
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg bg-amber-600 text-white text-xs sm:text-sm font-semibold hover:bg-amber-700 transition"
+                                className="whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg bg-amber-700 text-white text-xs sm:text-sm font-semibold hover:bg-amber-800 transition"
                             >
                                 Cài đặt
                             </a>
@@ -157,9 +128,9 @@ export default function Header() {
                             <p className="text-xs font-semibold text-blue-600 tracking-widest uppercase leading-none">
                                 FundRaising
                             </p>
-                            <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent">
+                            <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent">
                                 dApp
-                            </h1>
+                            </span>
                         </div>
                     </Link>
 
@@ -188,43 +159,42 @@ export default function Header() {
                     </div>
 
                     {/* Right Section - Wallet Button + Account Dropdown */}
-                    <div className="flex items-center gap-3">
-                        {isSignedIn && <NotificationBell token={token} />}
-                        {isSignedIn ? (
+                    <div className="flex items-center gap-3 min-w-[140px] justify-end">
+                        <div className="flex items-center gap-3">
+                            {isSignedIn && <NotificationBell token={token} />}
                             <div className="relative hidden md:block group">
                                 <WalletConnectButton />
-                                {/* THE INVISIBLE BRIDGE FIX IS ADDED HERE */}
-                                <div className="invisible absolute right-0 top-full z-40 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 text-sm text-slate-700 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 before:absolute before:-top-2 before:left-0 before:h-2 before:w-full before:content-['']">
-                                    {visibleAccountLinks.map((link) => {
-                                        const active = isLinkActive(
-                                            link.href,
-                                            pathname ?? "",
-                                        );
-                                        return (
-                                            <Link
-                                                key={link.href}
-                                                href={link.href}
-                                                className={`block rounded-lg px-3 py-2 text-xs font-medium ${
-                                                    active
-                                                        ? "bg-blue-50 text-blue-700"
-                                                        : "hover:bg-slate-50 hover:text-blue-600"
-                                                }`}
-                                            >
-                                                {link.label}
-                                            </Link>
-                                        );
-                                    })}
-                                </div>
+                                {isSignedIn && (
+                                    <div className="invisible absolute right-0 top-full z-40 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 text-sm text-slate-700 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 before:absolute before:-top-2 before:left-0 before:h-2 before:w-full before:content-['']">
+                                        {visibleAccountLinks.map((link) => {
+                                            const active = isLinkActive(
+                                                link.href,
+                                                pathname ?? "",
+                                            );
+                                            return (
+                                                <Link
+                                                    key={link.href}
+                                                    href={link.href}
+                                                    className={`block rounded-lg px-3 py-2 text-xs font-medium ${
+                                                        active
+                                                            ? "bg-blue-50 text-blue-700"
+                                                            : "hover:bg-slate-50 hover:text-blue-600"
+                                                    }`}
+                                                >
+                                                    {link.label}
+                                                </Link>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
-                        ) : (
-                            <WalletConnectButton />
-                        )}
 
-                        {isSignedIn && (
-                            <div className="md:hidden">
-                                <WalletConnectButton />
-                            </div>
-                        )}
+                            {isSignedIn && (
+                                <div className="md:hidden">
+                                    <WalletConnectButton />
+                                </div>
+                            )}
+                        </div>
 
                         <button
                             onClick={() =>

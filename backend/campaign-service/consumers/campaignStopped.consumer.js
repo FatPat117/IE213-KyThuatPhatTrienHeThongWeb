@@ -1,6 +1,7 @@
 const { getChannel, EXCHANGE } = require("../config/rabbitmq");
-const { Campaign } = require("../models");
+const { Campaign, Donation } = require("../models");
 const { recordTransaction } = require("../utils/recordTransaction");
+const notificationService = require("../services/notification.service");
 
 const QUEUE =
     process.env.RABBITMQ_QUEUE_CAMPAIGN_STOPPED || "campaign.stopped.queue";
@@ -42,11 +43,48 @@ async function startCampaignStoppedConsumer() {
                 onChainId: campaignOnChainId,
             });
             if (campaign) {
-                campaign.status = "partial_failed";
-                campaign.remainingWei = (
-                    payload.remainingWei || "0"
-                ).toString();
-                await campaign.save();
+                // Call handleCampaignCascadeFailure to update status and create refund records
+                const { handleCampaignCascadeFailure } = require("../services/refundService");
+                await handleCampaignCascadeFailure(campaignOnChainId);
+
+                // --- Notify Creator ---
+                if (campaign.creator) {
+                    await notificationService.createNotification({
+                        recipientWallet: campaign.creator,
+                        type: "campaign_failed",
+                        title: "Chiến dịch đã bị dừng",
+                        message: `Chiến dịch "${campaign.title || `#${campaignOnChainId}`}" đã bị dừng. Những người ủng hộ có thể yêu cầu hoàn trả số tiền còn lại.`,
+                        campaignOnChainId: Number(campaignOnChainId),
+                        txHash: payload.txHash || "",
+                    });
+                }
+
+                // --- Notify Donors ---
+                try {
+                    const uniqueDonors = await Donation.distinct("donorWallet", {
+                        campaignOnChainId: Number(campaignOnChainId),
+                    });
+
+                    if (uniqueDonors.length > 0) {
+                        const donorTitle = "Chiến dịch bạn ủng hộ đã bị dừng";
+                        const donorMessage = `Chiến dịch "${campaign?.title || `#${campaignOnChainId}`}" đã bị dừng lại. Bạn có thể thực hiện yêu cầu hoàn lại tiền tại trang chi tiết chiến dịch.`;
+
+                        await Promise.all(
+                            uniqueDonors.map((donorWallet) =>
+                                notificationService.createNotification({
+                                    recipientWallet: donorWallet,
+                                    type: "campaign_failed",
+                                    title: donorTitle,
+                                    message: donorMessage,
+                                    campaignOnChainId: Number(campaignOnChainId),
+                                    txHash: payload.txHash || "",
+                                }),
+                            ),
+                        );
+                    }
+                } catch (notifyErr) {
+                    console.error(`[campaign-service] Failed to notify donors for campaign stopped ${campaignOnChainId}:`, notifyErr.message);
+                }
 
                 await recordTransaction({
                     txHash: payload.txHash,

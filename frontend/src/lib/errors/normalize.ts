@@ -15,18 +15,54 @@ const DEFAULT_MESSAGES: Record<ErrorSource, string> = {
     unknown: "Đã có lỗi xảy ra. Vui lòng thử lại.",
 };
 
+function collectErrorTextParts(
+    error: unknown,
+    seen: Set<unknown>,
+    depth: number,
+): string[] {
+    if (!error || depth > 6) return [];
+    if (typeof error === "string") return [error];
+    if (seen.has(error)) return [];
+    seen.add(error);
+
+    const parts: string[] = [];
+
+    if (error instanceof Error && error.name) {
+        parts.push(error.name);
+    }
+
+    if (typeof error === "object") {
+        const o = error as Record<string, unknown>;
+        for (const key of ["message", "shortMessage", "details", "reason"]) {
+            const v = o[key];
+            if (typeof v === "string" && v.trim()) parts.push(v);
+        }
+        if (o.code === 4001 || o.code === "4001") {
+            parts.push("User rejected the request.");
+        }
+        if (typeof o.code === "string" && o.code === "ACTION_REJECTED") {
+            parts.push("User rejected the request.");
+        }
+        if (o.cause) {
+            parts.push(...collectErrorTextParts(o.cause, seen, depth + 1));
+        }
+        if (o.data && typeof o.data === "object") {
+            parts.push(...collectErrorTextParts(o.data, seen, depth + 1));
+        }
+    }
+
+    if (parts.length === 0) {
+        return [String(error)];
+    }
+    return parts;
+}
+
 function extractMessage(error: unknown): string {
     if (!error) return "";
-    if (typeof error === "string") return error;
-    if (error instanceof Error) return error.message || "";
-    if (
-        typeof error === "object" &&
-        "message" in (error as { message?: unknown })
-    ) {
-        const message = (error as { message?: unknown }).message;
-        return typeof message === "string" ? message : "";
-    }
-    return String(error);
+    const combined = collectErrorTextParts(error, new Set(), 0)
+        .join("\n")
+        .trim();
+    return combined || String(error);
 }
 
 function normalizeBackendByStatus(status?: number): string | null {
@@ -74,8 +110,8 @@ function normalizeBackendByMessage(rawMessage: string): string | null {
 
 function normalizeWalletOrChainMessage(rawMessage: string): string | null {
     const message = rawMessage.toLowerCase();
-    if (message.includes("user rejected") || message.includes("user denied")) {
-        return "Bạn đã từ chối yêu cầu trong ví.";
+    if (isWalletUserRejectedMessage(rawMessage)) {
+        return "Bạn đã hủy thao tác xác nhận trong MetaMask.";
     }
     if (
         message.includes("not been authorized") ||
@@ -92,8 +128,15 @@ function normalizeWalletOrChainMessage(rawMessage: string): string | null {
     if (message.includes("gas limit too high")) {
         return "Ước lượng gas vượt giới hạn block. Vui lòng thử lại.";
     }
-    if (message.includes("wrong network") || message.includes("chain id")) {
-        return "Sai mạng. Vui lòng chuyển sang Sepolia.";
+    if (
+        message.includes("wrong network") ||
+        message.includes("chain id") ||
+        message.includes("chain mismatch") ||
+        message.includes("ensure the chain") ||
+        message.includes("switch chain") ||
+        message.includes("invalid chain")
+    ) {
+        return "Sai mạng. Vui lòng chuyển sang Sepolia trong MetaMask.";
     }
     if (message.includes("deadline not reached")) {
         return "Chưa tới hạn chiến dịch nên chưa thể thực hiện.";
@@ -125,24 +168,42 @@ function normalizeWalletOrChainMessage(rawMessage: string): string | null {
     return null;
 }
 
+export function isWalletUserRejectedMessage(rawMessage: string): boolean {
+    const message = (rawMessage || "").toLowerCase();
+    return (
+        message.includes("bạn đã hủy thao tác xác nhận trong metamask.") ||
+        message.includes("user rejected") ||
+        message.includes("user denied") ||
+        message.includes("rejected the request") ||
+        message.includes("request rejected") ||
+        message.includes("denied transaction") ||
+        message.includes("userrejected") ||
+        message.includes("action_rejected") ||
+        message.includes("cancelled") ||
+        message.includes("canceled")
+    );
+}
+
 function buildMessage(
     source: ErrorSource,
     error: unknown,
     options?: ErrorMessageOptions,
 ): string {
-    const rawMessage = extractMessage(error).trim();
+    const rawMessage = extractMessage(error).replace(/\s+/g, " ").trim();
     const statusMessage =
         source === "backend" ? normalizeBackendByStatus(options?.status) : null;
     const messageMatch =
         source === "backend"
             ? normalizeBackendByMessage(rawMessage)
             : normalizeWalletOrChainMessage(rawMessage);
+    const shouldHideLongRawMessage =
+        source !== "backend" && rawMessage.length > 220;
 
     return (
         messageMatch ||
         statusMessage ||
         options?.fallback ||
-        rawMessage ||
+        (!shouldHideLongRawMessage ? rawMessage : null) ||
         DEFAULT_MESSAGES[source]
     );
 }

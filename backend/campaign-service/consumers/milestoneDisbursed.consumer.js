@@ -2,6 +2,7 @@ const { getChannel, EXCHANGE } = require("../config/rabbitmq");
 const { Campaign, Milestone } = require("../models");
 const { recordTransaction } = require("../utils/recordTransaction");
 const notificationService = require("../services/notification.service");
+const { getSafeOwners } = require("../utils/safeUtils");
 
 const QUEUE =
     process.env.RABBITMQ_QUEUE_MILESTONE_DISBURSED ||
@@ -65,24 +66,37 @@ async function startMilestoneDisbursedConsumer() {
                 ).toString();
                 campaign.currentMilestoneId = milestoneId + 1;
 
-                if (
-                    campaign.currentMilestoneId >=
-                        Number(campaign.milestoneCount) &&
-                    campaign.status !== "partial_failed"
-                ) {
-                    campaign.status = "completed";
-                }
-
+                campaign.currentMilestoneId = milestoneId + 1;
+                // Status "completed" is now handled in milestoneApproved consumer
                 await campaign.save();
             }
 
-            // Thông báo cho reviewer biết có milestone mới được mở khóa
+            // Thông báo cho từng EOA owner của reviewerSafe (không phải Safe address)
             if (campaign?.reviewerSafe && /^0x[a-f0-9]{40}$/i.test(campaign.reviewerSafe)) {
+                const safeAddress = campaign.reviewerSafe.toLowerCase();
+                const safeOwners = await getSafeOwners(safeAddress);
+                const notifyTargets = safeOwners.length > 0 ? safeOwners : [safeAddress];
+                await Promise.all(
+                    notifyTargets.map((ownerWallet) =>
+                        notificationService.createNotification({
+                            recipientWallet: ownerWallet,
+                            type: "milestone_disbursed",
+                            title: "Milestone mới được mở khóa",
+                            message: `Milestone #${milestoneId + 1} của chiến dịch #${campaignOnChainId} vừa được giải ngân và đang chờ creator nộp bằng chứng. Hãy chuẩn bị duyệt.`,
+                            campaignOnChainId,
+                            txHash: payload.txHash || "",
+                        }),
+                    ),
+                );
+            }
+
+            // Thông báo cho Creator (Chỉ báo về việc giải ngân, không báo thành công ở đây)
+            if (campaign?.creator) {
                 await notificationService.createNotification({
-                    recipientWallet: campaign.reviewerSafe.toLowerCase(),
+                    recipientWallet: campaign.creator,
                     type: "milestone_disbursed",
-                    title: "Milestone mới được mở khóa",
-                    message: `Milestone #${milestoneId} của campaign #${campaignOnChainId} vừa được giải ngân và đang chờ creator nộp bằng chứng. Hãy chuẩn bị duyệt.`,
+                    title: "Kinh phí mốc đã được giải ngân",
+                    message: `Kinh phí cho milestone #${milestoneId + 1} của chiến dịch "${campaign.title}" đã được chuyển vào tài khoản của bạn.`,
                     campaignOnChainId,
                     txHash: payload.txHash || "",
                 });

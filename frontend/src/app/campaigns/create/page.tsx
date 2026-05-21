@@ -13,6 +13,7 @@ import {
     contractConfig,
     createTransaction,
     getCampaignIndexStatus,
+    getAdminReviewerProfiles,
     saveCampaignMetadataToCache,
     updateCampaignMetadata,
     useAuth,
@@ -49,7 +50,7 @@ export default function CreateCampaignPage() {
     const chainId = useChainId();
     const isSepoliaNetwork = chainId === SEPOLIA_CHAIN_ID;
     const isClient = useSyncExternalStore(
-        () => () => {},
+        () => () => { },
         () => true,
         () => false,
     );
@@ -169,17 +170,57 @@ export default function CreateCampaignPage() {
         | "confirming"
         | "success"
         | "error" = transactionError
-        ? "error"
-        : isTxReverted
-          ? "error"
-          : isConfirmed
-            ? "success"
-            : isConfirming
-              ? "confirming"
-              : isPending
-                ? "pending"
-                : "idle";
+            ? "error"
+            : isTxReverted
+                ? "error"
+                : isConfirmed
+                    ? "success"
+                    : isConfirming
+                        ? "confirming"
+                        : isPending
+                            ? "pending"
+                            : "idle";
     const isFormBusy = isPending || isConfirming;
+
+    const [reviewerProfileByWallet, setReviewerProfileByWallet] = useState<
+        Map<string, { organizationName: string; region: string }>
+    >(new Map());
+
+    useEffect(() => {
+        let cancelled = false;
+        if (!token) {
+            setReviewerProfileByWallet(new Map());
+            return;
+        }
+
+        getAdminReviewerProfiles(token)
+            .then((profiles) => {
+                if (cancelled) return;
+                const next = new Map<
+                    string,
+                    { organizationName: string; region: string }
+                >();
+                for (const profile of profiles) {
+                    const wallet = (profile.walletAddress || "")
+                        .trim()
+                        .toLowerCase();
+                    if (!/^0x[a-f0-9]{40}$/.test(wallet)) continue;
+                    next.set(wallet, {
+                        organizationName: (profile.organizationName || "").trim(),
+                        region: (profile.region || "").trim(),
+                    });
+                }
+                setReviewerProfileByWallet(next);
+            })
+            .catch(() => {
+                if (cancelled) return;
+                setReviewerProfileByWallet(new Map());
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [token]);
 
     useEffect(() => {
         const options = Array.from(
@@ -188,12 +229,17 @@ export default function CreateCampaignPage() {
                     .map((safe) => safe.toLowerCase().trim())
                     .filter((safe) => /^0x[a-f0-9]{40}$/.test(safe)),
             ),
-        ).map((safe) => ({
-            value: safe,
-            label: `${safe.slice(0, 10)}...${safe.slice(-6)}`,
-        }));
+        ).map((safe) => {
+            const profile = reviewerProfileByWallet.get(safe);
+            const organization = profile?.organizationName || "Chưa rõ tổ chức";
+            const region = profile?.region || "Chưa rõ địa phương";
+            return {
+                value: safe,
+                label: `${safe.slice(0, 10)}...${safe.slice(-6)} - ${organization} - ${region}`,
+            };
+        });
         setReviewerOptions(options);
-    }, [reviewerSafesQuery.reviewerSafes]);
+    }, [reviewerProfileByWallet, reviewerSafesQuery.reviewerSafes]);
 
     useEffect(() => {
         if (!formData.reviewerSafe && reviewerOptions.length > 0) {
@@ -233,8 +279,9 @@ export default function CreateCampaignPage() {
         saveCampaignMetadataToCache(createdCampaignId, {
             title: formData.title,
             description: formData.description,
+            thumbnailUrl: thumbnailPreview || undefined,
         });
-    }, [createdCampaignId, formData.description, formData.title, isConfirmed]);
+    }, [createdCampaignId, formData.description, formData.title, isConfirmed, thumbnailPreview]);
 
     useEffect(() => {
         if (!isConfirmed || !createdCampaignId || metadataSynced || !token)
@@ -357,13 +404,17 @@ export default function CreateCampaignPage() {
 
         if (metadataSynced) {
             // Metadata đã được sync → chuyển hướng ngay
-            showSuccessToast("Tạo chiến dịch thành công! Đang chuyển tới trang chi tiết...");
+            showSuccessToast(
+                "Chiến dịch đã được tạo thành công và đang chờ được duyệt.",
+            );
             const timer = setTimeout(() => router.push(target), 800);
             return () => clearTimeout(timer);
         }
 
         // Hard timeout: chờ tối đa 15s rồi redirect dù chưa sync xong
-        showSuccessToast("Tạo chiến dịch thành công! Đang đồng bộ dữ liệu...");
+        showSuccessToast(
+            "Chiến dịch đã được tạo thành công và đang chờ được duyệt.",
+        );
         const timer = setTimeout(() => router.push(target), 15_000);
         return () => clearTimeout(timer);
     }, [createdCampaignId, metadataSynced, router, transactionStatus]);
@@ -574,7 +625,7 @@ export default function CreateCampaignPage() {
 
                                     const campaignFundingDeadline = Math.floor(
                                         new Date(formData.deadline).getTime() /
-                                            1000,
+                                        1000,
                                     );
                                     const milestoneDeadlines =
                                         nextMilestones.map((milestone) =>
@@ -634,7 +685,7 @@ export default function CreateCampaignPage() {
                                             return Math.round(
                                                 (milestone.goal /
                                                     totalGoalEth) *
-                                                    10_000,
+                                                10_000,
                                             );
                                         },
                                     );
@@ -683,6 +734,16 @@ export default function CreateCampaignPage() {
                                         );
                                     }
 
+                                    // DEBUG LOG
+                                    console.log("[CreateCampaign] Gửi contract:", {
+                                        goalWei: parseEther(formData.goalEth).toString(),
+                                        allocationBps,
+                                        deadlines: milestoneDeadlines,
+                                        fundingDeadline: campaignFundingDeadline,
+                                        reviewerSafe,
+                                        now: Math.floor(Date.now() / 1000)
+                                    });
+
                                     const txHash = await createCampaign({
                                         goalWei: parseEther(formData.goalEth),
                                         allocationBps,
@@ -697,9 +758,10 @@ export default function CreateCampaignPage() {
                                         `Đã gửi giao dịch ${shortenHash(txHash)}. Đang chờ xác nhận trên blockchain...`,
                                     );
                                 } catch (err) {
+                                    console.error("❌ [CreateCampaign] Lỗi:", err);
                                     const message = getChainErrorMessage(err, {
                                         fallback:
-                                            "Không thể gửi giao dịch. Vui lòng thử lại.",
+                                            "Không thể gửi giao dịch. Hãy xem Console (F12) để biết lý do chi tiết.",
                                     });
                                     setManualError(message);
                                     showErrorToast(message);

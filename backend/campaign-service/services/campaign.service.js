@@ -1,4 +1,5 @@
 const { Campaign, Milestone } = require("../models");
+const { clearPrefix, delCache } = require("../utils/cache");
 
 const BPS_DENOMINATOR = 10000;
 
@@ -26,16 +27,107 @@ function normalizeAllocationBps(raw, goalWei, financialTargetWei) {
     return Number((target * BigInt(BPS_DENOMINATOR)) / goal);
 }
 
-async function getAllCampaigns(filter = {}) {
+async function getAllCampaigns(filter = {}, pagination = {}) {
     const query = {};
     if (filter.status) query.status = filter.status;
     if (filter.creator) query.creator = filter.creator.toLowerCase();
 
-    return Campaign.find(query).sort({ createdAt: -1 });
+    const page = Math.max(Number(pagination.page) || 1, 1);
+    const limit = Math.min(Math.max(Number(pagination.limit) || 0, 0), 200);
+
+    const total = await Campaign.countDocuments(query);
+
+    let queryBuilder = Campaign.find(query).sort({ createdAt: -1 });
+    if (limit > 0) {
+        queryBuilder = queryBuilder.skip((page - 1) * limit).limit(limit);
+    }
+
+    const campaigns = await queryBuilder;
+    return { campaigns, total, page, limit };
 }
 
 async function getCampaignById(onChainId) {
-    return Campaign.findOne({ onChainId: Number(onChainId) });
+    let campaign = await Campaign.findOne({ onChainId: Number(onChainId) });
+    if (campaign && (campaign.status === "active" || campaign.status === "in_progress")) {
+        // Check if it's potentially expired
+        const now = new Date();
+        const isExpired = campaign.deadline < now;
+        
+        // If expired, we MUST await the update so the response is fresh
+        if (isExpired) {
+            console.log(`[campaign.service] Campaign #${onChainId} detected as expired during fetch. Awaiting auto-failure...`);
+            await checkAndTriggerAutoFailure(Number(onChainId));
+            // Re-fetch to get updated status
+            campaign = await Campaign.findOne({ onChainId: Number(onChainId) });
+        } else {
+            // Still run background check for milestones even if campaign deadline is not met
+            checkAndTriggerAutoFailure(Number(onChainId)).catch(err => 
+                console.error(`[campaign.service] Auto-failure background check failed for #${onChainId}:`, err.message)
+            );
+        }
+    }
+    return campaign;
+}
+
+/**
+ * Automates the failure of a campaign if a milestone deadline has passed.
+ * @param {number} onChainId 
+ */
+async function checkAndTriggerAutoFailure(onChainId) {
+    const campaign = await Campaign.findOne({ onChainId });
+    if (!campaign || (campaign.status !== "active" && campaign.status !== "in_progress")) {
+        return;
+    }
+
+    const milestones = await Milestone.find({ campaignOnChainId: onChainId });
+    const now = new Date();
+
+    // 1. Check for milestone deadlines
+    let failedMilestoneId = null;
+    for (const milestone of milestones) {
+        if (["pending_verification", "submitted", "resubmittable"].includes(milestone.status)) {
+            if (milestone.deadline && milestone.deadline < now) {
+                console.log(`[campaign.service] Milestone #${milestone.milestoneId} of Campaign #${onChainId} expired at ${milestone.deadline.toISOString()}`);
+                failedMilestoneId = milestone.milestoneId;
+                
+                milestone.status = "failed";
+                milestone.failureReason = "DEADLINE_EXCEEDED_AUTO";
+                milestone.failedAt = now;
+                await milestone.save();
+                break; // Only fail the first detected expired milestone
+            }
+        }
+    }
+
+    // 2. Check for funding deadline failure
+    let isFundingFailure = false;
+    if (failedMilestoneId === null && campaign.status === "active") {
+        if (campaign.deadline && campaign.deadline < now) {
+            const raised = toBigInt(campaign.totalRaisedWei || "0", "totalRaisedWei");
+            const goal = toBigInt(campaign.goalWei || "0", "goalWei");
+            
+            if (raised < goal) {
+                console.log(`[campaign.service] Campaign #${onChainId} funding deadline expired at ${campaign.deadline.toISOString()}`);
+                isFundingFailure = true;
+            }
+        }
+    }
+
+    if (failedMilestoneId !== null || isFundingFailure) {
+        console.log(`[campaign.service] Triggering cascade failure for Campaign #${onChainId} due to expiration...`);
+        const { handleCampaignCascadeFailure } = require("./refundService");
+        const { publishMilestoneFailed } = require("../utils/publishMilestoneFailed");
+
+        // Trigger cascade (status update + refunds)
+        await handleCampaignCascadeFailure(onChainId);
+
+        // Sync to blockchain
+        await publishMilestoneFailed({
+            campaignId: onChainId,
+            milestoneId: failedMilestoneId !== null ? failedMilestoneId : undefined,
+            reason: isFundingFailure ? "funding_deadline_not_reached_goal" : "AUTO_EXPIRATION_SYNC",
+        });
+    }
 }
 
 async function upsertCampaign(data) {
@@ -50,23 +142,55 @@ async function upsertCampaign(data) {
         totalDisbursedWei: (rest.totalDisbursedWei || "0").toString(),
     };
 
-    return Campaign.findOneAndUpdate(
+    const updated = await Campaign.findOneAndUpdate(
         { onChainId: Number(onChainId) },
         { $set: { onChainId: Number(onChainId), ...normalized } },
         { upsert: true, new: true, runValidators: true },
     );
+
+    // Invalidate cache
+    await delCache(`campaign:detail:${onChainId}`);
+    await clearPrefix("campaign:list:*");
+
+    return updated;
 }
 
 async function updateCampaignStatus(onChainId, status) {
-    return Campaign.findOneAndUpdate(
+    const updated = await Campaign.findOneAndUpdate(
         { onChainId: Number(onChainId) },
         { $set: { status } },
         { new: true },
     );
+
+    // Invalidate cache
+    await delCache(`campaign:detail:${onChainId}`);
+    await clearPrefix("campaign:list:*");
+
+    return updated;
+}
+
+async function rejectCampaign(onChainId, reason) {
+    const updated = await Campaign.findOneAndUpdate(
+        { onChainId: Number(onChainId) },
+        {
+            $set: {
+                status: "cancelled",
+                rejectionReason: reason,
+                rejectedAt: new Date(),
+            },
+        },
+        { new: true },
+    );
+
+    // Invalidate cache
+    await delCache(`campaign:detail:${onChainId}`);
+    await clearPrefix("campaign:list:*");
+
+    return updated;
 }
 
 async function updateRaised(onChainId, raisedWei) {
-    return Campaign.findOneAndUpdate(
+    const updated = await Campaign.findOneAndUpdate(
         { onChainId: Number(onChainId) },
         {
             $set: {
@@ -76,8 +200,13 @@ async function updateRaised(onChainId, raisedWei) {
         },
         { new: true },
     );
-}
 
+    // Invalidate cache
+    await delCache(`campaign:detail:${onChainId}`);
+    await clearPrefix("campaign:list:*");
+
+    return updated;
+}
 async function updateMetadata(onChainId, updates = {}) {
     const payload = { ...updates };
 
@@ -89,11 +218,17 @@ async function updateMetadata(onChainId, updates = {}) {
         payload.raised = payload.totalRaisedWei.toString();
     }
 
-    return Campaign.findOneAndUpdate(
+    const updated = await Campaign.findOneAndUpdate(
         { onChainId: Number(onChainId) },
         { $set: payload },
         { new: true, runValidators: true },
     );
+
+    // Invalidate cache
+    await delCache(`campaign:detail:${onChainId}`);
+    await clearPrefix("campaign:list:*");
+
+    return updated;
 }
 
 async function createCampaignWithMilestones(payload) {
@@ -219,6 +354,9 @@ async function createCampaignWithMilestones(payload) {
         throw error;
     }
 
+    // Invalidate list cache as a new campaign was added
+    await clearPrefix("campaign:list:*");
+
     return { campaign, milestones: createdMilestones };
 }
 
@@ -230,4 +368,5 @@ module.exports = {
     updateRaised,
     updateMetadata,
     createCampaignWithMilestones,
+    rejectCampaign,
 };

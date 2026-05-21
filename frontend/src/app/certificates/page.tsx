@@ -11,6 +11,7 @@ import {
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAccount } from 'wagmi';
+import { showErrorToast } from '@/lib/ui/toast';
 
 interface CertificateRecord {
     tokenId: number;
@@ -144,6 +145,16 @@ export default function MyCertificatesPage() {
     useEffect(() => {
         loadCertificates();
     }, [loadCertificates, autoRefreshNonce]);
+
+    useEffect(() => {
+        if (!error) return;
+        showErrorToast(error);
+    }, [error]);
+
+    useEffect(() => {
+        if (!exportError) return;
+        showErrorToast(exportError, { emphasis: false });
+    }, [exportError]);
 
     useEffect(() => {
         if (!isConnected || !address) return;
@@ -471,9 +482,6 @@ export default function MyCertificatesPage() {
                             </div>
 
                             {isLoading && <p className="text-sm text-slate-600">Đang tải dữ liệu chứng nhận...</p>}
-                            {!isLoading && error && <p className="text-sm text-red-700">{error}</p>}
-                            {!isLoading && !error && exportError && <p className="text-sm text-red-700">{exportError}</p>}
-
                             {!isLoading && !error && certificateCount === 0 && (
                                 <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-8 text-sm text-slate-600 text-center">
                                     Chưa có chứng nhận. Sau khi donate thành công và mint certificate, chứng nhận sẽ xuất hiện tại đây.
