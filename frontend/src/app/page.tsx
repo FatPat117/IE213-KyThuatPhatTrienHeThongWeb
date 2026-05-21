@@ -1,27 +1,24 @@
 "use client";
 
 
+import { ContractStatsDisplay } from "@/components/contract/ContractReadComponent";
+import WalletStatus from "@/components/wallet/WalletStatus";
+import {
+    getReviewerAggregates,
+    getUserProfile
+} from "@/lib";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
     useCallback,
     useEffect,
     useMemo,
-    useRef,
     useState,
-    useSyncExternalStore,
+    useSyncExternalStore
 } from "react";
 import { formatEther } from "viem";
 import { useAccount, useChainId } from "wagmi";
-import { ContractStatsDisplay } from "@/components/contract/ContractReadComponent";
-import dynamic from "next/dynamic";
 const CampaignListDisplay = dynamic(() => import("@/components/contract/ContractReadComponent").then(m => m.CampaignListDisplay), { ssr: false });
-import WalletStatus from "@/components/wallet/WalletStatus";
-import {
-    getReviewerAggregates,
-    getUserProfile,
-    useReadAllCampaigns,
-    useReadCampaignReviewersBatch,
-} from "@/lib";
 
 const SEPOLIA_CHAIN_ID = 11155111;
 const EMPTY_SUBSCRIBE = () => () => {};
@@ -593,9 +590,8 @@ export default function Home() {
                                 className="inline-flex cursor-not-allowed items-center justify-center rounded-xl bg-white/20 px-8 py-3.5 text-base font-bold text-white"
                                 disabled
                                 title={
-                                    !isConnected
-                                        ? "Kết nối ví để tạo chiến dịch"
-                                        : "Chuyển sang mạng Sepolia"
+
+                                    "Kết nối ví để tạo chiến dịch"
                                 }
                             >
                                 Bắt đầu chiến dịch

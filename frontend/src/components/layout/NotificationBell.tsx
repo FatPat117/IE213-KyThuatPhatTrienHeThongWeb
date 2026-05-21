@@ -18,10 +18,23 @@ export default function NotificationBell({ token }: { token: string | null }) {
     const [items, setItems] = useState<NotificationItem[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [realtimeConnected, setRealtimeConnected] = useState(false);
+    const realtimeConnectedRef = useRef(false);
+    const loadNotificationsRef = useRef<(() => void) | null>(null);
     const containerRef = useRef<HTMLDivElement | null>(null);
     const toastedRef = useRef<Set<string>>(new Set());
     const initialLoadDone = useRef(false);
     const router = useRouter();
+
+    const setRealtimeStatus = (connected: boolean) => {
+        realtimeConnectedRef.current = connected;
+        setRealtimeConnected(connected);
+    };
+
+    const triggerFallbackPoll = () => {
+        realtimeConnectedRef.current = false;
+        setRealtimeConnected(false);
+        loadNotificationsRef.current?.();
+    };
 
     const mergeNotification = (
         prev: NotificationItem[],
@@ -54,7 +67,6 @@ export default function NotificationBell({ token }: { token: string | null }) {
                 const data = await getMyNotifications(token, 20);
                 if (!cancelled) {
                     setItems(data);
-                    // Mark existing notifications as "already seen" so they don't trigger toasts
                     data.forEach((item) => toastedRef.current.add(item._id));
                     initialLoadDone.current = true;
                 }
@@ -67,17 +79,30 @@ export default function NotificationBell({ token }: { token: string | null }) {
                 }
             }
         };
+
+        loadNotificationsRef.current = () => {
+            if (!cancelled) void load();
+        };
+
         load();
-        const timer = window.setInterval(load, 10_000);
+
+        const pollTimer = window.setInterval(() => {
+            if (!realtimeConnectedRef.current) load();
+        }, 10_000);
+
         const onVisible = () => {
-            if (document.visibilityState === "visible") {
+            if (
+                document.visibilityState === "visible" &&
+                !realtimeConnectedRef.current
+            ) {
                 load();
             }
         };
         document.addEventListener("visibilitychange", onVisible);
         return () => {
             cancelled = true;
-            window.clearInterval(timer);
+            loadNotificationsRef.current = null;
+            window.clearInterval(pollTimer);
             document.removeEventListener("visibilitychange", onVisible);
         };
     }, [token]);
@@ -90,7 +115,7 @@ export default function NotificationBell({ token }: { token: string | null }) {
 
         const connect = async () => {
             try {
-                setRealtimeConnected(false);
+                setRealtimeStatus(false);
                 await openNotificationStream(
                     token,
                     (incoming) => {
@@ -115,15 +140,16 @@ export default function NotificationBell({ token }: { token: string | null }) {
                         setItems((prev) => mergeNotification(prev, incoming));
                     },
                     () => {
-                        if (active) setRealtimeConnected(true);
+                        if (active) setRealtimeStatus(true);
                     },
                     controller.signal,
                 );
                 if (active && !controller.signal.aborted) {
+                    triggerFallbackPoll();
                     reconnectTimer = window.setTimeout(connect, 1500);
                 }
             } catch {
-                if (active) setRealtimeConnected(false);
+                if (active) triggerFallbackPoll();
                 if (active && !controller.signal.aborted) {
                     reconnectTimer = window.setTimeout(connect, 3000);
                 }
@@ -136,6 +162,7 @@ export default function NotificationBell({ token }: { token: string | null }) {
             active = false;
             controller.abort();
             if (reconnectTimer) window.clearTimeout(reconnectTimer);
+            realtimeConnectedRef.current = false;
             setRealtimeConnected(false);
         };
     }, [token]);
