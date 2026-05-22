@@ -320,7 +320,7 @@ function MyCampaignsPageContent() {
                                 <option value="active">🟢 Đang gây quỹ</option>
                                 <option value="pending_approval">⏳ Chờ duyệt</option>
                                 <option value="in_progress">🔵 Đang triển khai</option>
-                                <option value="failed">❌ Thất bại / Bị từ chối</option>
+                                <option value="failed">  Thất bại / Bị từ chối</option>
                                 <option value="ended">  Thành công</option>
                             </select>
                         </div>

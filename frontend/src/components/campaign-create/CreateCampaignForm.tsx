@@ -11,6 +11,7 @@ interface CreateCampaignFormProps {
     goalEth: string;
     deadline: string;
     reviewerSafe: string;
+    beneficiary: string;
   };
   reviewerOptions: Array<{ value: string; label: string }>;
   formErrors: Record<string, string>;
@@ -80,7 +81,7 @@ export default function CreateCampaignForm({
           placeholder="Ví dụ: Quỹ cộng đồng cho trường học"
           maxLength={100}
         />
-        {formErrors.title && <p className="mt-2 text-sm text-red-600">❌ {formErrors.title}</p>}
+        {formErrors.title && <p className="mt-2 text-sm text-red-600">  {formErrors.title}</p>}
         <p className="mt-2 text-xs text-slate-500">{formData.title.length}/100 ký tự</p>
       </div>
 
@@ -102,7 +103,7 @@ export default function CreateCampaignForm({
           placeholder="Mô tả mục tiêu, lý do gây quỹ và cách sử dụng tiền."
           maxLength={1000}
         />
-        {formErrors.description && <p className="mt-2 text-sm text-red-600">❌ {formErrors.description}</p>}
+        {formErrors.description && <p className="mt-2 text-sm text-red-600">  {formErrors.description}</p>}
         <p className="mt-2 text-xs text-slate-500">{formData.description.length}/1000 ký tự</p>
       </div>
 
@@ -127,7 +128,7 @@ export default function CreateCampaignForm({
             />
             <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 font-medium">ETH</span>
           </div>
-          {formErrors.goalEth && <p className="mt-2 text-sm text-red-600">❌ {formErrors.goalEth}</p>}
+          {formErrors.goalEth && <p className="mt-2 text-sm text-red-600">  {formErrors.goalEth}</p>}
           <p className="mt-2 text-xs text-slate-500">Tối đa: 1000 ETH</p>
         </div>
 
@@ -147,7 +148,7 @@ export default function CreateCampaignForm({
               formErrors.deadline ? 'border-red-500 focus:ring-red-100 focus:border-red-500' : 'border-slate-200'
             }`}
           />
-          {formErrors.deadline && <p className="mt-2 text-sm text-red-600">❌ {formErrors.deadline}</p>}
+          {formErrors.deadline && <p className="mt-2 text-sm text-red-600">  {formErrors.deadline}</p>}
           <p className="mt-2 text-xs text-slate-500">Tối đa: 1 năm từ hiện tại</p>
         </div>
       </div>
@@ -220,7 +221,7 @@ export default function CreateCampaignForm({
           </div>
         )}
         {thumbnailUploadError && (
-          <p className="mt-1 text-xs text-red-600">❌ {thumbnailUploadError}</p>
+          <p className="mt-1 text-xs text-red-600">  {thumbnailUploadError}</p>
         )}
         <p className="mt-1 text-xs text-slate-500">
           Ảnh sẽ được tải lên Cloudinary. Nếu không chọn, hệ thống sẽ dùng ảnh mặc định.
@@ -229,7 +230,7 @@ export default function CreateCampaignForm({
 
       <div>
         <label className="block text-sm font-semibold text-slate-900 mb-2">
-          Reviewer Safe (địa chỉ ví kiểm duyệt) <span className="text-red-500">*</span>
+          Địa chỉ ví kiểm duyệt <span className="text-red-500">*</span>
         </label>
         <div className="relative">
           <select
@@ -255,9 +256,33 @@ export default function CreateCampaignForm({
             ▾
           </span>
         </div>
-        {formErrors.reviewerSafe && <p className="mt-2 text-sm text-red-600">❌ {formErrors.reviewerSafe}</p>}
+        {formErrors.reviewerSafe && <p className="mt-2 text-sm text-red-600">  {formErrors.reviewerSafe}</p>}
         <p className="mt-2 text-xs text-slate-500">
           Chọn ví reviewerSafe đã có trong hệ thống để hạn chế nhập sai địa chỉ quá dài.
+        </p>
+      </div>
+
+      {/* Beneficiary wallet */}
+      <div>
+        <label className="block text-sm font-semibold text-slate-900 mb-2">
+          Địa chỉ ví nhận tiền <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="text"
+          name="beneficiary"
+          value={formData.beneficiary}
+          onChange={(event) => onFieldChange('beneficiary', event.target.value)}
+          disabled={isBusy}
+          className={`w-full px-4 py-3 border-2 rounded-xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition disabled:bg-slate-100 text-slate-900 placeholder-slate-400 font-mono text-sm ${
+            formErrors.beneficiary ? 'border-red-500 focus:ring-red-100 focus:border-red-500' : 'border-slate-200'
+          }`}
+          placeholder="0x..."
+          maxLength={42}
+          spellCheck={false}
+        />
+        {formErrors.beneficiary && <p className="mt-2 text-sm text-red-600"> {formErrors.beneficiary}</p>}
+        <p className="mt-2 text-xs text-slate-500">
+          Ví nhận tiền khi chiến dịch được phê duyệt. Mặc định sẽ là ví người tạo, có thể sửa thành ví bên thi công.
         </p>
       </div>
 

@@ -533,7 +533,7 @@ export default function ReviewerWorkspacePage() {
     const refreshApprovalStatuses = useCallback(async (forceRefresh = false) => {
         if (!token || rows.length === 0 || isRefreshingRef.current) return;
         isRefreshingRef.current = true;
-        
+
         try {
 
         const pendingTargets = rows.flatMap((row) =>
@@ -658,7 +658,7 @@ export default function ReviewerWorkspacePage() {
             if (timeSinceBlur > 5000 && timeSinceLastRefresh > 15000) {
                 console.log('[ReviewerPage] Window focused after gap, triggering silent refresh...');
                 lastRefreshRef.current = now;
-                
+
                 // Silent background refresh - do not set isFocusRefreshing=true
                 // to avoid annoying the user with loading spinners while they work
                 try {
@@ -1318,7 +1318,7 @@ export default function ReviewerWorkspacePage() {
                     <div className="relative w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
                         <div className="mb-4 flex items-center gap-3">
                             <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-rose-100 text-xl">
-                                ❌
+
                             </span>
                             <div>
                                 <h3 className="text-lg font-bold text-slate-900">Từ chối milestone</h3>

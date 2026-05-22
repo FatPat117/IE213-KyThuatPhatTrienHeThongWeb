@@ -63,7 +63,7 @@ export default function DonatePanel({
       {/* Success banner for completed status */}
       {isCompleted && (
         <div className="mb-4 rounded-lg bg-green-400/20 border border-green-400/40 px-4 py-3 text-sm text-green-100 animate-pulse">
-          🎉 Chiến dịch đã hoàn thành thành công! Cảm ơn bạn đã đồng hành.
+          Chiến dịch đã hoàn thành thành công! Cảm ơn bạn đã đồng hành.
         </div>
       )}
 

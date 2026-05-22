@@ -280,7 +280,7 @@ function CampaignsPageContent() {
                                 <option value="active">🟢 Đang gây quỹ (Hoạt động)</option>
                                 <option value="pending_approval">⏳ Chờ duyệt</option>
                                 <option value="in_progress">🔵 Đang triển khai (Milestones)</option>
-                                <option value="failed">❌ Thất bại / Bị từ chối</option>
+                                <option value="failed">  Thất bại / Bị từ chối</option>
                                 <option value="ended">  Chiến dịch thành công</option>
                             </select>
                         </div>
@@ -449,7 +449,7 @@ function CampaignsPageContent() {
                                                 {isPendingApproval
                                                     ? "⏳ Chờ duyệt"
                                                     : normalizedStatus === "failed" || normalizedStatus === "partial_failed"
-                                                        ? "❌ Thất bại"
+                                                        ? "  Thất bại"
                                                         : normalizedStatus === "cancelled"
                                                             ? "🚫 Bị từ chối"
                                                             : isInProgress

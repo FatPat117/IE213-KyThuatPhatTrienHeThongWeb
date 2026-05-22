@@ -70,7 +70,7 @@ async function startMilestoneApprovedConsumer() {
                         await notificationService.createNotification({
                             recipientWallet: campaign.creator,
                             type: "campaign_succeeded",
-                            title: "Chiến dịch thành công! 🎉",
+                            title: "Chiến dịch thành công!",
                             message: `Chúc mừng! Toàn bộ các mốc của chiến dịch "${campaign.title}" đã được hoàn thành.`,
                             campaignOnChainId,
                             txHash: payload.txHash || "",
