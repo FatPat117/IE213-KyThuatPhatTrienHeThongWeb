@@ -123,6 +123,7 @@ export {
 } from "./api/users";
 export {
     getReviewerProfile,
+    getPublicReviewerProfiles,
     updateReviewerProfile,
     type ReviewerProfile,
 } from "./api/reviewer-profile";

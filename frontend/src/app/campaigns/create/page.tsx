@@ -32,6 +32,10 @@ import CreateCampaignSuccessCard from "@/components/campaign-create/CreateCampai
 import MilestoneBuilder from "@/components/campaign-create/MilestoneBuilder";
 import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 import {
+    parseCampaignDescription,
+    validateCampaignDescriptionParts,
+} from "@/lib/utils/campaign-description-fields";
+import {
     uploadImageToCloud,
     validateImageFile,
 } from "@/lib/utils/uploadImage";
@@ -78,7 +82,7 @@ export default function CreateCampaignPage() {
         Array<{ name: string; description: string }>
     >([]);
     const [reviewerOptions, setReviewerOptions] = useState<
-        Array<{ value: string; label: string }>
+        Array<{ value: string; organization: string; region: string }>
     >([]);
     // Thumbnail upload state
     const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
@@ -233,10 +237,11 @@ export default function CreateCampaignPage() {
         ).map((safe) => {
             const profile = reviewerProfileByWallet.get(safe);
             const organization = profile?.organizationName || "Chưa rõ tổ chức";
-            const region = profile?.region || "Chưa rõ địa phương";
+            const region = profile?.region || "Chưa rõ vùng phụ trách";
             return {
                 value: safe,
-                label: `${safe.slice(0, 10)}...${safe.slice(-6)} - ${organization} - ${region}`,
+                organization,
+                region,
             };
         });
         setReviewerOptions(options);
@@ -435,10 +440,12 @@ export default function CreateCampaignPage() {
             errors.title = "Vui lòng nhập tên chiến dịch";
         if (formData.title.length > 100)
             errors.title = "Tên chiến dịch tối đa 100 ký tự";
-        if (!formData.description.trim())
-            errors.description = "Vui lòng nhập mô tả";
-        if (formData.description.length > 1000)
-            errors.description = "Mô tả tối đa 1000 ký tự";
+        const descriptionError = validateCampaignDescriptionParts(
+            parseCampaignDescription(formData.description),
+        );
+        if (descriptionError) {
+            errors.description = descriptionError;
+        }
 
         const goal = parseFloat(formData.goalEth);
         if (!formData.goalEth || Number.isNaN(goal))
@@ -805,46 +812,46 @@ export default function CreateCampaignPage() {
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white py-12 px-4 sm:px-6 lg:px-8">
-            <div className="max-w-3xl mx-auto">
+        <div className="page-shell min-h-screen py-12 px-4 sm:px-6 lg:px-8">
+            <div className="mx-auto max-w-3xl">
                 <CreateCampaignHeader />
 
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-8">
-                    {transactionStatus === "success" ? (
+                {transactionStatus === "success" ? (
+                    <div className="create-campaign-form-container">
                         <CreateCampaignSuccessCard
                             txHash={submittedTxHash || ""}
                             etherscanLink={etherscanLink}
                             createdCampaignId={createdCampaignId}
                         />
-                    ) : (
-                        <CreateCampaignForm
-                            formData={formData}
-                            reviewerOptions={reviewerOptions}
-                            formErrors={formErrors}
-                            isBusy={isFormBusy}
-                            status={transactionStatus}
-                            txHash={submittedTxHash}
-                            etherscanLink={etherscanLink}
-                            errorMessage={transactionError}
-                            thumbnailPreview={thumbnailPreview}
-                            thumbnailUploadProgress={thumbnailUploadProgress}
-                            thumbnailUploadError={thumbnailUploadError}
-                            onFieldChange={handleFieldChange}
-                            onThumbnailFileChange={handleThumbnailFileChange}
-                            onSubmit={handleSubmit}
-                        />
-                    )}
-                    {isMetadataSyncing && (
-                        <p className="mt-4 text-sm text-slate-600">
-                            Backend đang index campaign và đồng bộ metadata...
-                        </p>
-                    )}
-                    {metadataSyncError && (
-                        <p className="mt-4 text-sm text-red-600">
-                            {metadataSyncError}
-                        </p>
-                    )}
-                </div>
+                    </div>
+                ) : (
+                    <CreateCampaignForm
+                        formData={formData}
+                        reviewerOptions={reviewerOptions}
+                        formErrors={formErrors}
+                        isBusy={isFormBusy}
+                        status={transactionStatus}
+                        txHash={submittedTxHash}
+                        etherscanLink={etherscanLink}
+                        errorMessage={transactionError}
+                        thumbnailPreview={thumbnailPreview}
+                        thumbnailUploadProgress={thumbnailUploadProgress}
+                        thumbnailUploadError={thumbnailUploadError}
+                        onFieldChange={handleFieldChange}
+                        onThumbnailFileChange={handleThumbnailFileChange}
+                        onSubmit={handleSubmit}
+                    />
+                )}
+                {isMetadataSyncing && (
+                    <p className="mt-4 text-center text-sm text-[var(--text-secondary)]">
+                        Backend đang index campaign và đồng bộ metadata...
+                    </p>
+                )}
+                {metadataSyncError && (
+                    <p className="mt-4 text-center text-sm text-red-400">
+                        {metadataSyncError}
+                    </p>
+                )}
             </div>
         </div>
     );

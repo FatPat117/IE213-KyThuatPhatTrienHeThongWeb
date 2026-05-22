@@ -23,6 +23,22 @@ function toPublicAdmin(doc) {
 }
 
 /**
+ * GET /api/campaigns/reviewers/public/profiles
+ * Public — tổ chức & vùng phụ trách cho trang chủ (không yêu cầu đăng nhập)
+ */
+async function listPublicReviewerProfiles(req, res, next) {
+    try {
+        const docs = await Reviewer.find({ isActive: { $ne: false } })
+            .sort({ updatedAt: -1 })
+            .lean();
+        const data = docs.map(toPublic);
+        return successRes(res, data);
+    } catch (err) {
+        next(err);
+    }
+}
+
+/**
  * GET /api/campaigns/reviewers/admin/profiles
  * Accessible to any authenticated user (admin or reviewer)
  * PATCH and DELETE endpoints still require admin role
@@ -239,6 +255,7 @@ async function clearReviewerProfileForAdmin(req, res, next) {
 module.exports = {
     getReviewerProfile,
     patchReviewerProfile,
+    listPublicReviewerProfiles,
     listReviewerProfilesForAdmin,
     patchReviewerProfileForAdmin,
     clearReviewerProfileForAdmin,

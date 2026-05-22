@@ -234,35 +234,37 @@ export default function NotificationBell({ token }: { token: string | null }) {
             <button
                 type="button"
                 onClick={() => setOpen((v) => !v)}
-                className="relative rounded-lg border border-slate-200 bg-white p-2 text-slate-700 hover:bg-slate-50"
+                className="relative rounded-lg border border-[rgba(99,102,241,0.3)] bg-[rgba(99,102,241,0.1)] p-2 text-[var(--text-primary)] transition hover:bg-[rgba(99,102,241,0.2)]"
                 aria-label="Thông báo"
             >
-                🔔
+                <svg className="h-5 w-5 text-[var(--accent-cyan)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
                 {unreadCount > 0 && (
-                    <span className="absolute -right-1 -top-1 rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                    <span className="notify-glow-dot absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
                         {unreadCount > 9 ? "9+" : unreadCount}
                     </span>
                 )}
             </button>
             {open && (
-                <div className="absolute right-0 z-50 mt-2 w-80 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+                <div className="absolute right-0 z-50 mt-2 w-80 rounded-xl border border-[var(--border-glow)] bg-[var(--bg-card)] p-3 shadow-xl shadow-black/50">
                     <div className="mb-2 flex items-center justify-between">
-                        <p className="text-sm font-semibold text-slate-900">
+                        <p className="text-sm font-semibold text-[var(--text-primary)]">
                             Thông báo mới
                         </p>
                         <div className="flex items-center gap-2">
                             <span
                                 className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                                     realtimeConnected
-                                        ? "bg-emerald-100 text-emerald-700"
-                                        : "bg-amber-100 text-amber-700"
+                                        ? "bg-[rgba(16,185,129,0.15)] text-[var(--accent-green)]"
+                                        : "bg-[rgba(245,158,11,0.15)] text-[var(--accent-gold)]"
                                 }`}
                             >
                                 {realtimeConnected ? "Realtime" : "Đang kết nối"}
                             </span>
                             <button
                                 type="button"
-                                className="text-xs text-blue-600 hover:text-blue-700"
+                                className="text-xs text-[var(--accent-cyan)] hover:text-[var(--accent-primary)]"
                                 onClick={async () => {
                                     if (!token) return;
                                     await markAllNotificationsAsRead(token);
@@ -280,25 +282,25 @@ export default function NotificationBell({ token }: { token: string | null }) {
                     </div>
                     <div className="max-h-80 space-y-2 overflow-auto">
                         {isLoading && (
-                            <p className="text-xs text-slate-500">Đang tải thông báo...</p>
+                            <p className="text-xs text-[var(--text-secondary)]">Đang tải thông báo...</p>
                         )}
                         {items.length === 0 ? (
-                            <p className="text-xs text-slate-500">
+                            <p className="text-xs text-[var(--text-secondary)]">
                                 Chưa có thông báo.
                             </p>
                         ) : (
                             items.map((item) => (
                                 <div
                                     key={item._id}
-                                    className={`rounded-lg border px-3 py-2 text-xs ${item.read ? "border-slate-200 bg-slate-50" : "border-blue-200 bg-blue-50"}`}
+                                    className={`rounded-lg border px-3 py-2 text-xs ${item.read ? "border-[rgba(99,102,241,0.15)] bg-[rgba(99,102,241,0.05)]" : "border-[rgba(6,182,212,0.35)] bg-[rgba(6,182,212,0.08)]"}`}
                                 >
-                                    <p className="font-semibold text-slate-800">
+                                    <p className="font-semibold text-[var(--text-primary)]">
                                         {item.title}
                                     </p>
-                                    <p className="mt-1 text-slate-600">
+                                    <p className="mt-1 text-[var(--text-secondary)]">
                                         {item.message}
                                     </p>
-                                    <p className="mt-1 text-[10px] text-slate-500">
+                                    <p className="mt-1 text-[10px] text-[var(--text-secondary)]">
                                         {formatTime(item.createdAt)}
                                     </p>
                                     {(() => {
@@ -340,7 +342,7 @@ export default function NotificationBell({ token }: { token: string | null }) {
                                         return (
                                             <Link
                                                 href={href}
-                                                className="mt-1 inline-block text-blue-600 text-[11px] font-medium hover:underline"
+                                                className="mt-1 inline-block text-[11px] font-medium text-[var(--accent-cyan)] hover:underline"
                                                 onClick={async (event) => {
                                                     const shouldResolveMilestone =
                                                         isMilestoneApproved && hasCampaignId;
