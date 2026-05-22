@@ -181,7 +181,7 @@ export default function AdminCampaignApprovalsPage() {
                     </p>
                     <div className="mt-4 space-y-1 text-xs text-slate-500">
                         <p>Wallet: {address ? `${address.slice(0, 10)}...` : "Chưa connect"}</p>
-                        <p>On-chain Admin: {isAdminOnChain ? "  Đã xác thực" : "❌ Chưa có quyền"}</p>
+                        <p>On-chain Admin: {isAdminOnChain ? "  Đã xác thực" : "  Chưa có quyền"}</p>
                     </div>
                 </main>
             </div>

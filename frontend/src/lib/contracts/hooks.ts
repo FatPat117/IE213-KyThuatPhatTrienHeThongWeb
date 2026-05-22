@@ -158,6 +158,7 @@ async function readReviewerSafeExists(
 }
 
 type CreateCampaignWithGoalPayload = {
+    beneficiary?: Address;
     goalWei: bigint;
     allocationBps: number[];
     deadlines: number[];

@@ -69,7 +69,7 @@ export default function CreateCampaignStatusAlerts({
               </svg>
             </div>
             <div className="flex-1">
-              <p className="text-red-900 font-semibold mb-1">❌ Giao dịch thất bại</p>
+              <p className="text-red-900 font-semibold mb-1">  Giao dịch thất bại</p>
               {errorMessage && <p className="text-red-700 text-sm">{errorMessage}</p>}
             </div>
           </div>

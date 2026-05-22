@@ -142,12 +142,18 @@ async function hydrateCampaignFromChain(onChainId) {
             ? reviewerSafeRaw.toString().toLowerCase()
             : "";
 
+        const existingCampaign = await Campaign.findOne({ onChainId }).lean();
+        let targetBeneficiary = beneficiary;
+        if (existingCampaign && existingCampaign.beneficiary) {
+            targetBeneficiary = existingCampaign.beneficiary.toLowerCase();
+        }
+
         const campaign = await Campaign.findOneAndUpdate(
             { onChainId },
             {
                 $set: {
                     creator,
-                    beneficiary,
+                    beneficiary: targetBeneficiary,
                     goalWei,
                     goal: goalWei,
                     totalRaisedWei: raisedWei,
@@ -257,6 +263,7 @@ function normalizeCampaignItem(campaignDoc) {
         title: campaignDoc.title || "",
         description: campaignDoc.description || "",
         creator: campaignDoc.creator,
+        beneficiary: campaignDoc.beneficiary || "",
         reviewerSafe: campaignDoc.reviewerSafe || "",
         goalWei: campaignDoc.goalWei || campaignDoc.goal || "0",
         totalRaisedWei: campaignDoc.totalRaisedWei || campaignDoc.raised || "0",
@@ -483,7 +490,7 @@ async function updateCampaignMetadata(req, res, next) {
         }
 
         const updates = {};
-        const { title, description, thumbnailUrl, reviewerSafe, milestones } =
+        const { title, description, thumbnailUrl, reviewerSafe, beneficiary, milestones } =
             req.body || {};
 
         if (typeof title === "string") updates.title = title.trim();
@@ -500,41 +507,75 @@ async function updateCampaignMetadata(req, res, next) {
             updates.reviewerSafe = normalizedSafe;
         }
 
+        // Allow creator to set/override beneficiary address
+        if (typeof beneficiary === "string") {
+            const normalizedBeneficiary = beneficiary.trim().toLowerCase();
+            if (normalizedBeneficiary && !/^0x[a-f0-9]{40}$/.test(normalizedBeneficiary)) {
+                return errorRes(res, "Invalid beneficiary address", 400);
+            }
+            if (normalizedBeneficiary) updates.beneficiary = normalizedBeneficiary;
+        }
+
         const updatedCampaign = await Campaign.findOneAndUpdate(
             { onChainId },
             { $set: updates },
             { new: true, runValidators: true },
         );
 
+        // Update milestone title/description metadata.
+        // Use upsert=false intentionally — milestones should already exist from the
+        // blockchain indexer (hydrateCampaignFromChain). If they do not exist yet,
+        // log a warning and skip silently so the metadata sync does not fail.
         if (Array.isArray(milestones)) {
-            for (const item of milestones) {
-                const milestoneId = Number(item?.milestoneId);
-                if (!Number.isFinite(milestoneId)) {
-                    continue;
-                }
+            const milestoneUpdates = milestones
+                .map((item) => {
+                    const milestoneId = Number(item?.milestoneId);
+                    if (!Number.isFinite(milestoneId)) return null;
 
-                const milestonePatch = {};
-                if (typeof item.title === "string") {
-                    milestonePatch.title = item.title.trim();
-                }
-                if (typeof item.description === "string") {
-                    milestonePatch.description = item.description.trim();
-                }
+                    const milestonePatch = {};
+                    if (typeof item.title === "string") {
+                        milestonePatch.title = item.title.trim();
+                    }
+                    if (typeof item.description === "string") {
+                        milestonePatch.description = item.description.trim();
+                    }
 
-                if (Object.keys(milestonePatch).length === 0) {
-                    continue;
-                }
+                    if (Object.keys(milestonePatch).length === 0) return null;
 
-                await Milestone.findOneAndUpdate(
-                    { campaignOnChainId: onChainId, milestoneId },
-                    {
-                        $set: {
-                            ...milestonePatch,
-                            milestoneIndex: milestoneId,
+                    return {
+                        updateOne: {
+                            filter: { campaignOnChainId: onChainId, milestoneId },
+                            update: {
+                                $set: {
+                                    ...milestonePatch,
+                                    milestoneIndex: milestoneId,
+                                    campaignId: updatedCampaign?._id,
+                                    campaignOnChainId: onChainId,
+                                },
+                                $setOnInsert: {
+                                    status: "pending_funding",
+                                    allocationBps: 0,
+                                    financialTargetWei: "0",
+                                    reportCids: [],
+                                    evidenceCids: [],
+                                },
+                            },
+                            upsert: true,
                         },
-                    },
-                    { new: true },
-                );
+                    };
+                })
+                .filter(Boolean);
+
+            if (milestoneUpdates.length > 0) {
+                try {
+                    await Milestone.bulkWrite(milestoneUpdates, { ordered: false });
+                } catch (bulkErr) {
+                    // Non-fatal: log and continue so the campaign metadata is still returned.
+                    console.warn(
+                        `[campaign.controller] updateCampaignMetadata: milestone bulkWrite partial failure for campaign #${onChainId}:`,
+                        bulkErr.message,
+                    );
+                }
             }
         }
 

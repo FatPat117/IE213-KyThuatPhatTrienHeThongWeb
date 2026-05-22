@@ -1173,6 +1173,11 @@ export default function CampaignDetailPage() {
                                 reviewerSafe={
                                     backendCampaign.data?.reviewerSafe
                                 }
+                                beneficiary={
+                                    backendCampaign.data?.beneficiary ||
+                                    (campaign as any).beneficiary ||
+                                    undefined
+                                }
                                 progress={progress}
                                 thumbnailUrl={
                                     !isPlaceholderThumbnailUrl(

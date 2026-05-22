@@ -27,6 +27,7 @@ interface CampaignInfoPanelProps {
     backendDescription?: string;
     backendTitle?: string;
     reviewerSafe?: string;
+    beneficiary?: string;
     progress: number;
     thumbnailUrl?: string | null;
     rejectionReason?: string | null;
@@ -99,6 +100,7 @@ function getStatusBadge(
     backendDescription,
     backendTitle,
     reviewerSafe,
+    beneficiary,
     progress,
     thumbnailUrl,
     userDonatedWei = 0n,
@@ -206,6 +208,29 @@ function getStatusBadge(
                     </a>
                 </div>
             </div>
+
+            {/* Beneficiary wallet */}
+            {beneficiary && /^0x[a-f0-9]{40}$/i.test(beneficiary) && (
+                <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-4 mb-6">
+                    <p className="text-sm font-medium text-emerald-600 mb-1">
+                        Ví nhận tiền (Beneficiary)
+                    </p>
+                    <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex-shrink-0" />
+                        <code className="text-sm font-mono text-slate-900 break-all">
+                            {beneficiary.slice(0, 8)}...{beneficiary.slice(-6)}
+                        </code>
+                        <a
+                            href={`https://sepolia.etherscan.io/address/${beneficiary}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="ml-auto text-xs font-medium text-emerald-600 hover:text-emerald-700 whitespace-nowrap"
+                        >
+                            Xem ví →
+                        </a>
+                    </div>
+                </div>
+            )}
 
             {/* Reviewer Safe */}
             {reviewerSafe && /^0x[a-f0-9]{40}$/i.test(reviewerSafe) && (

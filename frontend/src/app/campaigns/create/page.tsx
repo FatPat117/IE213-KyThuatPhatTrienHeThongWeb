@@ -61,6 +61,7 @@ export default function CreateCampaignPage() {
         goalEth: "1.0",
         deadline: "",
         reviewerSafe: "",
+        beneficiary: "",
     });
     const [formErrors, setFormErrors] = useState<Record<string, string>>({});
     const [manualError, setManualError] = useState<string | null>(null);
@@ -250,6 +251,14 @@ export default function CreateCampaignPage() {
         }
     }, [formData.reviewerSafe, reviewerOptions]);
 
+    // Pre-fill beneficiary with connected wallet address when available and not yet set
+    useEffect(() => {
+        if (address && !formData.beneficiary) {
+            setFormData((prev) => ({ ...prev, beneficiary: address.toLowerCase() }));
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [address]);
+
     useEffect(() => {
         if (!submittedTxHash || !address) return;
         createTransaction(token, {
@@ -346,6 +355,7 @@ export default function CreateCampaignPage() {
                     description: formData.description,
                     thumbnailUrl: thumbnailUrl || fallbackThumbnailUrl,
                     reviewerSafe: normalizedReviewerSafe,
+                    beneficiary: formData.beneficiary.trim().toLowerCase() || undefined,
                     milestones: milestoneMetadata.map((milestone, index) => ({
                         milestoneId: index,
                         title: milestone.name.trim(),
@@ -455,6 +465,13 @@ export default function CreateCampaignPage() {
         } else if (isReviewerActive === false) {
             errors.reviewerSafe =
                 "ReviewerSafe chưa được duyệt on-chain. Hãy chọn ví reviewer đã được phê duyệt.";
+        }
+
+        const beneficiary = formData.beneficiary.trim().toLowerCase();
+        if (!beneficiary) {
+            errors.beneficiary = "Vui lòng nhập địa chỉ ví nhận tiền (beneficiary)";
+        } else if (!/^0x[a-f0-9]{40}$/.test(beneficiary)) {
+            errors.beneficiary = "Địa chỉ beneficiary không hợp lệ";
         }
 
         setFormErrors(errors);
@@ -600,7 +617,7 @@ export default function CreateCampaignPage() {
         return (
             <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white py-12 px-4 sm:px-6 lg:px-8">
                 <div className="max-w-5xl mx-auto">
-                    <CreateCampaignHeader />
+                    <CreateCampaignHeader onBack={() => setStep("basic")} />
                     <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-8">
                         <MilestoneBuilder
                             campaignInfo={{
@@ -734,8 +751,20 @@ export default function CreateCampaignPage() {
                                         );
                                     }
 
+                                    const beneficiary = formData.beneficiary
+                                        .trim()
+                                        .toLowerCase();
+                                    if (
+                                        !/^0x[a-f0-9]{40}$/.test(beneficiary)
+                                    ) {
+                                        throw new Error(
+                                            "Địa chỉ ví nhận tiền (Beneficiary) không hợp lệ.",
+                                        );
+                                    }
+
                                     // DEBUG LOG
                                     console.log("[CreateCampaign] Gửi contract:", {
+                                        beneficiary,
                                         goalWei: parseEther(formData.goalEth).toString(),
                                         allocationBps,
                                         deadlines: milestoneDeadlines,
@@ -745,6 +774,7 @@ export default function CreateCampaignPage() {
                                     });
 
                                     const txHash = await createCampaign({
+                                        beneficiary: beneficiary as `0x${string}`,
                                         goalWei: parseEther(formData.goalEth),
                                         allocationBps,
                                         deadlines: milestoneDeadlines,
@@ -758,7 +788,7 @@ export default function CreateCampaignPage() {
                                         `Đã gửi giao dịch ${shortenHash(txHash)}. Đang chờ xác nhận trên blockchain...`,
                                     );
                                 } catch (err) {
-                                    console.error("❌ [CreateCampaign] Lỗi:", err);
+                                    console.error("  [CreateCampaign] Lỗi:", err);
                                     const message = getChainErrorMessage(err, {
                                         fallback:
                                             "Không thể gửi giao dịch. Hãy xem Console (F12) để biết lý do chi tiết.",

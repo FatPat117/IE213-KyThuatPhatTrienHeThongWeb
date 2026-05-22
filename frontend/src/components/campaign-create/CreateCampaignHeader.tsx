@@ -5,11 +5,11 @@ import BackButton from '@/components/navigation/BackButton';
 /**
  * Header section for the create campaign page.
  */
-export default function CreateCampaignHeader() {
+export default function CreateCampaignHeader({ onBack }: { onBack?: () => void }) {
   return (
     <div className="mb-8">
       <div className="flex items-center gap-3 mb-4">
-        <BackButton fallbackHref="/campaigns" />
+        <BackButton fallbackHref="/campaigns" onClick={onBack} />
         <div>
           <div className="inline-flex items-center gap-2 mb-1">
             <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">
