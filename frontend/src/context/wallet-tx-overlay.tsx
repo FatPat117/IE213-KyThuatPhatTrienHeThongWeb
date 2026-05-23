@@ -12,7 +12,8 @@ import {
 import { createPortal } from "react-dom";
 
 type WalletTxOverlayContextValue = {
-    registerActive: (active: boolean, stage?: "preparing" | "signing" | "confirming" | "processing", hash?: string) => void;
+    setCount: (active: boolean) => void;
+    setTxInfo: (stage?: "preparing" | "signing" | "confirming" | "processing", hash?: string) => void;
 };
 
 const WalletTxOverlayContext = createContext<WalletTxOverlayContextValue | null>(
@@ -28,26 +29,31 @@ export function WalletTxOverlayProvider({ children }: { children: ReactNode }) {
     const [currentStage, setCurrentStage] = useState<"preparing" | "signing" | "confirming" | "processing">("signing");
     const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
 
-    const registerActive = useCallback((active: boolean, stage?: "preparing" | "signing" | "confirming" | "processing", hash?: string) => {
+    const setCount = useCallback((active: boolean) => {
         setActiveCount((n) => {
             const next = active ? n + 1 : n - 1;
             return next < 0 ? 0 : next;
         });
-        if (active) {
-            if (stage) setCurrentStage(stage);
-            if (hash) setTxHash(hash);
-        } else {
-            // Reset when hiding
+        if (!active) {
+            // Reset visual state after overlay fades out
             setTimeout(() => {
                 setTxHash(null);
                 setCurrentStage("signing");
-            }, 500); // Wait for transition
+            }, 500);
         }
     }, []);
 
+    const setTxInfo = useCallback((
+        stage?: "preparing" | "signing" | "confirming" | "processing",
+        hash?: string,
+    ) => {
+        if (stage) setCurrentStage(stage);
+        if (hash) setTxHash(hash);
+    }, []);
+
     const value = useMemo(
-        () => ({ registerActive }),
-        [registerActive],
+        () => ({ setCount, setTxInfo }),
+        [setCount, setTxInfo],
     );
 
     const visible = activeCount > 0;
@@ -115,14 +121,34 @@ export function WalletTxOverlayProvider({ children }: { children: ReactNode }) {
 
 /**
  * Marks global wallet overlay as active while `active` is true (signing or confirming).
+ *
+ * Uses two separate effects to avoid counter imbalance:
+ * - Effect 1: only tracks `active` → manages the counter (increment/decrement).
+ *   Does NOT depend on `stage`/`hash` so that visual-only updates do NOT trigger
+ *   a cleanup (decrement) + re-register (increment) cycle that would momentarily
+ *   drop activeCount to 0 and hide the overlay mid-transaction.
+ * - Effect 2: tracks `stage`/`hash` → updates the display text without touching the counter.
  */
-export function useRegisterWalletTxOverlay(active: boolean, stage?: "preparing" | "signing" | "confirming" | "processing", hash?: string) {
+export function useRegisterWalletTxOverlay(
+    active: boolean,
+    stage?: "preparing" | "signing" | "confirming" | "processing",
+    hash?: string,
+) {
     const ctx = useContext(WalletTxOverlayContext);
+
+    // Effect 1: manages counter only. MUST NOT include stage/hash in deps.
     useEffect(() => {
         if (!ctx || !active) return;
-        ctx.registerActive(true, stage, hash);
+        ctx.setCount(true);
         return () => {
-            ctx.registerActive(false);
+            ctx.setCount(false);
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ctx, active]);
+
+    // Effect 2: pushes stage/hash to the overlay for display only — never touches the counter.
+    useEffect(() => {
+        if (!ctx || !active) return;
+        ctx.setTxInfo(stage, hash);
     }, [ctx, active, stage, hash]);
 }
