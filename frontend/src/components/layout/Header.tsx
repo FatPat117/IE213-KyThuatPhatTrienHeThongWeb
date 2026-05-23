@@ -151,7 +151,6 @@ export default function Header() {
     const navLinks = [...publicLinks, ...roleLinks];
 
     const accountLinks: NavLink[] = [
-        { href: "/donations", label: "Quyên góp của tôi" },
         { href: "/settings", label: "Hồ sơ & cài đặt" },
     ];
     const visibleAccountLinks = accountLinks;

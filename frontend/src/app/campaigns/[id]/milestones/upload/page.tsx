@@ -1,10 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState, useRef, type FormEvent } from "react";
-import { useWaitForTransactionReceipt } from "wagmi";
-import { useAccount } from "wagmi";
+import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 import {
     getPublicCampaignMilestones,
     resubmitMilestone,
@@ -13,12 +9,15 @@ import {
     useSubmitMilestoneProof,
 } from "@/lib";
 import { useReadMilestonesOnChain } from "@/lib/contracts/hooks";
-import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 import {
     getWalletErrorMessage,
     isWalletUserRejectedMessage,
 } from "@/lib/errors/normalize";
 import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
+import Link from "next/link";
+import { useParams, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useAccount, useWaitForTransactionReceipt } from "wagmi";
 
 const DEFAULT_API_BASE_URL = "http://localhost:4000/api";
 
@@ -78,6 +77,10 @@ function MilestoneEvidenceUploadContent() {
         useSubmitMilestoneProof();
     const { isLoading: isConfirmingOnChain, isSuccess: isConfirmedOnChain } =
         useWaitForTransactionReceipt({ hash: submitHash });
+
+    // ✅ Declare isUploadingFile BEFORE useRegisterWalletTxOverlay
+    const [isUploadingFile, setIsUploadingFile] = useState(false);
+
     useRegisterWalletTxOverlay(
         isSubmittingOnChain || isConfirmingOnChain || isUploadingFile,
         isUploadingFile
@@ -93,7 +96,6 @@ function MilestoneEvidenceUploadContent() {
         "report" | "photo" | "video" | "document"
     >("photo");
     const [files, setFiles] = useState<File[]>([]);
-    const [isUploadingFile, setIsUploadingFile] = useState(false);
     const [uploadedCids, setUploadedCids] = useState<string[]>(
         sourceCid ? [sourceCid] : [],
     );
