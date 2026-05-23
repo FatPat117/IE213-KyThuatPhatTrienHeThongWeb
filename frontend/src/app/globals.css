@@ -41,6 +41,7 @@
     --gradient-btn: linear-gradient(135deg, #7c3aed 0%, #6366f1 50%, #3b82f6 100%);
     --shadow-glow-purple: 0 0 40px rgba(139, 92, 246, 0.35);
     --shadow-glow-cyan: 0 0 32px rgba(34, 211, 238, 0.25);
+    --font-title: var(--font-space-grotesk), "Space Grotesk", sans-serif;
 }
 
 @theme inline {
@@ -207,9 +208,17 @@ html {
 
 /* ── Dark Crypto Luxury (Home) ── */
 .font-display {
-    font-family: var(--font-syne), "Syne", var(--font-space-grotesk), "Space Grotesk",
-        var(--font-inter), sans-serif;
-    letter-spacing: -0.02em;
+    font-family: var(--font-title);
+    letter-spacing: -0.03em;
+    line-height: 1.12;
+    font-feature-settings: "kern" 1, "liga" 1;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+}
+
+.font-display.text-gradient-hero {
+    letter-spacing: -0.035em;
+    line-height: 1.08;
 }
 
 .font-body {
@@ -890,7 +899,25 @@ html {
 .app-luxury h1,
 .app-luxury h2,
 .app-luxury h3 {
-    font-family: var(--font-syne), "Syne", sans-serif;
+    font-family: var(--font-title);
+    font-feature-settings: "kern" 1, "liga" 1;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+}
+
+.app-luxury h1 {
+    letter-spacing: -0.035em;
+    line-height: 1.1;
+}
+
+.app-luxury h2 {
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+}
+
+.app-luxury h3 {
+    letter-spacing: -0.02em;
+    line-height: 1.2;
 }
 
 .app-luxury .campaign-list-row {

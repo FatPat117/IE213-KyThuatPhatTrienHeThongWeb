@@ -5,7 +5,6 @@ import {
     Inter,
     JetBrains_Mono,
     Space_Grotesk,
-    Syne,
 } from "next/font/google";
 import "./globals.css";
 import { AuthProvider, NetworkStatusMonitor, StatusProvider, WagmiProviderWrapper } from "@/lib";
@@ -26,13 +25,6 @@ const geistMono = Geist_Mono({
   display: "optional",
 });
 
-const syne = Syne({
-    variable: "--font-syne",
-    subsets: ["latin"],
-    weight: ["600", "700", "800"],
-    display: "swap",
-});
-
 const inter = Inter({
     variable: "--font-inter",
     subsets: ["latin", "vietnamese"],
@@ -45,6 +37,7 @@ const spaceGrotesk = Space_Grotesk({
     subsets: ["latin", "vietnamese"],
     weight: ["400", "500", "600", "700"],
     display: "swap",
+    adjustFontFallback: true,
 });
 
 const jetbrainsMono = JetBrains_Mono({
@@ -71,7 +64,7 @@ export default function RootLayout({
         <link rel="preconnect" href="http://localhost:4000" />
       </head>
       <body
-        className={`app-luxury ${geistSans.variable} ${geistMono.variable} ${syne.variable} ${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} font-body min-h-screen antialiased`}
+        className={`app-luxury ${geistSans.variable} ${geistMono.variable} ${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} font-body min-h-screen antialiased`}
       >
         <WagmiProviderWrapper>
           <AuthProvider>
