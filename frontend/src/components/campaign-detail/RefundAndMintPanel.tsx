@@ -66,7 +66,7 @@ export default function RefundAndMintPanel({
               disabled={refundPending || refundConfirming}
               className="w-full rounded-lg bg-white text-orange-600 px-6 py-4 text-lg font-bold shadow-lg hover:bg-orange-50 transition disabled:cursor-not-allowed disabled:opacity-50 mb-4"
             >
-              {refundPending ? '⏳ Đợi xác nhận từ ví...' : refundConfirming ? '🔄 Đang xác nhận...' : '🔙 Yêu cầu hoàn tiền'}
+              🔙 Yêu cầu hoàn tiền
             </button>
           ) : (
             <div className="rounded-lg bg-white/20 px-4 py-4 text-sm font-bold text-white mb-4 border border-white/30 text-center flex items-center justify-center gap-2">
@@ -94,13 +94,7 @@ export default function RefundAndMintPanel({
             disabled={mintPending || mintConfirming || mintProfileSaving}
             className="w-full rounded-lg bg-white text-emerald-700 px-6 py-4 text-lg font-bold shadow-lg hover:bg-emerald-50 transition disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {mintProfileSaving
-              ? '💾 Đang lưu hồ sơ...'
-              : mintPending
-                ? '⏳ Đợi xác nhận từ ví...'
-                : mintConfirming
-                  ? '🔄 Đang xác nhận...'
-                  : '🎖️ Mint chứng chỉ'}
+            🎖️ Mint chứng chỉ
           </button>
           {showMintPrompt && (
             <div className="mt-4 rounded-xl border border-emerald-200 bg-white/95 p-4 text-emerald-900">

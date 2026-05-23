@@ -121,7 +121,16 @@ export default function CreateCampaignPage() {
         hash: submittedTxHash,
     });
     const isTxReverted = receipt?.status === "reverted";
-    useRegisterWalletTxOverlay(isPending || isConfirming);
+    const isThumbnailUploading =
+        thumbnailUploadProgress !== null && thumbnailUploadProgress < 100;
+    useRegisterWalletTxOverlay(
+        isPending || isConfirming || isMetadataSyncing || isThumbnailUploading,
+        isPending
+            ? "signing"
+            : isConfirming
+              ? "confirming"
+              : "processing",
+    );
 
     const etherscanLink = useMemo(() => {
         if (!submittedTxHash) return null;
@@ -791,9 +800,6 @@ export default function CreateCampaignPage() {
                                             reviewerSafe as `0x${string}`,
                                     });
                                     setSubmittedTxHash(txHash);
-                                    showSuccessToast(
-                                        `Đã gửi giao dịch ${shortenHash(txHash)}. Đang chờ xác nhận trên blockchain...`,
-                                    );
                                 } catch (err) {
                                     console.error("  [CreateCampaign] Lỗi:", err);
                                     const message = getChainErrorMessage(err, {
@@ -841,11 +847,6 @@ export default function CreateCampaignPage() {
                         onThumbnailFileChange={handleThumbnailFileChange}
                         onSubmit={handleSubmit}
                     />
-                )}
-                {isMetadataSyncing && (
-                    <p className="mt-4 text-center text-sm text-[var(--text-secondary)]">
-                        Backend đang index campaign và đồng bộ metadata...
-                    </p>
                 )}
                 {metadataSyncError && (
                     <p className="mt-4 text-center text-sm text-red-400">

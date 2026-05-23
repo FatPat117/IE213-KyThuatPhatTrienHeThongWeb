@@ -238,19 +238,6 @@ export default function CreateCampaignForm({
             e.target.value = '';
           }}
         />
-        {thumbnailUploadProgress !== null && thumbnailUploadProgress < 100 && (
-          <div className="mt-3">
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-500 transition-all duration-200"
-                style={{ width: `${thumbnailUploadProgress}%` }}
-              />
-            </div>
-            <p className="field-hint mt-2 mb-0">
-              Đang tải lên... {thumbnailUploadProgress}%
-            </p>
-          </div>
-        )}
         {thumbnailUploadError && (
           <p className="field-error">{thumbnailUploadError}</p>
         )}
@@ -350,7 +337,7 @@ export default function CreateCampaignForm({
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
         <button type="submit" disabled={isBusy} className="submit-btn flex-1">
-          {isBusy ? '⏳ Đợi xác nhận từ ví...' : '🚀 Tạo chiến dịch'}
+          🚀 Tạo chiến dịch
         </button>
         <Link href="/campaigns" className="cancel-btn sm:w-auto sm:shrink-0">
           Hủy

@@ -301,10 +301,9 @@ function ReviewerMilestoneActions({
                     })()}
                 </div>
             ) : isLoadingOnChain ? (
-                <div className="flex items-center gap-2 py-2 text-xs text-slate-400 italic">
-                    <div className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-500" />
+                <p className="py-2 text-xs italic text-slate-400">
                     Đang kiểm tra minh chứng on-chain...
-                </div>
+                </p>
             ) : null}
 
             {needsOnChainSubmission && isPendingMilestone && (
@@ -356,19 +355,7 @@ function ReviewerMilestoneActions({
                                     }
                                     className="flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 hover:shadow-emerald-700/30 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
                                 >
-                                    {isApproving ? (
-                                        <>
-                                            <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                                            Đang xử lý...
-                                        </>
-                                    ) : isFocusRefreshing ? (
-                                        <>
-                                            <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                                            Đang đồng bộ...
-                                        </>
-                                    ) : (
-                                        "Phê duyệt mốc"
-                                    )}
+                                    Phê duyệt mốc
                                 </button>
 
                                 <button
@@ -393,7 +380,7 @@ function ReviewerMilestoneActions({
                                     }
                                     className="reviewer-reject-btn-outline flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                    {isRejecting ? "Đang xử lý..." : isFocusRefreshing ? "Đang đồng bộ..." : hasRejected ? "Đã ký từ chối" : "Từ chối mốc"}
+                                    {hasRejected ? "Đã ký từ chối" : "Từ chối mốc"}
                                 </button>
                             </>
                         )}
@@ -427,25 +414,13 @@ function ReviewerMilestoneActions({
                                 }
                                 className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 hover:shadow-blue-700/30 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
                             >
-                                {isExecuting ? (
-                                    <>
-                                        <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                                        Đang thực thi...
-                                    </>
-                                ) : isFocusRefreshing ? (
-                                    <>
-                                        <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                                        Đang đồng bộ...
-                                    </>
-                                ) : (
-                                    <>
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                        </svg>
-                                        Thực thi
-                                    </>
-                                )}
+                                <>
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    Thực thi
+                                </>
                             </button>
                         )}
                     </div>
@@ -500,11 +475,23 @@ export default function ReviewerWorkspacePage() {
         isError: isTxError,
         error: txError,
     } = useWaitForTransactionReceipt({ hash: txHash });
-    useRegisterWalletTxOverlay(Boolean(approvingKey) || Boolean(rejectingKey), rejectingKey ? "processing" : "signing");
-    useRegisterWalletTxOverlay(isConfirming, "confirming");
 
     // Initialize execute hook
     const { execute: executeSafeTransaction, isPending: isExecuting } = useExecuteSafeTransaction();
+
+    useRegisterWalletTxOverlay(
+        Boolean(approvingKey) ||
+            Boolean(rejectingKey) ||
+            isExecuting ||
+            isConfirming ||
+            isFocusRefreshing ||
+            indexingKeys.size > 0,
+        isConfirming
+            ? "confirming"
+            : isFocusRefreshing || indexingKeys.size > 0 || rejectingKey
+              ? "processing"
+              : "signing",
+    );
 
     // Check if user has reviewer access (has at least one registered safe)
     const hasReviewerAccess = myReviewerSafes.length > 0;
@@ -1242,9 +1229,9 @@ export default function ReviewerWorkspacePage() {
                                                                 {milestone.milestoneId + 1}
                                                             </span>
                                                             <span
-                                                                className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${indexingKeys.has(key) ? "border border-indigo-500/30 bg-indigo-500/15 text-indigo-300 animate-pulse" : (STATUS_BADGE[milestone.status] || "border border-slate-500/30 bg-slate-500/15 text-slate-300")}`}
+                                                                className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${indexingKeys.has(key) ? "border border-indigo-500/30 bg-indigo-500/15 text-indigo-300" : (STATUS_BADGE[milestone.status] || "border border-slate-500/30 bg-slate-500/15 text-slate-300")}`}
                                                             >
-                                                                {indexingKeys.has(key) ? "🔄 Đang đồng bộ..." : (STATUS_LABELS[milestone.status] || milestone.status)}
+                                                                {STATUS_LABELS[milestone.status] || milestone.status}
                                                             </span>
                                                         </div>
                                                         <h3 className="font-display text-xl font-bold text-[var(--text-primary)]">
@@ -1371,7 +1358,7 @@ export default function ReviewerWorkspacePage() {
                                 disabled={Boolean(rejectingKey) || rejectReason.trim().length < 10}
                                 className="rounded-xl bg-rose-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                                {rejectingKey ? "Đang xử lý..." : "Xác nhận từ chối"}
+                                Xác nhận từ chối
                             </button>
                         </div>
                     </div>

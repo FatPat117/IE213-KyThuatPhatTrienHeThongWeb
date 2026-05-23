@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getPublicCampaignMilestones } from "@/lib/api/campaigns";
@@ -21,6 +22,11 @@ export default function NotificationBell({ token }: { token: string | null }) {
     const realtimeConnectedRef = useRef(false);
     const loadNotificationsRef = useRef<(() => void) | null>(null);
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const bellButtonRef = useRef<HTMLButtonElement | null>(null);
+    const [panelPosition, setPanelPosition] = useState<{ top: number; right: number } | null>(
+        null,
+    );
+    const [portalReady, setPortalReady] = useState(false);
     const toastedRef = useRef<Set<string>>(new Set());
     const initialLoadDone = useRef(false);
     const router = useRouter();
@@ -217,11 +223,45 @@ export default function NotificationBell({ token }: { token: string | null }) {
     };
 
     useEffect(() => {
+        setPortalReady(true);
+    }, []);
+
+    useEffect(() => {
+        if (!open) {
+            setPanelPosition(null);
+            return;
+        }
+
+        const updatePosition = () => {
+            const button = bellButtonRef.current;
+            if (!button) return;
+            const rect = button.getBoundingClientRect();
+            setPanelPosition({
+                top: rect.bottom + 8,
+                right: Math.max(8, window.innerWidth - rect.right),
+            });
+        };
+
+        updatePosition();
+        window.addEventListener("resize", updatePosition);
+        window.addEventListener("scroll", updatePosition, true);
+        return () => {
+            window.removeEventListener("resize", updatePosition);
+            window.removeEventListener("scroll", updatePosition, true);
+        };
+    }, [open]);
+
+    useEffect(() => {
         const onClickAway = (event: MouseEvent) => {
-            if (!containerRef.current) return;
-            if (!containerRef.current.contains(event.target as Node)) {
-                setOpen(false);
+            const target = event.target as Node;
+            if (containerRef.current?.contains(target)) return;
+            if (
+                target instanceof Element &&
+                target.closest("[data-notification-panel]")
+            ) {
+                return;
             }
+            setOpen(false);
         };
         window.addEventListener("mousedown", onClickAway);
         return () => window.removeEventListener("mousedown", onClickAway);
@@ -229,26 +269,24 @@ export default function NotificationBell({ token }: { token: string | null }) {
 
     if (!token) return null;
 
-    return (
-        <div className="relative" ref={containerRef}>
-            <button
-                type="button"
-                onClick={() => setOpen((v) => !v)}
-                className="relative rounded-lg border border-[rgba(99,102,241,0.3)] bg-[rgba(99,102,241,0.1)] p-2 text-[var(--text-primary)] transition hover:bg-[rgba(99,102,241,0.2)]"
-                aria-label="Thông báo"
-            >
-                <svg className="h-5 w-5 text-[var(--accent-cyan)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-                {unreadCount > 0 && (
-                    <span className="notify-glow-dot absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                        {unreadCount > 9 ? "9+" : unreadCount}
-                    </span>
-                )}
-            </button>
-            {open && (
-                <div className="absolute right-0 z-50 mt-2 w-80 rounded-xl border border-[var(--border-glow)] bg-[var(--bg-card)] p-3 shadow-xl shadow-black/50">
-                    <div className="mb-2 flex items-center justify-between">
+    const panelContent =
+        open && panelPosition ? (
+            <>
+                <button
+                    type="button"
+                    aria-label="Đóng thông báo"
+                    className="fixed inset-0 z-[9997] cursor-default bg-black/25"
+                    onClick={() => setOpen(false)}
+                />
+                <div
+                    data-notification-panel
+                    className="fixed z-[9998] w-80 max-w-[calc(100vw-1rem)] rounded-xl border border-[rgba(99,102,241,0.35)] bg-[var(--bg-secondary)] p-3 shadow-2xl shadow-black/60"
+                    style={{
+                        top: panelPosition.top,
+                        right: panelPosition.right,
+                    }}
+                >
+                    <div className="mb-2 flex items-center justify-between gap-2">
                         <p className="text-sm font-semibold text-[var(--text-primary)]">
                             Thông báo mới
                         </p>
@@ -256,15 +294,15 @@ export default function NotificationBell({ token }: { token: string | null }) {
                             <span
                                 className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                                     realtimeConnected
-                                        ? "bg-[rgba(16,185,129,0.15)] text-[var(--accent-green)]"
-                                        : "bg-[rgba(245,158,11,0.15)] text-[var(--accent-gold)]"
+                                        ? "bg-[rgba(16,185,129,0.2)] text-[var(--accent-green)]"
+                                        : "bg-[rgba(245,158,11,0.2)] text-[var(--accent-gold)]"
                                 }`}
                             >
                                 {realtimeConnected ? "Realtime" : "Đang kết nối"}
                             </span>
                             <button
                                 type="button"
-                                className="text-xs text-[var(--accent-cyan)] hover:text-[var(--accent-primary)]"
+                                className="text-xs font-medium text-[var(--accent-cyan)] hover:text-[var(--accent-primary)]"
                                 onClick={async () => {
                                     if (!token) return;
                                     await markAllNotificationsAsRead(token);
@@ -280,9 +318,11 @@ export default function NotificationBell({ token }: { token: string | null }) {
                             </button>
                         </div>
                     </div>
-                    <div className="max-h-80 space-y-2 overflow-auto">
+                    <div className="max-h-80 space-y-2 overflow-y-auto overscroll-contain">
                         {isLoading && (
-                            <p className="text-xs text-[var(--text-secondary)]">Đang tải thông báo...</p>
+                            <p className="text-xs text-[var(--text-secondary)]">
+                                Đang tải thông báo...
+                            </p>
                         )}
                         {items.length === 0 ? (
                             <p className="text-xs text-[var(--text-secondary)]">
@@ -292,7 +332,11 @@ export default function NotificationBell({ token }: { token: string | null }) {
                             items.map((item) => (
                                 <div
                                     key={item._id}
-                                    className={`rounded-lg border px-3 py-2 text-xs ${item.read ? "border-[rgba(99,102,241,0.15)] bg-[rgba(99,102,241,0.05)]" : "border-[rgba(6,182,212,0.35)] bg-[rgba(6,182,212,0.08)]"}`}
+                                    className={`relative rounded-lg border px-3 py-2 text-xs ${
+                                        item.read
+                                            ? "border-[rgba(99,102,241,0.25)] bg-[#11162a]"
+                                            : "border-[rgba(6,182,212,0.45)] bg-[#0f1a2e]"
+                                    }`}
                                 >
                                     <p className="font-semibold text-[var(--text-primary)]">
                                         {item.title}
@@ -304,7 +348,6 @@ export default function NotificationBell({ token }: { token: string | null }) {
                                         {formatTime(item.createdAt)}
                                     </p>
                                     {(() => {
-                                        // Smart routing: redirect to appropriate page based on notification type
                                         const reviewerTypes = new Set([
                                             "milestone_report_submitted",
                                             "milestone_disbursed",
@@ -342,7 +385,7 @@ export default function NotificationBell({ token }: { token: string | null }) {
                                         return (
                                             <Link
                                                 href={href}
-                                                className="mt-1 inline-block text-[11px] font-medium text-[var(--accent-cyan)] hover:underline"
+                                                className="relative z-10 mt-2 inline-block text-[11px] font-semibold text-[var(--accent-cyan)] underline-offset-2 hover:text-[var(--accent-primary)] hover:underline"
                                                 onClick={async (event) => {
                                                     const shouldResolveMilestone =
                                                         isMilestoneApproved && hasCampaignId;
@@ -388,7 +431,30 @@ export default function NotificationBell({ token }: { token: string | null }) {
                         )}
                     </div>
                 </div>
-            )}
+            </>
+        ) : null;
+
+    return (
+        <div className="relative" ref={containerRef}>
+            <button
+                ref={bellButtonRef}
+                type="button"
+                onClick={() => setOpen((v) => !v)}
+                className="relative rounded-lg border border-[rgba(99,102,241,0.3)] bg-[rgba(99,102,241,0.1)] p-2 text-[var(--text-primary)] transition hover:bg-[rgba(99,102,241,0.2)]"
+                aria-label="Thông báo"
+            >
+                <svg className="h-5 w-5 text-[var(--accent-cyan)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+                {unreadCount > 0 && (
+                    <span className="notify-glow-dot absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                        {unreadCount > 9 ? "9+" : unreadCount}
+                    </span>
+                )}
+            </button>
+            {portalReady && panelContent
+                ? createPortal(panelContent, document.body)
+                : null}
         </div>
     );
 }

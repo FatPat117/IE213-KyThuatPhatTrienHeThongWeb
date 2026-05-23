@@ -167,10 +167,43 @@ export default function CampaignDetailPage() {
     } = useWaitForTransactionReceipt({
         hash: milestoneFailedHash,
     });
-    const isActive = isPending || isConfirming || disbursePending || disburseConfirming || fundingRefundPending || milestoneRefundPending || refundConfirming || mintPending || mintConfirming || markAsFailedPending || markAsFailedConfirming || milestoneFailedPending || milestoneFailedConfirming;
-    const isAnyConfirming = isConfirming || disburseConfirming || refundConfirming || mintConfirming || markAsFailedConfirming || milestoneFailedConfirming;
-    const isAnyPending = isPending || disbursePending || fundingRefundPending || milestoneRefundPending || mintPending || markAsFailedPending || milestoneFailedPending;
-    const stage = isAnyConfirming ? "confirming" : isAnyPending ? "signing" : "preparing";
+    const isActive =
+        isPending ||
+        isConfirming ||
+        disbursePending ||
+        disburseConfirming ||
+        fundingRefundPending ||
+        milestoneRefundPending ||
+        refundConfirming ||
+        mintPending ||
+        mintConfirming ||
+        mintProfileSaving ||
+        markAsFailedPending ||
+        markAsFailedConfirming ||
+        milestoneFailedPending ||
+        milestoneFailedConfirming;
+    const isAnyConfirming =
+        isConfirming ||
+        disburseConfirming ||
+        refundConfirming ||
+        mintConfirming ||
+        markAsFailedConfirming ||
+        milestoneFailedConfirming;
+    const isAnyPending =
+        isPending ||
+        disbursePending ||
+        fundingRefundPending ||
+        milestoneRefundPending ||
+        mintPending ||
+        markAsFailedPending ||
+        milestoneFailedPending;
+    const stage = mintProfileSaving
+        ? "processing"
+        : isAnyConfirming
+          ? "confirming"
+          : isAnyPending
+            ? "signing"
+            : "preparing";
     const currentHash = hash || disburseHash || fundingRefundHash || milestoneRefundHash || mintHash || markAsFailedHash || milestoneFailedHash || undefined;
 
     useRegisterWalletTxOverlay(isActive, stage, currentHash);
@@ -395,8 +428,6 @@ export default function CampaignDetailPage() {
     const onChainStatusLabel = campaign?.statusLabel || "active";
     // Ưu tiên trạng thái từ backend nếu có (vì backend xử lý logic timeout/failed chuẩn hơn)
     const campaignStatusLabel = backendStatus || onChainStatusLabel;
-    const isStatusOutOfSync =
-        Boolean(backendStatus) && backendStatus !== onChainStatusLabel;
     const isCampaignActive = campaignStatusLabel === "active";
     const isCampaignInProgress = campaignStatusLabel === "in_progress";
     const isCampaignCompleted = campaignStatusLabel === "completed";
@@ -1027,7 +1058,7 @@ export default function CampaignDetailPage() {
     );
 
     return (
-        <div className="min-h-screen bg-linear-to-b from-slate-50 to-white text-slate-900">
+        <div className="page-shell min-h-screen text-[var(--text-primary)]">
             <main className="mx-auto w-full max-w-6xl px-6 py-12 md:px-10">
                 {/* Page Header */}
                 <header className="flex flex-col gap-4 mb-8">
@@ -1039,12 +1070,12 @@ export default function CampaignDetailPage() {
                             />
                             <div>
                                 <div className="inline-flex items-center gap-2 mb-1">
-                                    <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">
+                                    <span className="web3-neon-badge rounded-full px-3 py-1 text-xs font-semibold">
                                         Chiến dịch #
                                         {Number.isFinite(id) ? id : "-"}
                                     </span>
                                 </div>
-                                <h1 className="text-3xl font-bold text-slate-900">
+                                <h1 className="text-3xl font-bold text-[var(--text-primary)]">
                                     Chi tiết chiến dịch
                                 </h1>
                             </div>
@@ -1055,10 +1086,10 @@ export default function CampaignDetailPage() {
                 {/* Loading State - chỉ block khi on-chain data chưa sẵn */}
                 {isLoading && (
                     <div className="space-y-6 animate-pulse">
-                        <div className="rounded-2xl bg-white border border-slate-200 p-8 shadow-sm">
-                            <div className="h-8 w-2/3 rounded bg-slate-200 mb-4" />
-                            <div className="h-4 w-full rounded bg-slate-200 mb-2" />
-                            <div className="h-4 w-5/6 rounded bg-slate-200" />
+                        <div className="web3-glass-card rounded-2xl p-8">
+                            <div className="mb-4 h-8 w-2/3 rounded bg-white/10" />
+                            <div className="mb-2 h-4 w-full rounded bg-white/10" />
+                            <div className="h-4 w-5/6 rounded bg-white/10" />
                         </div>
                     </div>
                 )}
@@ -1121,17 +1152,6 @@ export default function CampaignDetailPage() {
                     <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
                         {/* Left Column - Main Content */}
                         <div className="space-y-6">
-                            {isStatusOutOfSync && (
-                                <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800 flex items-center gap-3">
-                                    <svg className="h-4 w-4 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                    </svg>
-                                    <p className="text-sm">
-                                        Đang cập nhật trạng thái chiến dịch...
-                                    </p>
-                                </div>
-                            )}
                             <MilestonePreviewCard
                                 campaignId={campaign.id}
                                 campaignDeadline={campaign.deadline}
@@ -1194,44 +1214,44 @@ export default function CampaignDetailPage() {
                             />
 
                             {/* Donation History Card */}
-                            <div className="rounded-2xl bg-white border border-slate-200 p-8 shadow-sm">
-                                <div className="flex items-center justify-between mb-6">
-                                    <h3 className="text-xl font-bold text-slate-900">
+                            <div className="web3-glass-card rounded-2xl p-8">
+                                <div className="mb-6 flex items-center justify-between">
+                                    <h3 className="text-xl font-bold text-[var(--text-primary)]">
                                         Lịch sử quyên góp
                                     </h3>
                                     <div className="flex items-center gap-3">
-                                        <span className="text-sm font-medium text-slate-600">
+                                        <span className="text-sm font-medium text-[var(--text-secondary)]">
                                             {donations.length} lượt quyên góp
                                         </span>
                                         <button
                                             onClick={handleReloadDonations}
                                             type="button"
-                                            className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                            className="web3-btn-glass rounded-lg px-3 py-1 text-xs font-semibold"
                                         >
                                             Tải lại lịch sử
                                         </button>
                                     </div>
                                 </div>
                                 {donationHistoryWarning && (
-                                    <p className="mb-4 text-xs text-amber-700">
+                                    <p className="mb-4 text-xs text-amber-300">
                                         {donationHistoryWarning}
                                     </p>
                                 )}
                                 {isDonationHistoryLoading && (
-                                    <p className="mb-4 text-xs text-slate-500">
+                                    <p className="mb-4 text-xs text-[var(--text-secondary)]">
                                         Đang tải lịch sử quyên góp...
                                     </p>
                                 )}
 
                                 {donations.length === 0 ? (
                                     <div className="text-center py-12">
-                                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
+                                        <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-white/10">
                                             <span className="text-3xl">💝</span>
                                         </div>
-                                        <p className="text-slate-600 mb-2">
+                                        <p className="mb-2 text-[var(--text-secondary)]">
                                             Chưa có quyên góp
                                         </p>
-                                        <p className="text-sm text-slate-500">
+                                        <p className="text-sm text-slate-400">
                                             Hãy là người đầu tiên ủng hộ!
                                         </p>
                                     </div>
@@ -1242,13 +1262,13 @@ export default function CampaignDetailPage() {
                                                 (donation, index) => (
                                                     <div
                                                         key={`${donation.transactionHash}-${index}`}
-                                                        className="rounded-xl bg-slate-50 border border-slate-200 p-4 hover:bg-slate-100 transition"
+                                                        className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:bg-white/10"
                                                     >
                                                         <div className="flex items-center justify-between mb-2">
                                                             <div className="flex items-center gap-2">
                                                                 <div className="w-8 h-8 rounded-full bg-linear-to-br from-green-400 to-green-600" />
                                                                 <div>
-                                                                    <code className="text-sm font-mono text-slate-900">
+                                                                    <code className="text-sm font-mono text-slate-200">
                                                                         {donation.donor.slice(
                                                                             0,
                                                                             6,
@@ -1258,7 +1278,7 @@ export default function CampaignDetailPage() {
                                                                             -4,
                                                                         )}
                                                                     </code>
-                                                                    <p className="text-xs text-slate-500">
+                                                                    <p className="text-xs text-slate-400">
                                                                         {new Date(
                                                                             donation.timestamp,
                                                                         ).toLocaleString()}
@@ -1281,7 +1301,7 @@ export default function CampaignDetailPage() {
                                                             href={`https://sepolia.etherscan.io/tx/${donation.transactionHash}`}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+                                                            className="inline-flex items-center gap-1 text-xs font-medium text-indigo-300 hover:text-cyan-300"
                                                         >
                                                             Xem giao dịch →
                                                         </a>
@@ -1290,13 +1310,13 @@ export default function CampaignDetailPage() {
                                             )}
                                         </div>
                                         {topDonors.length > 0 && (
-                                            <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                            <div className="mt-6 rounded-xl border border-white/10 bg-white/5 p-4">
                                                 <div className="mb-3 flex items-center justify-between">
-                                                    <p className="text-sm font-semibold text-slate-900">
+                                                    <p className="text-sm font-semibold text-[var(--text-primary)]">
                                                         Bảng xếp hạng nhà hảo
                                                         tâm
                                                     </p>
-                                                    <p className="text-xs text-slate-500">
+                                                    <p className="text-xs text-slate-400">
                                                         Top {topDonors.length}{" "}
                                                         theo tổng ETH đã quyên
                                                         góp
@@ -1307,14 +1327,14 @@ export default function CampaignDetailPage() {
                                                         (item, index) => (
                                                             <div
                                                                 key={item.donor}
-                                                                className="flex items-center justify-between rounded-lg bg-white px-3 py-2"
+                                                                className="flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-3 py-2"
                                                             >
                                                                 <div className="flex items-center gap-3">
-                                                                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-700">
+                                                                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-indigo-500/20 text-xs font-bold text-indigo-200">
                                                                         {index +
                                                                             1}
                                                                     </span>
-                                                                    <code className="text-xs font-mono text-slate-900">
+                                                                    <code className="text-xs font-mono text-slate-200">
                                                                         {item.donor.slice(
                                                                             0,
                                                                             6,
@@ -1325,7 +1345,7 @@ export default function CampaignDetailPage() {
                                                                         )}
                                                                     </code>
                                                                 </div>
-                                                                <p className="text-sm font-semibold text-emerald-700">
+                                                                <p className="text-sm font-semibold text-emerald-300">
                                                                     {Number(
                                                                         formatEther(
                                                                             item.totalAmount,
@@ -1351,12 +1371,12 @@ export default function CampaignDetailPage() {
                             {hasMounted && (
                                 <>
                                     {shouldMarkAsFailed && (
-                                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-                                            <p className="text-sm font-semibold text-amber-900 mb-2">
+                                        <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-5">
+                                            <p className="mb-2 text-sm font-semibold text-amber-200">
                                                 Campaign đã quá deadline nhưng
                                                 chưa cập nhật thất bại
                                             </p>
-                                            <p className="text-xs text-amber-800 mb-4">
+                                            <p className="mb-4 text-xs text-amber-100/80">
                                                 Bấm để ghi nhận trạng thái thất
                                                 bại on-chain, sau đó donor có
                                                 thể refund.
@@ -1369,17 +1389,13 @@ export default function CampaignDetailPage() {
                                                 }
                                                 className="w-full rounded-lg bg-amber-600 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
                                             >
-                                                {markAsFailedPending
-                                                    ? "⏳ Đợi xác nhận từ ví..."
-                                                    : markAsFailedConfirming
-                                                      ? "🔄 Đang xác nhận..."
-                                                      : "Cập nhật trạng thái thất bại"}
+                                                Cập nhật trạng thái thất bại
                                             </button>
                                         </div>
                                     )}
                                     {shouldMarkMilestoneAsFailed && (
-                                        <div className="rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm">
-                                            <div className="flex items-center gap-2 mb-2 text-red-900">
+                                        <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 p-5 shadow-sm">
+                                            <div className="mb-2 flex items-center gap-2 text-rose-200">
                                                 <span className="text-xl">
                                                     ⚠️
                                                 </span>
@@ -1388,7 +1404,7 @@ export default function CampaignDetailPage() {
                                                     minh chứng
                                                 </p>
                                             </div>
-                                            <p className="text-xs text-red-800 mb-4">
+                                            <p className="mb-4 text-xs text-rose-100/80">
                                                 Thời hạn của mốc này đã kết
                                                 thúc. Bạn cần xác nhận thất bại
                                                 trên Blockchain để hệ thống mở
@@ -1405,11 +1421,7 @@ export default function CampaignDetailPage() {
                                                 }
                                                 className="w-full rounded-lg bg-red-600 px-4 py-3 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60 transition shadow-md hover:shadow-lg"
                                             >
-                                                {milestoneFailedPending
-                                                    ? "⏳ Đợi xác nhận từ ví..."
-                                                    : milestoneFailedConfirming
-                                                      ? "🔄 Đang đồng bộ Blockchain..."
-                                                      : "Xác nhận thất bại On-chain"}
+                                                Xác nhận thất bại On-chain
                                             </button>
                                         </div>
                                     )}
@@ -1489,14 +1501,14 @@ export default function CampaignDetailPage() {
 
                                     {/* Network Info */}
                                     {/* Network Info */}
-                                    <div className="rounded-xl bg-white border border-slate-200 p-4 text-center">
-                                        <div className="flex items-center justify-center gap-2 mb-1">
-                                            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                                            <p className="text-xs font-semibold text-slate-600">
+                                    <div className="web3-glass-card rounded-xl p-4 text-center">
+                                        <div className="mb-1 flex items-center justify-center gap-2">
+                                            <div className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+                                            <p className="text-xs font-semibold text-[var(--text-secondary)]">
                                                 MẠNG THỬ NGHIỆM SEPOLIA
                                             </p>
                                         </div>
-                                        <p className="text-xs text-slate-500">
+                                        <p className="text-xs text-slate-400">
                                             Mọi giao dịch diễn ra trên Ethereum
                                             Sepolia
                                         </p>

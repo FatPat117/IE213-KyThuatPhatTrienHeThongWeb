@@ -73,12 +73,12 @@ describe('Refund button state', () => {
 
   it('nút bị disabled khi refundPending=true', () => {
     renderPanel({ showRefund: true, refundPending: true });
-    expect(screen.getByRole('button', { name: /Đợi xác nhận từ ví/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Yêu cầu hoàn tiền/i })).toBeDisabled();
   });
 
   it('nút bị disabled khi refundConfirming=true', () => {
     renderPanel({ showRefund: true, refundConfirming: true });
-    expect(screen.getByRole('button', { name: /Đang xác nhận/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Yêu cầu hoàn tiền/i })).toBeDisabled();
   });
 
   it('hiển thị "  Bạn đã rút tiền hoàn lại thành công" khi hasRefunded=true', () => {
@@ -116,12 +116,12 @@ describe('Mint button state', () => {
 
   it('nút mint bị disabled khi mintPending=true', () => {
     renderPanel({ showMint: true, mintPending: true });
-    expect(screen.getByRole('button', { name: /Đợi xác nhận từ ví/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Mint chứng chỉ/i })).toBeDisabled();
   });
 
   it('nút mint bị disabled khi mintProfileSaving=true', () => {
     renderPanel({ showMint: true, mintProfileSaving: true });
-    expect(screen.getByRole('button', { name: /Đang lưu hồ sơ/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Mint chứng chỉ/i })).toBeDisabled();
   });
 
   it('mở form nhập tên khi nhấn "Mint chứng chỉ"', async () => {
