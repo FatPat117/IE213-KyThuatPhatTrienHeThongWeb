@@ -7,6 +7,7 @@ import CampaignListRow, {
     CampaignListRowSkeleton,
 } from "@/components/campaigns/CampaignListRow";
 import BackButton from "@/components/navigation/BackButton";
+import { PageLoading } from "@/components/ui/loading";
 import { useBackendCampaigns, SEPOLIA_CHAIN_ID } from "@/lib";
 import {
     BTN_PRIMARY,
@@ -316,18 +317,26 @@ function CampaignsPageContent() {
                             : "flex flex-col gap-5"
                     }
                 >
-                    {isLoading && normalizedCampaigns.length === 0 &&
-                        Array.from({ length: 4 }).map((_, index) =>
-                            viewMode === "grid" ? (
-                                <CampaignGridCardSkeleton
-                                    key={`skeleton-${index}`}
-                                />
-                            ) : (
-                                <CampaignListRowSkeleton
-                                    key={`skeleton-${index}`}
-                                />
-                            ),
-                        )}
+                    {isLoading && normalizedCampaigns.length === 0 && (
+                        <>
+                            <PageLoading
+                                label="Đang tải danh sách chiến dịch..."
+                                className="col-span-full"
+                                minHeight="min-h-[28vh]"
+                            />
+                            {Array.from({ length: 4 }).map((_, index) =>
+                                viewMode === "grid" ? (
+                                    <CampaignGridCardSkeleton
+                                        key={`skeleton-${index}`}
+                                    />
+                                ) : (
+                                    <CampaignListRowSkeleton
+                                        key={`skeleton-${index}`}
+                                    />
+                                ),
+                            )}
+                        </>
+                    )}
 
                     {/* Error State */}
                     {!isLoading && error && normalizedCampaigns.length === 0 && (

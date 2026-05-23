@@ -48,6 +48,7 @@ import DonatePanel from "@/components/campaign-detail/DonatePanel";
 const MilestonePreviewCard = dynamic(() => import("@/components/campaign-milestones").then(mod => mod.MilestonePreviewCard), { ssr: false });
 const RefundAndMintPanel = dynamic(() => import("@/components/campaign-detail/RefundAndMintPanel"), { ssr: false });
 import BackButton from "@/components/navigation/BackButton";
+import { PageLoading } from "@/components/ui/loading";
 import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 
 interface DonationEvent {
@@ -1085,11 +1086,17 @@ export default function CampaignDetailPage() {
 
                 {/* Loading State - chỉ block khi on-chain data chưa sẵn */}
                 {isLoading && (
-                    <div className="space-y-6 animate-pulse">
-                        <div className="web3-glass-card rounded-2xl p-8">
-                            <div className="mb-4 h-8 w-2/3 rounded bg-white/10" />
-                            <div className="mb-2 h-4 w-full rounded bg-white/10" />
-                            <div className="h-4 w-5/6 rounded bg-white/10" />
+                    <div className="space-y-6">
+                        <PageLoading
+                            label="Đang tải chi tiết chiến dịch..."
+                            minHeight="min-h-[24vh]"
+                        />
+                        <div className="animate-pulse">
+                            <div className="web3-glass-card rounded-2xl p-8">
+                                <div className="loading-skeleton mb-4 h-8 w-2/3 rounded" />
+                                <div className="loading-skeleton-muted mb-2 h-4 w-full rounded" />
+                                <div className="loading-skeleton-muted h-4 w-5/6 rounded" />
+                            </div>
                         </div>
                     </div>
                 )}

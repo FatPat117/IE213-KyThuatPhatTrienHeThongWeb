@@ -270,7 +270,7 @@ export default function Header() {
                 </div>
             </aside>
 
-            <header className="nav-luxury sticky top-0 z-[90] shadow-sm">
+            <header className="nav-luxury sticky top-0 overflow-visible shadow-sm">
                 {!hasProvider && (
                     <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 sm:px-6 lg:px-8">
                         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 py-2 sm:py-2.5">
@@ -337,7 +337,7 @@ export default function Header() {
                         <div className="relative hidden lg:block group">
                             <WalletConnectButton />
                             {isSignedIn && (
-                                <div className="invisible absolute right-0 top-full z-40 mt-2 w-56 rounded-xl border border-[var(--border-glow)] bg-[var(--bg-card)] p-2 text-sm text-[var(--text-secondary)] opacity-0 shadow-lg shadow-black/40 transition before:absolute before:-top-2 before:left-0 before:h-2 before:w-full before:content-[''] group-hover:visible group-hover:opacity-100">
+                                <div className="pointer-events-none invisible absolute right-0 top-full z-40 w-56 rounded-xl border border-[var(--border-glow)] bg-[var(--bg-card)] p-2 text-sm text-[var(--text-secondary)] opacity-0 shadow-lg shadow-black/40 transition before:pointer-events-none before:absolute before:-top-2 before:left-0 before:h-2 before:w-full before:content-[''] group-hover:pointer-events-auto group-hover:visible group-hover:opacity-100">
                                     {visibleAccountLinks.map((link) => {
                                         const active = isLinkActive(
                                             link.href,

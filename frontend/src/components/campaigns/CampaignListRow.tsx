@@ -275,17 +275,17 @@ export default function CampaignListRow({
 export function CampaignListRowSkeleton() {
     return (
         <div className="campaign-list-row flex animate-pulse flex-col gap-4 rounded-2xl border border-l-[3px] border-l-[var(--accent-primary)] border-slate-200 bg-white p-4 sm:flex-row sm:p-5">
-            <div className="h-[180px] w-full shrink-0 rounded-xl bg-slate-200 sm:w-[200px] sm:min-w-[200px]" />
+            <div className="loading-skeleton h-[180px] w-full shrink-0 rounded-xl sm:w-[200px] sm:min-w-[200px]" />
             <div className="flex flex-1 flex-col gap-3">
-                <div className="h-6 w-2/3 rounded bg-slate-200" />
+                <div className="loading-skeleton h-6 w-2/3 rounded" />
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                     {Array.from({ length: 8 }).map((_, i) => (
-                        <div key={i} className="h-10 rounded bg-slate-100" />
+                        <div key={i} className="loading-skeleton-muted h-10 rounded" />
                     ))}
                 </div>
-                <div className="h-4 w-full rounded bg-slate-100" />
-                <div className="h-2.5 w-full rounded-full bg-slate-200" />
-                <div className="ml-auto h-10 w-36 rounded-lg bg-slate-200" />
+                <div className="loading-skeleton-muted h-4 w-full rounded" />
+                <div className="loading-skeleton h-2.5 w-full rounded-full" />
+                <div className="loading-skeleton ml-auto h-10 w-36 rounded-lg" />
             </div>
         </div>
     );

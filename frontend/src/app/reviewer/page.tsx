@@ -17,6 +17,7 @@ import type {
     PublicCampaignMilestone,
 } from "@/lib/api/campaigns";
 import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
+import { PageLoading } from "@/components/ui/loading";
 import { openNotificationStream } from "@/lib/api/notifications";
 import { useReviewerCampaigns } from "@/lib/hooks/use-reviewer-campaigns";
 import { useOwnerSafes } from "@/lib/hooks/use-owner-safes";
@@ -995,10 +996,11 @@ export default function ReviewerWorkspacePage() {
         return (
             <div className="page-shell reviewer-page relative min-h-screen overflow-hidden px-6 py-10">
                 <div className="reviewer-ambient" aria-hidden />
-                <div className="relative z-10 mx-auto max-w-6xl space-y-4 animate-pulse">
-                    <div className="h-10 w-72 rounded-full bg-white/10" />
-                    <div className="web3-glass-card h-32 rounded-2xl" />
-                    <div className="web3-glass-card h-32 rounded-2xl" />
+                <PageLoading label="Đang tải danh sách mốc cần duyệt..." />
+                <div className="relative z-10 mx-auto mt-8 max-w-6xl space-y-4 animate-pulse">
+                    <div className="loading-skeleton h-10 w-72 rounded-full" />
+                    <div className="web3-glass-card loading-skeleton-muted h-32 rounded-2xl" />
+                    <div className="web3-glass-card loading-skeleton-muted h-32 rounded-2xl" />
                 </div>
             </div>
         );

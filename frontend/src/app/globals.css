@@ -276,9 +276,54 @@ html {
         );
 }
 
-.app-luxury > * {
+.app-luxury > *:not([data-wallet-tx-overlay]):not([data-notification-panel]):not(header) {
     position: relative;
     z-index: 1;
+}
+
+/* Header must sit above page content (sticky sidebars, cards, etc.) */
+header.nav-luxury {
+    position: sticky;
+    z-index: 300;
+}
+
+/* Wallet / tx overlay — above everything except itself */
+.app-luxury > [data-wallet-tx-overlay] {
+    position: fixed;
+    z-index: 100000;
+}
+
+/* Notification dropdown (portaled to body) */
+.app-luxury > [data-notification-panel] {
+    position: fixed;
+    z-index: 10500;
+    pointer-events: auto;
+}
+
+.nav-luxury .notification-bell-root {
+    position: relative;
+    z-index: 301;
+}
+
+.nav-luxury .notification-bell-root--open {
+    z-index: 302;
+}
+
+.loading-spinner {
+    border-style: solid;
+}
+
+.page-loading,
+.inline-loading {
+    color: var(--text-secondary);
+}
+
+.app-luxury .loading-skeleton {
+    background: rgba(99, 102, 241, 0.18) !important;
+}
+
+.app-luxury .loading-skeleton-muted {
+    background: rgba(255, 255, 255, 0.08) !important;
 }
 
 @keyframes glow-pulse {
@@ -690,6 +735,7 @@ html {
 
 .nav-luxury .notify-glow-dot {
     animation: notify-glow 2s ease-in-out infinite;
+    pointer-events: none;
 }
 
 .nav-luxury .nav-link-active::after,
