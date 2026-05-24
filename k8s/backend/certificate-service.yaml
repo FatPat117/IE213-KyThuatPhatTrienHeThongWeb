@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: certificate-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: certificate-service
+  template:
+    metadata:
+      labels:
+        app: certificate-service
+    spec:
+      containers:
+      - name: certificate-service
+        image: certificate-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 4004
+        envFrom:
+        - secretRef:
+            name: backend-env
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: certificate-service
+spec:
+  selector:
+    app: certificate-service
+  ports:
+    - port: 4004
+      targetPort: 4004
+

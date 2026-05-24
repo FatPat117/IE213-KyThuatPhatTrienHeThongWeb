@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: donation-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: donation-service
+  template:
+    metadata:
+      labels:
+        app: donation-service
+    spec:
+      containers:
+      - name: donation-service
+        image: donation-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 4003
+        envFrom:
+        - secretRef:
+            name: backend-env
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: donation-service
+spec:
+  selector:
+    app: donation-service
+  ports:
+    - port: 4003
+      targetPort: 4003
+

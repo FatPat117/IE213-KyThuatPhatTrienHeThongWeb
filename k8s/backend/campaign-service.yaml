@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: campaign-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: campaign-service
+  template:
+    metadata:
+      labels:
+        app: campaign-service
+    spec:
+      containers:
+      - name: campaign-service
+        image: campaign-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 4002
+        envFrom:
+        - secretRef:
+            name: backend-env
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: campaign-service
+spec:
+  selector:
+    app: campaign-service
+  ports:
+    - port: 4002
+      targetPort: 4002
+
