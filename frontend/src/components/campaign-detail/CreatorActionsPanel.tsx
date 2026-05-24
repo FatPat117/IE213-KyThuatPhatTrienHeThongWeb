@@ -41,11 +41,7 @@ export default function CreatorActionsPanel({
                 disabled={isPending || isConfirming || isWithdrawn}
                 className="w-full rounded-lg bg-white text-purple-600 px-6 py-4 text-lg font-bold shadow-lg hover:bg-purple-50 transition disabled:cursor-not-allowed disabled:opacity-50 mb-4"
             >
-                {isPending
-                    ? "⏳ Đợi xác nhận từ ví..."
-                    : isConfirming
-                      ? "🔄 Đang xác nhận..."
-                      : isWithdrawn
+                {isWithdrawn
                         ? "✓ Đã giải ngân"
                         : "💸 Giải ngân milestone"}
             </button>

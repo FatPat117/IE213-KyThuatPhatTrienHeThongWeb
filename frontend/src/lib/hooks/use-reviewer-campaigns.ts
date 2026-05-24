@@ -124,7 +124,7 @@ export function useReviewerCampaigns() {
   }, [ownerSafes, registeredSafes]);
 
   const [rows, setRows] = useState<ReviewerCampaignRow[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
 
@@ -165,6 +165,7 @@ export function useReviewerCampaigns() {
   const refresh = useCallback(async (force = false) => {
     if (myReviewerSafes.length === 0) {
       setRows([]);
+      setIsLoading(false);
       setLastUpdatedAt(new Date().toLocaleTimeString("vi-VN"));
       return;
     }
@@ -246,8 +247,13 @@ export function useReviewerCampaigns() {
   useEffect(() => {
     if (!isLoadingOwnerSafes && !isLoadingRegistered && myReviewerSafes.length > 0) {
       refresh(true);
-    } else if (myReviewerSafes.length === 0) {
+    } else if (
+      myReviewerSafes.length === 0 &&
+      !isLoadingOwnerSafes &&
+      !isLoadingRegistered
+    ) {
       setRows([]);
+      setIsLoading(false);
       setLastUpdatedAt(new Date().toLocaleTimeString("vi-VN"));
     }
   }, [myReviewerSafes, refresh, isLoadingOwnerSafes, isLoadingRegistered]);

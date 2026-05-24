@@ -256,7 +256,7 @@ export default function MilestoneTimeline({
                     return (
                         <article
                             key={milestone.milestoneId}
-                            className={`relative mb-6 rounded-xl border bg-gradient-to-b from-white to-slate-50 p-5 shadow-sm last:mb-0 ${statusMeta.cardClass}`}
+                            className={`relative mb-6 rounded-xl borde to-slate-50 p-5 shadow-sm last:mb-0 ${statusMeta.cardClass}`}
                         >
                             <span
                                 className={`absolute -left-[35px] top-6 h-4 w-4 rounded-full ring-4 ${statusMeta.dotClass}`}
@@ -320,7 +320,7 @@ export default function MilestoneTimeline({
                                             : "Chưa xác định"}
                                     </p>
                                     {userDonatedWei && userDonatedWei > 0n && raisedWei && raisedWei > 0n && (
-                                        <div className="mt-1 pt-1 border-t border-amber-200">
+                                        <div className="mt-1 pt-1">
                                             <p className="text-[10px] text-amber-700">Của bạn: {formatEthAmount(Number(formatEther((userDonatedWei * milestoneTargetWei) / goalWei || 0n)))} ETH</p>
                                         </div>
                                     )}

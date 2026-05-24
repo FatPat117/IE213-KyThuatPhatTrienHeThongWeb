@@ -45,21 +45,21 @@ function getStatusBadgeColor(status: string): string {
     switch (status) {
         case "disbursed":
         case "completed":
-            return "bg-emerald-100 text-emerald-700";
+            return "border border-emerald-400/30 bg-emerald-500/15 text-emerald-300";
         case "submitted":
         case "pending_verification":
         case "in_progress":
-            return "bg-blue-100 text-blue-700";
+            return "border border-indigo-400/30 bg-indigo-500/15 text-indigo-200";
         case "resubmittable":
-            return "bg-orange-100 text-orange-700";
+            return "border border-orange-400/30 bg-orange-500/15 text-orange-200";
         case "deadline_exceeded":
         case "verification_failed":
         case "failed":
         case "cancelled":
         case "delayed":
-            return "bg-red-100 text-red-700";
+            return "border border-rose-400/30 bg-rose-500/15 text-rose-200";
         default:
-            return "bg-slate-200 text-slate-600";
+            return "border border-white/10 bg-white/5 text-slate-300";
     }
 }
 
@@ -213,17 +213,17 @@ export default function MilestonePreviewCard({
             href={`/campaigns/${campaignId}/milestones`}
             className="group block"
         >
-            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition duration-200 hover:border-blue-300 hover:shadow-md">
-                <div className="border-b border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50 px-8 py-4">
+            <section className="web3-glass-card overflow-hidden rounded-2xl transition duration-200 hover:border-indigo-400/40 hover:shadow-[0_0_24px_rgba(99,102,241,0.2)]">
+                <div className="border-b border-white/10 bg-gradient-to-r from-indigo-500/10 via-violet-500/8 to-cyan-500/10 px-8 py-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                        <h3 className="text-xl font-bold text-slate-900">
+                        <h3 className="text-xl font-bold text-[var(--text-primary)]">
                             Các mốc giải ngân dự kiến
                         </h3>
-                        <span className="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100">
+                        <span className="web3-neon-badge inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold">
                             Xem tiến độ chi tiết →
                         </span>
                     </div>
-                    <p className="mt-2 text-sm text-slate-600">
+                    <p className="mt-2 text-sm text-[var(--text-secondary)]">
                         Thông tin giúp nhà tài trợ đánh giá mức độ minh bạch và
                         kế hoạch sử dụng quỹ trước khi quyên góp.
                     </p>
@@ -231,15 +231,15 @@ export default function MilestonePreviewCard({
 
                 <div className="p-8">
                     <div className="mb-5 flex items-center justify-between gap-3">
-                        <p className="text-sm font-medium text-slate-600">
+                        <p className="text-sm font-medium text-[var(--text-secondary)]">
                             Tiến độ chiến dịch hiện tại
                         </p>
-                        <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
+                        <span className="rounded-full border border-indigo-400/35 bg-indigo-500/15 px-3 py-1 text-xs font-bold text-indigo-200">
                             {progressPercent.toFixed(1)}%
                         </span>
                     </div>
 
-                    <div className="mb-6 h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
+                    <div className="mb-6 h-2.5 w-full overflow-hidden rounded-full bg-white/10">
                         <div
                             className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-500"
                             style={{ width: `${progressPercent}%` }}
@@ -251,11 +251,11 @@ export default function MilestonePreviewCard({
                             {[1, 2, 3].map((i) => (
                                 <div
                                     key={i}
-                                    className="rounded-xl border border-slate-200 bg-slate-50 p-4 animate-pulse"
+                                    className="rounded-xl border border-white/10 bg-white/5 p-4 animate-pulse"
                                 >
-                                    <div className="h-4 w-2/3 bg-slate-200 rounded mb-2" />
-                                    <div className="h-3 w-full bg-slate-200 rounded mb-2" />
-                                    <div className="h-3 w-1/3 bg-slate-200 rounded" />
+                                    <div className="mb-2 h-4 w-2/3 rounded bg-white/10" />
+                                    <div className="mb-2 h-3 w-full rounded bg-white/10" />
+                                    <div className="h-3 w-1/3 rounded bg-white/10" />
                                 </div>
                             ))}
                         </div>
@@ -330,14 +330,14 @@ export default function MilestonePreviewCard({
                                 return (
                                     <article
                                         key={isApiMilestone ? (milestone as any).milestoneId : (milestone as any).id}
-                                        className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                                        className="rounded-xl border border-white/10 bg-white/5 p-4"
                                     >
                                         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                                            <p className="font-semibold text-slate-900">
+                                            <p className="font-semibold text-[var(--text-primary)]">
                                                 {title}
                                             </p>
                                             <div className="flex items-center gap-2 text-xs font-semibold">
-                                                <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700">
+                                                <span className="rounded-full border border-emerald-400/30 bg-emerald-500/15 px-2.5 py-1 text-emerald-300">
                                                     {allocationPercent}% ngân sách
                                                 </span>
                                                 <span className={`rounded-full px-2.5 py-1 ${getStatusBadgeColor(status)}`}>
@@ -346,23 +346,23 @@ export default function MilestonePreviewCard({
                                             </div>
                                         </div>
 
-                                        <p className="mb-2 text-sm leading-relaxed text-slate-600">
+                                        <p className="mb-2 text-sm leading-relaxed text-[var(--text-secondary)]">
                                             {milestone.description}
                                         </p>
 
                                         {amountText && (
-                                            <p className="mb-2 text-xs font-medium text-slate-500">
+                                            <p className="mb-2 text-xs font-medium text-slate-400">
                                                 Số tiền:{" "}
-                                                <span className="text-slate-700">
+                                                <span className="text-slate-200">
                                                     {amountText}
                                                 </span>
                                             </p>
                                         )}
 
                                         {isApiMilestone && milestone.deadline && (
-                                            <p className="text-xs font-medium text-slate-500">
+                                            <p className="text-xs font-medium text-slate-400">
                                                 Hạn chót dự kiến:{" "}
-                                                <span className="text-slate-700">
+                                                <span className="text-slate-200">
                                                     {formatDate(new Date(milestone.deadline))}
                                                 </span>
                                             </p>
@@ -370,14 +370,14 @@ export default function MilestonePreviewCard({
 
                                         {refundText && (
                                             <div className="mt-2 space-y-1">
-                                                <p className="text-xs font-semibold text-amber-600">
+                                                <p className="text-xs font-semibold text-amber-300">
                                                     Hoàn trả tối đa:{" "}
-                                                    <span className="text-amber-700">
+                                                    <span className="text-amber-200">
                                                         {refundText.total}
                                                     </span>
                                                 </p>
                                                 {refundText.user && (
-                                                    <p className="text-[10px] font-bold text-amber-700">
+                                                    <p className="text-[10px] font-bold text-amber-200">
                                                         Của bạn: {refundText.user}
                                                     </p>
                                                 )}
@@ -385,9 +385,9 @@ export default function MilestonePreviewCard({
                                         )}
 
                                         {!isApiMilestone && (milestone as any).expectedDate && (
-                                            <p className="text-xs font-medium text-slate-500">
+                                            <p className="text-xs font-medium text-slate-400">
                                                 Hạn chót dự kiến:{" "}
-                                                <span className="text-slate-700">
+                                                <span className="text-slate-200">
                                                     {formatDate((milestone as any).expectedDate)}
                                                 </span>
                                             </p>
@@ -399,17 +399,17 @@ export default function MilestonePreviewCard({
                     )}
 
                     {!isLoading && isAwaitingIndex && (
-                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                        <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-4 text-sm text-amber-200">
                             Milestone đang được backend đồng bộ sau khi tạo
                             campaign. Dữ liệu thật sẽ tự cập nhật trong vài giây.
                         </div>
                     )}
 
-                    <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
-                        <p className="text-sm font-semibold text-amber-900">
+                    <div className="mt-4 rounded-xl border border-amber-400/25 bg-amber-500/8 p-4">
+                        <p className="text-sm font-semibold text-amber-200">
                             Chú thích về giải ngân theo giai đoạn
                         </p>
-                        <p className="mt-1 text-sm leading-relaxed text-amber-800">
+                        <p className="mt-1 text-sm leading-relaxed text-amber-100/80">
                             Tiền quỹ không được rút một lần. Mỗi đợt giải ngân
                             cần được mở khóa theo mốc tiến độ và được đối soát
                             minh chứng kết quả. Cách này giúp nhà tài trợ giảm

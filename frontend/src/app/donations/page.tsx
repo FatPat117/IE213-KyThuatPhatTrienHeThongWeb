@@ -3,6 +3,7 @@
 import DonationHistoryList from "@/components/donations/DonationHistoryList";
 import DonationSummaryCards from "@/components/donations/DonationSummaryCards";
 import BackButton from "@/components/navigation/BackButton";
+import { InlineLoading } from "@/components/ui/loading";
 import TransactionHistoryModal from "@/components/transactions/TransactionHistoryModal";
 import {
     contractConfig,
@@ -200,9 +201,7 @@ function MyDonationsContent() {
                             )}
 
                         {(donationQuery.isLoading || isOnChainLoading) && (
-                            <p className="text-sm text-slate-600">
-                                Đang tải dữ liệu...
-                            </p>
+                            <InlineLoading label="Đang tải dữ liệu quyên góp..." />
                         )}
                         {!donationQuery.isLoading &&
                             !donationQuery.error &&

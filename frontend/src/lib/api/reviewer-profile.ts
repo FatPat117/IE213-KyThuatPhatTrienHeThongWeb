@@ -35,6 +35,31 @@ export async function getReviewerProfile(
   }
 }
 
+let publicReviewerProfilesCache: {
+  data: ReviewerProfile[];
+  expiresAt: number;
+} | null = null;
+
+const PUBLIC_REVIEWER_PROFILES_TTL_MS = 300_000;
+
+/** Danh sách hồ sơ reviewer công khai (tổ chức, vùng phụ trách) — dùng trang chủ */
+export async function getPublicReviewerProfiles(): Promise<ReviewerProfile[]> {
+  if (
+    publicReviewerProfilesCache &&
+    Date.now() <= publicReviewerProfilesCache.expiresAt
+  ) {
+    return publicReviewerProfilesCache.data;
+  }
+  const data = await apiRequest<ReviewerProfile[]>(
+    "/campaigns/public/reviewers/profiles",
+  );
+  publicReviewerProfilesCache = {
+    data: Array.isArray(data) ? data : [],
+    expiresAt: Date.now() + PUBLIC_REVIEWER_PROFILES_TTL_MS,
+  };
+  return publicReviewerProfilesCache.data;
+}
+
 export async function updateReviewerProfile(
   token: string | null,
   updates: { organizationName?: string; region?: string },

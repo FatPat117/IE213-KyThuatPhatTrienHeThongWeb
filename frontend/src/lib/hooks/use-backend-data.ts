@@ -56,7 +56,7 @@ export function useBackendCampaigns(params?: {
         total: 0,
         totalPages: 1,
     });
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     const page = params?.page;
@@ -97,11 +97,14 @@ export function useBackendCampaign(
     id: number | null,
 ): QueryState<CampaignRecord | null> {
     const [data, setData] = useState<CampaignRecord | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(() => id != null && id > 0);
     const [error, setError] = useState<string | null>(null);
 
     const fetchData = useCallback(async () => {
-        if (!id) return;
+        if (!id) {
+            setIsLoading(false);
+            return;
+        }
         try {
             setIsLoading(true);
             setError(null);
@@ -137,12 +140,13 @@ export function useBackendDonations(
     campaignId?: number | null,
 ): QueryState<DonationRecord[]> {
     const [data, setData] = useState<DonationRecord[]>([]);
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(() => Boolean(wallet?.trim()));
     const [error, setError] = useState<string | null>(null);
 
     const fetchData = useCallback(async () => {
         if (!wallet) {
             setData([]);
+            setIsLoading(false);
             return;
         }
         try {
@@ -182,12 +186,13 @@ export function useBackendTransactions(
 ): QueryState<TransactionRecord[]> {
     const { token } = useAuth();
     const [data, setData] = useState<TransactionRecord[]>([]);
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(() => Boolean(wallet?.trim()));
     const [error, setError] = useState<string | null>(null);
 
     const fetchData = useCallback(async () => {
         if (!wallet) {
             setData([]);
+            setIsLoading(false);
             return;
         }
         try {
@@ -214,7 +219,7 @@ export function useBackendTransactions(
 
 export function usePublicStats(): QueryState<PublicStatsResponse | null> {
     const [data, setData] = useState<PublicStatsResponse | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     const fetchData = useCallback(async () => {

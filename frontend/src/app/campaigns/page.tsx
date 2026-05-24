@@ -1,57 +1,35 @@
 'use client';
 
+import CampaignGridCard, {
+    CampaignGridCardSkeleton,
+} from "@/components/campaigns/CampaignGridCard";
+import CampaignListRow, {
+    CampaignListRowSkeleton,
+} from "@/components/campaigns/CampaignListRow";
 import BackButton from "@/components/navigation/BackButton";
+import { PageLoading } from "@/components/ui/loading";
+import { useBackendCampaigns, SEPOLIA_CHAIN_ID } from "@/lib";
 import {
-    getCampaignMetadataFromCache,
-    isPlaceholderCampaignDescription,
-    isPlaceholderCampaignTitle,
-    useBackendCampaigns,
-    TERMINAL_STATUSES,
-    SEPOLIA_CHAIN_ID,
-} from "@/lib";
+    BTN_PRIMARY,
+    normalizeCampaignListItem,
+} from "@/lib/utils/campaign-display";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { formatEther } from "viem";
 import { useAccount, useChainId } from "wagmi";
 import { showErrorToast } from "@/lib/ui/toast";
 
-function formatEthAmount(value: number) {
-    if (!Number.isFinite(value) || value <= 0) return '0';
-    if (value < 0.01) return value.toFixed(4).replace(/\.?0+$/, '');
-    return value.toFixed(2);
-}
-
-function CampaignCardSkeleton() {
-    return (
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm animate-pulse">
-            <div className="flex items-center gap-3">
-                <div className="h-12 w-12 rounded-full bg-slate-200" />
-                <div className="flex-1 space-y-2">
-                    <div className="h-5 w-2/3 rounded bg-slate-200" />
-                    <div className="h-3 w-1/2 rounded bg-slate-200" />
-                </div>
-            </div>
-            <div className="mt-5 space-y-3">
-                <div className="h-3 w-2/5 rounded bg-slate-200" />
-                <div className="h-3 w-3/5 rounded bg-slate-200" />
-            </div>
-            <div className="mt-5 h-2 w-full rounded-full bg-slate-200" />
-            <div className="mt-4 h-10 w-32 rounded-lg bg-slate-200" />
-        </div>
-    );
-}
-
-const ITEMS_PER_PAGE = 9;
+const ITEMS_PER_PAGE = 8;
 
 function CampaignsPageContent() {
     const { data: campaigns, isLoading, error, refetch } = useBackendCampaigns();
     const { isConnected } = useAccount();
     const chainId = useChainId();
     const [searchQuery, setSearchQuery] = useState("");
-    const [filterStatus, setFilterStatus] = useState<string>("all");
+    const [filterStatus, setFilterStatus] = useState<string>("active");
     const [sortBy, setSortBy] = useState<"newest" | "mostfunded" | "trending">("newest");
     const [currentPage, setCurrentPage] = useState(1);
+    const [viewMode, setViewMode] = useState<"list" | "grid">("list");
     const isSepoliaNetwork = chainId === SEPOLIA_CHAIN_ID;
     const canCreateCampaign = isConnected && isSepoliaNetwork;
 
@@ -61,26 +39,8 @@ function CampaignsPageContent() {
     }, [error]);
 
     const normalizedCampaigns = useMemo(
-        () =>
-            campaigns.map((campaign) => {
-                const cached = getCampaignMetadataFromCache(campaign.onChainId);
-                const status = (campaign.status || "").toLowerCase();
-                return {
-                    id: campaign.onChainId,
-                    title: !isPlaceholderCampaignTitle(campaign.title, campaign.onChainId)
-                        ? campaign.title
-                        : (cached?.title || `Chiến dịch #${campaign.onChainId}`),
-                    description: !isPlaceholderCampaignDescription(campaign.description)
-                        ? campaign.description
-                        : (cached?.description || "Dữ liệu đang được đồng bộ..."),
-                    creator: campaign.creator,
-                    goal: BigInt(campaign.goal || "0"),
-                    raised: BigInt(campaign.raised || "0"),
-                    status: campaign.status,
-                    completed: TERMINAL_STATUSES.has(status),
-                };
-            }),
-        [campaigns]
+        () => campaigns.map(normalizeCampaignListItem),
+        [campaigns],
     );
 
     // Filter and search campaigns
@@ -157,18 +117,22 @@ function CampaignsPageContent() {
 
                 {/* Status Bar */}
                 {!isConnected && (
-                    <div className="mb-6 rounded-lg border border-blue-300 bg-blue-50 p-4">
-                        <p className="text-sm font-semibold text-blue-900">👁️ Chế độ xem (chỉ đọc)</p>
-                        <p className="text-xs text-blue-800 mt-1">
-                            Bạn đang xem dữ liệu ở chế độ chỉ đọc. Kết nối ví để tạo chiến dịch và quyên góp.
+                    <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+                        <p className="text-sm font-semibold text-blue-900">
+                            Chế độ xem (chỉ đọc)
+                        </p>
+                        <p className="mt-1 text-sm text-blue-800">
+                            Kết nối ví để tạo chiến dịch và quyên góp.
                         </p>
                     </div>
                 )}
 
                 {isConnected && !isSepoliaNetwork && (
-                    <div className="mb-6 rounded-lg border border-red-300 bg-red-50 p-4">
-                        <p className="text-sm font-semibold text-red-900">⚠️ Mạng lưới sai</p>
-                        <p className="text-xs text-red-800 mt-1">
+                    <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+                        <p className="text-sm font-semibold text-red-900">
+                            Mạng lưới chưa đúng
+                        </p>
+                        <p className="mt-1 text-sm text-red-800">
                             Vui lòng chuyển sang mạng Sepolia để tạo chiến dịch hoặc quyên góp.
                         </p>
                     </div>
@@ -179,8 +143,8 @@ function CampaignsPageContent() {
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                         <div>
                             <div className="inline-flex items-center gap-2 mb-3">
-                                <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">
-                                    🔗 Dữ liệu on-chain
+                                <span className="text-xs font-semibold text-blue-700 bg-blue-100 px-3 py-1 rounded-full">
+                                    Dữ liệu on-chain
                                 </span>
                             </div>
                             <h1 className="text-4xl font-bold text-slate-900 mb-3">Tất cả chiến dịch</h1>
@@ -195,7 +159,7 @@ function CampaignsPageContent() {
                                 }}
                                 className="inline-flex items-center justify-center px-5 py-3 rounded-lg border-2 border-slate-200 text-slate-900 font-semibold hover:border-blue-600 hover:text-blue-600 transition duration-200"
                             >
-                                🔄 Tải lại
+                                Tải lại
                             </button>
                             {canCreateCampaign ? (
                                 <Link
@@ -248,7 +212,6 @@ function CampaignsPageContent() {
 
                 {/* Search and Filter Bar */}
                 <div className="mb-8 space-y-4">
-                    {/* Search Input */}
                     <div className="relative">
                         <input
                             type="text"
@@ -262,75 +225,124 @@ function CampaignsPageContent() {
                         />
                     </div>
 
-                    {/* Filter and Sort Controls */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {/* Status Filter */}
-                        <div>
-                            <label className="text-xs font-semibold text-slate-600 mb-2 block">Trạng thái</label>
-                            <select
-                                value={filterStatus}
-                                onChange={(e) => {
-                                    setFilterStatus(e.target.value);
-                                    setCurrentPage(1);
-                                }}
-                                aria-label="Lọc theo trạng thái chiến dịch"
-                                className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2 text-slate-900 focus:border-blue-600 focus:outline-none transition"
-                            >
-                                <option value="all">Tất cả</option>
-                                <option value="active">🟢 Đang gây quỹ (Hoạt động)</option>
-                                <option value="pending_approval">⏳ Chờ duyệt</option>
-                                <option value="in_progress">🔵 Đang triển khai (Milestones)</option>
-                                <option value="failed">  Thất bại / Bị từ chối</option>
-                                <option value="ended">  Chiến dịch thành công</option>
-                            </select>
-                        </div>
-
-                        {/* Sort By */}
-                        <div>
-                            <label className="text-xs font-semibold text-slate-600 mb-2 block">Sắp xếp</label>
-                            <select
-                                value={sortBy}
-                                onChange={(e) => {
-                                    setSortBy(e.target.value as "newest" | "mostfunded" | "trending");
-                                    setCurrentPage(1);
-                                }}
-                                aria-label="Sắp xếp danh sách chiến dịch"
-                                className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2 text-slate-900 focus:border-blue-600 focus:outline-none transition"
-                            >
-                                <option value="newest">Mới nhất</option>
-                                <option value="mostfunded">Gây quỹ nhiều nhất</option>
-                                <option value="trending">Tăng trưởng (% đạt)</option>
-                            </select>
-                        </div>
-
-                        {/* Results Count */}
-                        <div className="flex items-end">
-                            <div className="w-full rounded-lg bg-blue-50 border border-blue-200 px-3 py-2">
-                                <p className="text-sm font-medium text-blue-600">
-                                    Tìm thấy {filteredCampaigns.length} chiến dịch
-                                    {filteredCampaigns.length > 0 && (
-                                        <span className="text-blue-400 font-normal ml-1">
-                                            (trang {safePage}/{totalPages})
-                                        </span>
-                                    )}
-                                </p>
+                    <div className="flex flex-col gap-[12px] lg:flex-row lg:flex-wrap lg:items-end">
+                        <div className="flex min-w-0 flex-1 flex-col gap-[12px] sm:flex-row sm:flex-wrap sm:items-end">
+                            <div className="min-w-[140px] flex-1 sm:max-w-[200px]">
+                                <label className="mb-2 block text-xs font-semibold text-slate-600">
+                                    Trạng thái
+                                </label>
+                                <select
+                                    value={filterStatus}
+                                    onChange={(e) => {
+                                        setFilterStatus(e.target.value);
+                                        setCurrentPage(1);
+                                    }}
+                                    aria-label="Lọc theo trạng thái chiến dịch"
+                                    className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2 text-slate-900 focus:border-blue-600 focus:outline-none transition"
+                                >
+                                    <option value="all">Tất cả</option>
+                                    <option value="active">Đang gây quỹ (Hoạt động)</option>
+                                    <option value="pending_approval">Chờ duyệt</option>
+                                    <option value="in_progress">Đang triển khai</option>
+                                    <option value="failed">Thất bại / Bị từ chối</option>
+                                    <option value="ended">Chiến dịch thành công</option>
+                                </select>
                             </div>
+
+                            <div className="min-w-[140px] flex-1 sm:max-w-[200px]">
+                                <label className="mb-2 block text-xs font-semibold text-slate-600">
+                                    Sắp xếp
+                                </label>
+                                <select
+                                    value={sortBy}
+                                    onChange={(e) => {
+                                        setSortBy(
+                                            e.target.value as
+                                                | "newest"
+                                                | "mostfunded"
+                                                | "trending",
+                                        );
+                                        setCurrentPage(1);
+                                    }}
+                                    aria-label="Sắp xếp danh sách chiến dịch"
+                                    className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2 text-slate-900 focus:border-blue-600 focus:outline-none transition"
+                                >
+                                    <option value="newest">Mới nhất</option>
+                                    <option value="mostfunded">Gây quỹ nhiều nhất</option>
+                                    <option value="trending">Tăng trưởng (% đạt)</option>
+                                </select>
+                            </div>
+
+                            <div
+                                className="campaigns-result-pill flex items-center"
+                                aria-live="polite"
+                            >
+                                Tìm thấy {filteredCampaigns.length} chiến dịch
+                                {filteredCampaigns.length > 0 && (
+                                    <span className="ml-1 font-normal opacity-80">
+                                        · trang {safePage}/{totalPages}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+
+                        <div
+                            className="flex shrink-0 items-center gap-1 self-end lg:ml-auto"
+                            role="group"
+                            aria-label="Chế độ hiển thị"
+                        >
+                            <button
+                                type="button"
+                                onClick={() => setViewMode("list")}
+                                className={`view-toggle-btn ${viewMode === "list" ? "view-toggle-btn-active" : "view-toggle-btn-inactive"}`}
+                                aria-pressed={viewMode === "list" ? "true" : "false"}
+                            >
+                                <span aria-hidden>≡</span> Danh sách
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setViewMode("grid")}
+                                className={`view-toggle-btn ${viewMode === "grid" ? "view-toggle-btn-active" : "view-toggle-btn-inactive"}`}
+                                aria-pressed={viewMode === "grid" ? "true" : "false"}
+                            >
+                                <span aria-hidden>⊞</span> Lưới
+                            </button>
                         </div>
                     </div>
                 </div>
-                {/* Campaign Grid */}
-                <section className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                    {/* Loading State */}
-                    {isLoading && normalizedCampaigns.length === 0 &&
-                        Array.from({ length: 6 }).map((_, index) => (
-                            <CampaignCardSkeleton key={`skeleton-${index}`} />
-                        ))}
+                <section
+                    className={
+                        viewMode === "grid"
+                            ? "campaigns-page-grid"
+                            : "flex flex-col gap-5"
+                    }
+                >
+                    {isLoading && normalizedCampaigns.length === 0 && (
+                        <>
+                            <PageLoading
+                                label="Đang tải danh sách chiến dịch..."
+                                className="col-span-full"
+                                minHeight="min-h-[28vh]"
+                            />
+                            {Array.from({ length: 4 }).map((_, index) =>
+                                viewMode === "grid" ? (
+                                    <CampaignGridCardSkeleton
+                                        key={`skeleton-${index}`}
+                                    />
+                                ) : (
+                                    <CampaignListRowSkeleton
+                                        key={`skeleton-${index}`}
+                                    />
+                                ),
+                            )}
+                        </>
+                    )}
 
                     {/* Error State */}
                     {!isLoading && error && normalizedCampaigns.length === 0 && (
-                        <div className="col-span-full rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
-                            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4">
-                                <span className="text-2xl">⚠️</span>
+                        <div className="w-full rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
+                            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4 text-red-600 font-bold">
+                                !
                             </div>
                             <p className="text-lg font-semibold text-red-900 mb-2">Không thể tải chiến dịch</p>
                             <p className="text-sm text-red-700 mb-4">
@@ -347,178 +359,81 @@ function CampaignsPageContent() {
                         </div>
                     )}
 
-                    {/* Empty State - No Campaigns */}
                     {!isLoading && !error && normalizedCampaigns.length === 0 && (
-                        <div className="col-span-full rounded-2xl border border-blue-200 bg-blue-50 p-12 text-center">
-                            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 mb-4">
-                                <span className="text-3xl">🚀</span>
+                        <div className="col-span-full flex flex-col items-center justify-center rounded-2xl border border-[var(--border-glow)] bg-[rgba(13,20,38,0.6)] px-8 py-16 text-center">
+                            <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl border border-[rgba(99,102,241,0.35)] bg-[rgba(99,102,241,0.12)] text-[var(--accent-cyan)]">
+                                <svg
+                                    className="h-10 w-10"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    aria-hidden
+                                >
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={1.5}
+                                        d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+                                    />
+                                </svg>
                             </div>
-                            <p className="text-xl font-semibold text-slate-900 mb-2">Chưa có chiến dịch</p>
-                            <p className="text-slate-600 mb-6">Hãy là người đầu tiên tạo chiến dịch gây quỹ trên blockchain.</p>
-                            <Link
-                                href="/campaigns/create"
-                                className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition"
-                            >
-                                Tạo chiến dịch đầu tiên
-                            </Link>
+                            <h2 className="font-display text-2xl font-bold text-[var(--text-primary)]">
+                                Chưa có chiến dịch nào
+                            </h2>
+                            <p className="mt-2 max-w-md text-[var(--text-secondary)]">
+                                Hãy là người đầu tiên tạo chiến dịch!
+                            </p>
+                            {canCreateCampaign ? (
+                                <Link
+                                    href="/campaigns/create"
+                                    className={`${BTN_PRIMARY} mt-8 inline-flex items-center gap-2`}
+                                >
+                                    Tạo chiến dịch →
+                                </Link>
+                            ) : (
+                                <p className="mt-6 text-sm text-[var(--text-secondary)]">
+                                    Kết nối ví Sepolia để tạo chiến dịch.
+                                </p>
+                            )}
                         </div>
                     )}
 
                     {/* Empty State - No Search Results */}
                     {!isLoading && normalizedCampaigns.length > 0 && filteredCampaigns.length === 0 && (
-                        <div className="col-span-full rounded-2xl border border-slate-200 bg-slate-50 p-12 text-center">
-                            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
-                                <span className="text-3xl">🔍</span>
+                        <div className="col-span-full w-full rounded-2xl border border-slate-200 bg-slate-50 p-12 text-center">
+                            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4 text-2xl text-slate-500">
+                                …
                             </div>
                             <p className="text-xl font-semibold text-slate-900 mb-2">Không tìm thấy chiến dịch</p>
                             <p className="text-slate-600 mb-6">Hãy thử điều chỉnh bộ lọc hoặc từ khóa.</p>
                             <button
                                 onClick={() => {
                                     setSearchQuery("");
-                                    setFilterStatus("all");
+                                    setFilterStatus("active");
                                 }}
-                                className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-slate-900 text-white font-semibold hover:bg-slate-800 transition"
+                                className={BTN_PRIMARY}
                             >
                                 Xóa bộ lọc
                             </button>
                         </div>
                     )}
 
-                    {/* Campaign Cards */}
-                    {!isLoading && !error && paginatedCampaigns.length > 0 &&
-                        paginatedCampaigns.map((campaign) => {
-                            const goalEth = Number(formatEther(campaign.goal));
-                            const raisedEth = Number(formatEther(campaign.raised));
-                            const progress = goalEth > 0 ? Math.min((raisedEth / goalEth) * 100, 100) : 0;
-                            const normalizedStatus = (campaign.status || "").toLowerCase();
-                            const isPendingApproval = normalizedStatus === "pending_approval";
-                            const isInProgress = normalizedStatus === "in_progress";
-                            const isActive = !campaign.completed && !isPendingApproval;
-                            const isFailed = ["failed", "partial_failed", "cancelled", "refunded"].includes(normalizedStatus);
-                            const isSuccess = campaign.completed && !isFailed;
-
-                            let statusClasses = "bg-slate-100 text-slate-700 border-slate-200";
-                            if (isPendingApproval) {
-                                statusClasses = "bg-amber-50 text-amber-700 border-amber-200";
-                            } else if (isFailed) {
-                                statusClasses = "bg-red-50 text-red-700 border-red-200";
-                            } else if (isInProgress) {
-                                statusClasses = "bg-blue-50 text-blue-700 border-blue-200";
-                            } else if (isActive) {
-                                statusClasses = "bg-emerald-50 text-emerald-700 border-emerald-200";
-                            } else if (isSuccess) {
-                                statusClasses = "bg-green-50 text-green-700 border-green-200";
-                            }
-
-                            let progressBarColor = "bg-slate-400";
-                            if (isFailed) {
-                                progressBarColor = "bg-red-500";
-                            } else if (isInProgress) {
-                                progressBarColor = "bg-blue-500";
-                            } else if (isActive) {
-                                progressBarColor = "bg-emerald-500";
-                            } else if (isSuccess) {
-                                progressBarColor = "bg-green-500";
-                            }
-
-                            return (
-                                <Link
-                                    key={campaign.id}
-                                    href={`/campaigns/${campaign.id}`}
-                                    className="group relative flex h-full flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:border-blue-300"
-                                >
-                                    {/* Campaign Header */}
-                                    <div className="mb-4">
-                                        <div className="flex items-start gap-3">
-                                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-sm font-bold text-white shadow-lg">
-                                                #{campaign.id}
-                                            </div>
-                                            <div className="min-w-0 flex-1 flex-col gap-1">
-                                                <h3 className="line-clamp-2 text-lg font-bold leading-snug text-slate-900 transition group-hover:text-blue-600">
-                                                    {campaign.title || `Chiến dịch #${campaign.id}`}
-                                                </h3>
-                                                <p className="min-w-0 truncate text-xs text-slate-500">
-                                                    bởi {campaign.creator.slice(0, 6)}...{campaign.creator.slice(-4)}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <div className="mt-2 flex items-center gap-2">
-                                            <span
-                                                className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold ${statusClasses}`}
-                                            >
-                                                {isPendingApproval
-                                                    ? "⏳ Chờ duyệt"
-                                                    : normalizedStatus === "failed" || normalizedStatus === "partial_failed"
-                                                        ? "  Thất bại"
-                                                        : normalizedStatus === "cancelled"
-                                                            ? "🚫 Bị từ chối"
-                                                            : isInProgress
-                                                                ? "🔵 Đang triển khai"
-                                                                : isActive
-                                                                    ? "● Đang hoạt động"
-                                                                    : "Thành công"}
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    {/* Description */}
-                                    <p className="mb-4 line-clamp-3 text-sm text-slate-600">
-                                        {campaign.description || "Không có mô tả"}
-                                    </p>
-
-                                    {/* Campaign Stats */}
-                                    <div className="mb-4 rounded-xl bg-slate-50 p-4">
-                                        <div className="grid grid-cols-2 gap-4 text-sm">
-                                            <div>
-                                                <p className="mb-1 text-slate-600">Mục tiêu</p>
-                                                <p className="text-xl font-bold text-slate-900">
-                                                    {formatEthAmount(goalEth)}{" "}
-                                                    <span className="text-sm font-normal text-slate-600">ETH</span>
-                                                </p>
-                                            </div>
-                                            <div>
-                                                <p className="mb-1 text-slate-600">Đã gây quỹ</p>
-                                                <p className="text-xl font-bold text-blue-600">
-                                                    {formatEthAmount(raisedEth)}{" "}
-                                                    <span className="text-sm font-normal text-slate-600">ETH</span>
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Progress Bar */}
-                                    <div className="mb-4">
-                                        <div className="mb-2 flex items-center justify-between text-sm">
-                                            <span className="font-medium text-slate-900">
-                                                {progress.toFixed(1)}% đạt được
-                                            </span>
-                                            <span className="text-slate-600">
-                                                {formatEthAmount(raisedEth)} / {formatEthAmount(goalEth)} ETH
-                                            </span>
-                                        </div>
-                                        <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
-                                            <div
-                                                className={`h-full rounded-full transition-all duration-500 ${progressBarColor}`}
-                                                style={{ width: `${progress}%` }}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* View Details Button */}
-                                    <div className="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-5 py-2.5 text-sm font-semibold text-slate-900 transition-all duration-200 group-hover:bg-blue-600 group-hover:text-white">
-                                        Xem chi tiết
-                                        <span className="text-lg">→</span>
-                                    </div>
-
-                                    {/* On-chain Badge */}
-                                    <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                                            Trên chuỗi ✓
-                                        </span>
-                                    </div>
-                                </Link>
-                            );
-                        })}
+                    {!isLoading &&
+                        !error &&
+                        paginatedCampaigns.length > 0 &&
+                        (viewMode === "grid"
+                            ? paginatedCampaigns.map((campaign) => (
+                                  <CampaignGridCard
+                                      key={campaign.id}
+                                      campaign={campaign}
+                                  />
+                              ))
+                            : paginatedCampaigns.map((campaign) => (
+                                  <CampaignListRow
+                                      key={campaign.id}
+                                      campaign={campaign}
+                                  />
+                              )))}
                 </section>
 
                 {/* Pagination Controls */}

@@ -17,6 +17,7 @@ import type {
     PublicCampaignMilestone,
 } from "@/lib/api/campaigns";
 import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
+import { PageLoading } from "@/components/ui/loading";
 import { openNotificationStream } from "@/lib/api/notifications";
 import { useReviewerCampaigns } from "@/lib/hooks/use-reviewer-campaigns";
 import { useOwnerSafes } from "@/lib/hooks/use-owner-safes";
@@ -64,16 +65,16 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_BADGE: Record<string, string> = {
-    submitted: "bg-amber-100 text-amber-800 border-amber-200",
-    pending_verification: "bg-sky-100 text-sky-800 border-sky-200",
-    resubmittable: "bg-orange-100 text-orange-800 border-orange-200",
-    approved: "bg-emerald-100 text-emerald-800 border-emerald-200",
-    disbursed: "bg-amber-100 text-amber-800 border-amber-200",
-    disbursed_done: "bg-teal-100 text-teal-800 border-teal-200",
-    failed: "bg-rose-100 text-rose-800 border-rose-200",
-    refunded: "bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200",
-    review_timeout: "bg-violet-100 text-violet-800 border-violet-200",
-    deadline_exceeded: "bg-slate-200 text-slate-700 border-slate-300",
+    submitted: "border border-amber-500/30 bg-amber-500/15 text-amber-300",
+    pending_verification: "border border-cyan-500/30 bg-cyan-500/15 text-cyan-300",
+    resubmittable: "border border-orange-500/30 bg-orange-500/15 text-orange-300",
+    approved: "border border-emerald-500/30 bg-emerald-500/15 text-emerald-300",
+    disbursed: "border border-amber-500/30 bg-amber-500/15 text-amber-300",
+    disbursed_done: "border border-teal-500/30 bg-teal-500/15 text-teal-300",
+    failed: "border border-rose-500/30 bg-rose-500/15 text-rose-300",
+    refunded: "border border-fuchsia-500/30 bg-fuchsia-500/15 text-fuchsia-300",
+    review_timeout: "border border-violet-500/30 bg-violet-500/15 text-violet-300",
+    deadline_exceeded: "border border-slate-500/30 bg-slate-500/15 text-slate-300",
 };
 
 const PRIMARY_FILTER_OPTIONS: Array<{ value: ReviewFilter; label: string }> = [
@@ -273,7 +274,7 @@ function ReviewerMilestoneActions({
                         return uniqueProofs.map((cid, index) => (
                             <div
                                 key={`${milestone.milestoneId}-onchain-${index}-${cid}`}
-                                className="rounded-xl border border-blue-100 bg-white p-3 shadow-sm ring-1 ring-blue-50/50"
+                                className="reviewer-evidence-card rounded-xl border p-3 shadow-sm ring-1 ring-blue-50/50"
                             >
                                 <div className="flex items-center justify-between gap-2 mb-1.5">
                                     <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
@@ -282,14 +283,14 @@ function ReviewerMilestoneActions({
                                     <span className="text-[10px] text-slate-400 font-medium">On-chain</span>
                                 </div>
                                 <p className="text-xs font-semibold text-slate-600">CID</p>
-                                <p className="mt-1 break-all text-[11px] font-mono text-slate-700 leading-relaxed bg-slate-50 p-1.5 rounded-lg border border-slate-100">
+                                <p className="reviewer-evidence-cid mt-1 break-all rounded-lg border p-1.5 font-mono text-[11px] leading-relaxed">
                                     {cid}
                                 </p>
                                 <a
                                     href={`https://ipfs.io/ipfs/${cid}`}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="mt-2.5 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 hover:border-slate-300"
+                                    className="reviewer-evidence-link mt-2.5 inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition"
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -301,10 +302,9 @@ function ReviewerMilestoneActions({
                     })()}
                 </div>
             ) : isLoadingOnChain ? (
-                <div className="flex items-center gap-2 py-2 text-xs text-slate-400 italic">
-                    <div className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-500" />
+                <p className="py-2 text-xs italic text-slate-400">
                     Đang kiểm tra minh chứng on-chain...
-                </div>
+                </p>
             ) : null}
 
             {needsOnChainSubmission && isPendingMilestone && (
@@ -325,7 +325,7 @@ function ReviewerMilestoneActions({
                 <div className="flex flex-wrap items-center gap-3 pt-1">
                     <div className="flex flex-wrap items-center gap-3">
                         {hasSigned ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-100 px-5 py-2.5 text-sm font-bold text-emerald-700 ring-1 ring-emerald-200">
+                            <span className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/15 px-5 py-2.5 text-sm font-bold text-emerald-300 ring-1 ring-emerald-500/20">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                 </svg>
@@ -356,19 +356,7 @@ function ReviewerMilestoneActions({
                                     }
                                     className="flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 hover:shadow-emerald-700/30 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
                                 >
-                                    {isApproving ? (
-                                        <>
-                                            <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                                            Đang xử lý...
-                                        </>
-                                    ) : isFocusRefreshing ? (
-                                        <>
-                                            <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                                            Đang đồng bộ...
-                                        </>
-                                    ) : (
-                                        "Phê duyệt mốc"
-                                    )}
+                                    Phê duyệt mốc
                                 </button>
 
                                 <button
@@ -391,9 +379,9 @@ function ReviewerMilestoneActions({
                                                     ? "Mốc không ở trạng thái chờ duyệt"
                                                     : undefined
                                     }
-                                    className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-6 py-2.5 text-sm font-bold text-rose-700 transition hover:bg-rose-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                    className="reviewer-reject-btn-outline flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                    {isRejecting ? "Đang xử lý..." : isFocusRefreshing ? "Đang đồng bộ..." : hasRejected ? "Đã ký từ chối" : "Từ chối mốc"}
+                                    {hasRejected ? "Đã ký từ chối" : "Từ chối mốc"}
                                 </button>
                             </>
                         )}
@@ -427,25 +415,13 @@ function ReviewerMilestoneActions({
                                 }
                                 className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 hover:shadow-blue-700/30 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
                             >
-                                {isExecuting ? (
-                                    <>
-                                        <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                                        Đang thực thi...
-                                    </>
-                                ) : isFocusRefreshing ? (
-                                    <>
-                                        <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                                        Đang đồng bộ...
-                                    </>
-                                ) : (
-                                    <>
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                        </svg>
-                                        Thực thi
-                                    </>
-                                )}
+                                <>
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    Thực thi
+                                </>
                             </button>
                         )}
                     </div>
@@ -500,11 +476,23 @@ export default function ReviewerWorkspacePage() {
         isError: isTxError,
         error: txError,
     } = useWaitForTransactionReceipt({ hash: txHash });
-    useRegisterWalletTxOverlay(Boolean(approvingKey) || Boolean(rejectingKey), rejectingKey ? "processing" : "signing");
-    useRegisterWalletTxOverlay(isConfirming, "confirming");
 
     // Initialize execute hook
     const { execute: executeSafeTransaction, isPending: isExecuting } = useExecuteSafeTransaction();
+
+    useRegisterWalletTxOverlay(
+        Boolean(approvingKey) ||
+            Boolean(rejectingKey) ||
+            isExecuting ||
+            isConfirming ||
+            isFocusRefreshing ||
+            indexingKeys.size > 0,
+        isConfirming
+            ? "confirming"
+            : isFocusRefreshing || indexingKeys.size > 0 || rejectingKey
+              ? "processing"
+              : "signing",
+    );
 
     // Check if user has reviewer access (has at least one registered safe)
     const hasReviewerAccess = myReviewerSafes.length > 0;
@@ -1006,65 +994,81 @@ export default function ReviewerWorkspacePage() {
 
     if (isLoading) {
         return (
-            <div className="min-h-screen bg-slate-50 px-6 py-10">
-                <div className="mx-auto max-w-6xl space-y-4 animate-pulse">
-                    <div className="h-10 w-72 rounded bg-slate-200" />
-                    <div className="h-32 rounded-xl bg-slate-200" />
-                    <div className="h-32 rounded-xl bg-slate-200" />
+            <div className="page-shell reviewer-page relative min-h-screen overflow-hidden px-6 py-10">
+                <div className="reviewer-ambient" aria-hidden />
+                <PageLoading label="Đang tải danh sách mốc cần duyệt..." />
+                <div className="relative z-10 mx-auto mt-8 max-w-6xl space-y-4 animate-pulse">
+                    <div className="loading-skeleton h-10 w-72 rounded-full" />
+                    <div className="web3-glass-card loading-skeleton-muted h-32 rounded-2xl" />
+                    <div className="web3-glass-card loading-skeleton-muted h-32 rounded-2xl" />
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-[#eef2f7] px-4 py-8 text-slate-900 md:px-8 md:py-12">
-            <main className="mx-auto max-w-6xl space-y-7">
-                <header className="px-1 py-2 md:py-4">
+        <div className="page-shell reviewer-page relative min-h-screen overflow-hidden px-4 py-8 md:px-8 md:py-12">
+            <div className="reviewer-ambient" aria-hidden />
+            <div className="reviewer-hero-glow" aria-hidden />
+            <main className="relative z-10 mx-auto max-w-6xl space-y-7">
+                <header className="relative px-1 py-2 md:py-4">
                     <div className="flex flex-wrap items-start justify-between gap-8">
                         <div className="max-w-3xl">
                             <div className="flex flex-wrap items-center gap-2">
-                                <span className="rounded-full bg-indigo-100 px-4 py-1 text-xs font-bold uppercase tracking-[0.12em] text-indigo-600">
+                                <span className="web3-neon-badge rounded-full px-4 py-1.5 text-[11px] font-bold">
                                     Khu vực reviewer
                                 </span>
-                                <span className={`rounded-full px-4 py-1 text-xs font-bold ${hasReviewerAccess ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
+                                <span
+                                    className={`rounded-full px-4 py-1.5 text-[11px] font-bold ${
+                                        hasReviewerAccess
+                                            ? "web3-neon-badge web3-neon-badge--success"
+                                            : "web3-neon-badge web3-neon-badge--muted"
+                                    }`}
+                                >
                                     {hasReviewerAccess
                                         ? "Đã có quyền reviewer"
                                         : "Chế độ chỉ xem dữ liệu"}
                                 </span>
                             </div>
 
-                            <h1 className="mt-4 text-3xl font-extrabold leading-[1.15] tracking-tight text-slate-900 md:text-[3.2rem]">
+                            <h1 className="font-display mt-5 text-3xl font-extrabold leading-[1.12] tracking-tight text-gradient-hero md:text-[3.25rem]">
                                 Các mốc đang chờ bạn phê duyệt
                             </h1>
 
-                            <p className="mt-4 max-w-2xl text-lg leading-8 text-slate-600">
+                            <p className="font-body mt-4 max-w-2xl text-lg leading-8 text-[var(--text-secondary)]">
                                 Theo dõi mốc chiến dịch, kiểm tra bằng chứng và
                                 xử lý phê duyệt minh bạch trên blockchain.
                             </p>
 
-                            <div className="mt-4 space-y-1 text-sm text-slate-600">
+                            <div className="font-accent mt-4 space-y-1 text-sm text-[var(--text-secondary)]">
                                 <p>
                                     Ví đăng nhập:{" "}
-                                    {shortenAddress(walletAddress) ||
-                                        "Chưa kết nối"}
+                                    <span className="font-mono-data text-[var(--accent-cyan)]">
+                                        {shortenAddress(walletAddress) ||
+                                            "Chưa kết nối"}
+                                    </span>
                                 </p>
                                 <p>
                                     Số ví Safe được gán làm kiểm duyệt viên:{" "}
-                                    {myReviewerSafes.length}
+                                    <span className="font-semibold text-[var(--text-primary)]">
+                                        {myReviewerSafes.length}
+                                    </span>
                                 </p>
                             </div>
 
-                            <div className="mt-6 flex flex-wrap items-center gap-3">
+                            <div className="mt-7 flex flex-wrap items-center gap-3">
                                 <button
+                                    type="button"
                                     onClick={() => setFilter("pending")}
-                                    className="rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-[0_8px_20px_rgba(79,70,229,0.35)] transition hover:bg-indigo-700"
+                                    className="web3-btn-primary rounded-full px-7 py-3 text-sm"
                                 >
                                     Duyệt chiến dịch
                                 </button>
                                 <button
+                                    type="button"
                                     onClick={() => refresh()}
                                     disabled={isLoading}
-                                    className="rounded-2xl border border-slate-300 bg-white px-6 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
+                                    className="web3-btn-glass rounded-full px-7 py-3 text-sm disabled:opacity-50"
                                 >
                                     {isLoading
                                         ? "Đang làm mới..."
@@ -1074,19 +1078,17 @@ export default function ReviewerWorkspacePage() {
                         </div>
 
                         <div className="w-full max-w-lg space-y-3 md:pt-2">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            <p className="font-accent text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-secondary)]">
                                 Bộ lọc
                             </p>
 
-                            <div className="grid grid-cols-3 gap-2 rounded-2xl border border-slate-200 bg-white/70 p-1.5">
+                            <div className="web3-filter-track grid grid-cols-3 gap-1">
                                 {PRIMARY_FILTER_OPTIONS.map((option) => (
                                     <button
                                         key={option.value}
+                                        type="button"
                                         onClick={() => setFilter(option.value)}
-                                        className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${filter === option.value
-                                                ? "bg-white text-indigo-700 shadow-sm ring-1 ring-indigo-200"
-                                                : "text-slate-600 hover:bg-white"
-                                            }`}
+                                        className={`web3-filter-pill px-3 py-2.5 text-sm ${filter === option.value ? "is-active" : ""}`}
                                     >
                                         {option.label}
                                     </button>
@@ -1096,24 +1098,23 @@ export default function ReviewerWorkspacePage() {
                     </div>
 
                     {!hasReviewerAccess && (
-                        <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                        <div className="web3-glass-card mt-6 rounded-2xl border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
                             Tài khoản hiện tại chưa có quyền kiểm duyệt on-chain.
                             Bạn chỉ có thể xem dữ liệu.
                         </div>
                     )}
-
                 </header>
 
-                <div className="h-px w-full bg-slate-200/80" />
+                <div className="h-px w-full bg-gradient-to-r from-transparent via-[rgba(139,92,246,0.35)] to-transparent" />
 
                 {lastUpdatedAt && (
-                    <p className="px-1 text-xs font-medium text-slate-500">
+                    <p className="font-mono-data px-1 text-xs font-medium text-[var(--text-secondary)]">
                         Cập nhật lúc: {lastUpdatedAt}
                     </p>
                 )}
 
                 {filteredRows.length === 0 && !isLoading && (
-                    <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-600 shadow-sm">
+                    <div className="reviewer-empty-card web3-glass-card rounded-3xl p-10 text-center">
                         {hasReviewerAccess
                             ? "Không có mốc chiến dịch phù hợp với bộ lọc hiện tại."
                             : "Bạn chưa có Safe nào được gán làm reviewer."}
@@ -1135,24 +1136,24 @@ export default function ReviewerWorkspacePage() {
                         return (
                             <section
                                 key={row.campaign.onChainId}
-                                className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_10px_32px_rgba(15,23,42,0.08)]"
+                                className="reviewer-campaign-card web3-glass-card overflow-hidden rounded-[26px]"
                             >
                                 <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                                    <div className="w-full border-b border-slate-200 bg-gradient-to-r from-indigo-50 via-sky-50 to-cyan-50 p-6">
+                                    <div className="reviewer-campaign-header w-full border-b p-6">
                                         <div className="flex flex-wrap items-start justify-between gap-4">
                                             <div>
-                                                <h2 className="text-2xl font-bold text-slate-900">
+                                                <h2 className="font-display text-2xl font-bold text-[var(--text-primary)]">
                                                     {row.campaign.title ||
                                                         `Chiến dịch #${row.campaign.onChainId}`}
                                                 </h2>
-                                                <p className="mt-2 max-w-3xl text-sm text-slate-700">
+                                                <p className="mt-2 max-w-3xl text-sm text-[var(--text-secondary)]">
                                                     {campaignDescription}
                                                 </p>
-                                                <p className="mt-1 text-sm text-slate-600">
+                                                <p className="mt-1 font-mono text-sm text-[var(--text-secondary)]">
                                                     Mã campaign: #
                                                     {row.campaign.onChainId}
                                                 </p>
-                                                <p className="mt-1 text-sm text-slate-600">
+                                                <p className="mt-1 font-mono text-sm text-[var(--text-secondary)]">
                                                     Ví reviewer safe:{" "}
                                                     {row.campaign
                                                         .reviewerSafe ||
@@ -1161,7 +1162,7 @@ export default function ReviewerWorkspacePage() {
                                             </div>
                                             <Link
                                                 href={`/campaigns/${row.campaign.onChainId}/milestones`}
-                                                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                                                className="web3-btn-glass rounded-full px-4 py-2 text-sm font-semibold"
                                             >
                                                 Xem dòng thời gian
                                             </Link>
@@ -1171,27 +1172,27 @@ export default function ReviewerWorkspacePage() {
 
                                 <div className="space-y-4 p-6 pt-0">
                                     <div className="grid gap-3 md:grid-cols-3">
-                                        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-                                            <p className="text-xs font-medium text-slate-500">
+                                        <div className="reviewer-stat-box px-4 py-3">
+                                            <p className="reviewer-stat-label">
                                                 Mục tiêu gây quỹ
                                             </p>
-                                            <p className="mt-1 text-base font-bold text-slate-900">
+                                            <p className="reviewer-stat-value mt-1 text-base">
                                                 {formatEthCompact(row.campaign.goalWei)} ETH
                                             </p>
                                         </div>
-                                        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-                                            <p className="text-xs font-medium text-slate-500">
+                                        <div className="reviewer-stat-box px-4 py-3">
+                                            <p className="reviewer-stat-label">
                                                 Đã huy động
                                             </p>
-                                            <p className="mt-1 text-base font-bold text-emerald-700">
+                                            <p className="reviewer-stat-value reviewer-stat-value--raised mt-1 text-base">
                                                 {formatEthCompact(row.campaign.totalRaisedWei)} ETH
                                             </p>
                                         </div>
-                                        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-                                            <p className="text-xs font-medium text-slate-500">
+                                        <div className="reviewer-stat-box px-4 py-3">
+                                            <p className="reviewer-stat-label">
                                                 Còn cần thêm
                                             </p>
-                                            <p className="mt-1 text-base font-bold text-amber-700">
+                                            <p className="reviewer-stat-value reviewer-stat-value--remaining mt-1 text-base">
                                                 {formatEthCompact(remainingNeedDisplayWei)} ETH
                                             </p>
                                         </div>
@@ -1220,31 +1221,31 @@ export default function ReviewerWorkspacePage() {
                                         return (
                                             <article
                                                 key={key}
-                                                className="rounded-2xl border border-slate-200 bg-slate-50 p-5"
+                                                className="reviewer-milestone-card web3-glass-card p-5"
                                             >
                                                 <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                                                     <div>
                                                         <div className="mb-2 inline-flex items-center gap-2">
-                                                            <span className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                                                            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--accent-cyan)]">
                                                                 Mốc #
                                                                 {milestone.milestoneId + 1}
                                                             </span>
                                                             <span
-                                                                className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${indexingKeys.has(key) ? "bg-indigo-100 text-indigo-700 border-indigo-200 animate-pulse" : (STATUS_BADGE[milestone.status] || "bg-slate-100 text-slate-700 border-slate-200")}`}
+                                                                className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${indexingKeys.has(key) ? "border border-indigo-500/30 bg-indigo-500/15 text-indigo-300" : (STATUS_BADGE[milestone.status] || "border border-slate-500/30 bg-slate-500/15 text-slate-300")}`}
                                                             >
-                                                                {indexingKeys.has(key) ? "🔄 Đang đồng bộ..." : (STATUS_LABELS[milestone.status] || milestone.status)}
+                                                                {STATUS_LABELS[milestone.status] || milestone.status}
                                                             </span>
                                                         </div>
-                                                        <h3 className="text-xl font-bold text-slate-900">
+                                                        <h3 className="font-display text-xl font-bold text-[var(--text-primary)]">
                                                             {milestone.title ||
                                                                 `Milestone #${milestone.milestoneId}`}
                                                         </h3>
-                                                        <p className="mt-1 text-sm text-slate-700">
+                                                        <p className="mt-1 text-sm text-[var(--text-secondary)]">
                                                             {milestone.description ||
                                                                 "Không có mô tả."}
                                                         </p>
                                                     </div>
-                                                    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-right text-xs text-slate-600">
+                                                    <div className="reviewer-milestone-meta rounded-xl px-3 py-2 text-right text-xs">
                                                         <p>
                                                             Hạn:{" "}
                                                             {formatDate(
@@ -1253,7 +1254,7 @@ export default function ReviewerWorkspacePage() {
                                                         </p>
                                                         <p className="mt-1">
                                                             Số tiền mốc:{" "}
-                                                            <span className="font-semibold text-slate-800">
+                                                            <span className="font-semibold text-[var(--text-primary)]">
                                                                 {formatEth(
                                                                     milestone.amountWei,
                                                                 )}{" "}
@@ -1263,7 +1264,7 @@ export default function ReviewerWorkspacePage() {
                                                     </div>
                                                 </div>
 
-                                                <div className="mb-3 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-800">
+                                                <div className="reviewer-safe-banner mb-3 rounded-xl px-4 py-3 text-sm">
                                                     {buildSignatureProgressLabel(
                                                         approvalStatus,
                                                         milestone.approvedAt,
@@ -1271,7 +1272,7 @@ export default function ReviewerWorkspacePage() {
                                                 </div>
 
                                                 {milestone.pendingRejections !== undefined && milestone.pendingRejections > 0 && (
-                                                    <div className="mb-3 rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+                                                    <div className="mb-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
                                                         <span className="font-bold">⚠️ Đang từ chối:</span> Đã có {milestone.pendingRejections} lượt ký từ chối mốc này. (Đang chờ thêm chữ ký để chính thức yêu cầu nộp lại)
                                                     </div>
                                                 )}
@@ -1315,14 +1316,14 @@ export default function ReviewerWorkspacePage() {
                             }
                         }}
                     />
-                    <div className="relative w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+                    <div className="reviewer-modal web3-glass-card relative w-full max-w-lg rounded-2xl p-6 shadow-2xl">
                         <div className="mb-4 flex items-center gap-3">
                             <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-rose-100 text-xl">
 
                             </span>
                             <div>
-                                <h3 className="text-lg font-bold text-slate-900">Từ chối milestone</h3>
-                                <p className="text-sm text-slate-500">Nhập lý do từ chối để creator có thể cải thiện bằng chứng.</p>
+                                <h3 className="font-display text-lg font-bold text-[var(--text-primary)]">Từ chối milestone</h3>
+                                <p className="text-sm text-[var(--text-secondary)]">Nhập lý do từ chối để creator có thể cải thiện bằng chứng.</p>
                             </div>
                         </div>
 
@@ -1332,7 +1333,7 @@ export default function ReviewerWorkspacePage() {
                             disabled={Boolean(rejectingKey)}
                             rows={4}
                             placeholder="Ví dụ: Bằng chứng chưa đủ rõ ràng, cần bổ sung hình ảnh hoàn công và tài liệu kiểm tra..."
-                            className={`w-full resize-none rounded-xl border bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60 ${rejectError ? "border-rose-400 focus:border-rose-500" : "border-slate-200 focus:border-indigo-400"}`}
+                            className={`w-full resize-none rounded-xl border px-4 py-3 text-sm outline-none disabled:opacity-60 ${rejectError ? "border-rose-400/70" : "border-[rgba(99,102,241,0.3)]"}`}
                         />
                         <p className={`mt-1 text-right text-xs ${rejectReason.trim().length < 10 ? "text-rose-500" : "text-emerald-600"}`}>
                             {rejectReason.trim().length}/10 ký tự tối thiểu
@@ -1345,7 +1346,7 @@ export default function ReviewerWorkspacePage() {
                                     setRejectReason("");
                                 }}
                                 disabled={Boolean(rejectingKey)}
-                                className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                                className="web3-btn-glass rounded-full px-5 py-2.5 text-sm font-semibold disabled:opacity-60"
                             >
                                 Huỷ
                             </button>
@@ -1359,7 +1360,7 @@ export default function ReviewerWorkspacePage() {
                                 disabled={Boolean(rejectingKey) || rejectReason.trim().length < 10}
                                 className="rounded-xl bg-rose-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                                {rejectingKey ? "Đang xử lý..." : "Xác nhận từ chối"}
+                                Xác nhận từ chối
                             </button>
                         </div>
                     </div>

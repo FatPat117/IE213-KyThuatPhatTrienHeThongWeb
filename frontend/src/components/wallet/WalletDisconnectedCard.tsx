@@ -19,7 +19,7 @@ export default function WalletDisconnectedCard({
       <button
         onClick={onConnect}
         disabled={isPending}
-        className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors"
+        className="rounded-full bg-[var(--gradient-hero)] px-6 py-2.5 text-sm font-semibold text-white shadow-[0_0_16px_rgba(99,102,241,0.35)] transition hover:scale-[1.02] hover:shadow-[0_0_24px_rgba(99,102,241,0.5)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
       >
         {isPending ? 'Đang xử lý...' : buttonLabel ?? 'Kết nối ví'}
       </button>

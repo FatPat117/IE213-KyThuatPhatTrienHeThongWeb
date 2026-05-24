@@ -126,11 +126,7 @@ export default function DonatePanel({
           }
           className="w-full rounded-lg bg-white text-blue-600 px-6 py-4 text-lg font-bold shadow-lg hover:bg-blue-50 transition disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isPending
-            ? "⏳ Đợi xác nhận từ ví..."
-            : isConfirming
-            ? "🔄 Đang xác nhận..."
-            : !isConnected
+          {!isConnected
             ? "Kết nối ví để quyên góp"
             : !isSepolia
             ? "Sai mạng"

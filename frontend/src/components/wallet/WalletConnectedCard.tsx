@@ -42,12 +42,14 @@ export default function WalletConnectedCard({
   return (
     <div className="flex items-center gap-2">
       <div
-        className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 ${
-          isSepoliaNetwork ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'
+        className={`wallet-pill inline-flex items-center gap-2 rounded-full border px-3 py-2 ${
+          isSepoliaNetwork
+            ? 'border-[rgba(16,185,129,0.35)]'
+            : 'border-amber-500/40'
         }`}
       >
         <span
-          className={`h-2 w-2 rounded-full ${isSepoliaNetwork ? 'bg-emerald-500' : 'bg-amber-500'}`}
+          className={`h-2 w-2 rounded-full ${isSepoliaNetwork ? 'bg-[var(--accent-green)]' : 'bg-amber-500'}`}
           aria-hidden
         />
         <div className="flex items-center gap-2">
@@ -55,30 +57,30 @@ export default function WalletConnectedCard({
             <img
               src={avatarUrl}
               alt={primaryLabel}
-              className="h-6 w-6 rounded-full object-cover border border-slate-200 bg-white"
+              className="h-6 w-6 rounded-full border border-[rgba(99,102,241,0.3)] bg-[var(--bg-card)] object-cover"
             />
           ) : (
-            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-[11px] font-bold text-white">
+            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--gradient-hero)] text-[11px] font-bold text-white">
               {getInitial(displayName, address)}
             </div>
           )}
           <div className="flex flex-col leading-tight">
-            <span className="text-xs font-semibold text-slate-900 max-w-[120px] truncate">
+            <span className="max-w-[120px] truncate text-xs font-semibold text-[var(--text-primary)]">
               {primaryLabel}
             </span>
-            <span className="text-[10px] font-mono text-slate-500 hidden sm:inline">
+            <span className="font-mono-data hidden text-[10px] text-[var(--accent-cyan)] sm:inline">
               {shortenAddress(address)}
             </span>
           </div>
         </div>
-        {authRole && <span className="hidden md:inline text-xs text-slate-500">({authRole})</span>}
+        {authRole && <span className="hidden text-xs text-[var(--text-secondary)] md:inline">({authRole})</span>}
       </div>
 
       {!isSepoliaNetwork && onSwitchToSepolia && (
         <button
           onClick={onSwitchToSepolia}
           disabled={isSwitchingNetwork}
-          className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition"
+          className="rounded-full bg-[var(--accent-primary)] px-3 py-2 text-xs font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isSwitchingNetwork ? 'Đang chuyển...' : 'Đổi Sepolia'}
         </button>
@@ -87,7 +89,7 @@ export default function WalletConnectedCard({
       <button
         onClick={onDisconnect}
         disabled={Boolean(isDisconnecting)}
-        className="rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700 transition"
+        className="btn-disconnect-pill px-4 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
       >
         {isDisconnecting ? 'Đang ngắt...' : 'Ngắt'}
       </button>

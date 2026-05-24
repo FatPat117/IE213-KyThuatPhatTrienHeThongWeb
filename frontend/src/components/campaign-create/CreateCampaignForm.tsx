@@ -1,7 +1,8 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import Link from 'next/link';
+import CampaignDescriptionFields from './CampaignDescriptionFields';
 import CreateCampaignStatusAlerts from './CreateCampaignStatusAlerts';
 
 interface CreateCampaignFormProps {
@@ -13,7 +14,11 @@ interface CreateCampaignFormProps {
     reviewerSafe: string;
     beneficiary: string;
   };
-  reviewerOptions: Array<{ value: string; label: string }>;
+  reviewerOptions: Array<{
+    value: string;
+    organization: string;
+    region: string;
+  }>;
   formErrors: Record<string, string>;
   isBusy: boolean;
   status: 'idle' | 'pending' | 'confirming' | 'success' | 'error';
@@ -29,6 +34,18 @@ interface CreateCampaignFormProps {
   onFieldChange: (name: string, value: string) => void;
   onThumbnailFileChange: (file: File | null) => void;
   onSubmit: (event: React.FormEvent) => void;
+}
+
+function fieldCounterClass(current: number, max: number): string {
+  if (max <= 0) return 'field-counter';
+  const ratio = current / max;
+  if (ratio >= 0.95) return 'field-counter danger';
+  if (ratio >= 0.8) return 'field-counter warning';
+  return 'field-counter';
+}
+
+function inputClass(hasError: boolean): string {
+  return `create-campaign-input ${hasError ? 'create-campaign-input-error' : ''}`;
 }
 
 /**
@@ -51,69 +68,68 @@ export default function CreateCampaignForm({
   onSubmit,
 }: CreateCampaignFormProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+
   return (
-    <form onSubmit={onSubmit} className="space-y-6">
-      <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-4">
-        <div className="flex items-start gap-3">
-          <span className="text-2xl shrink-0">⚠️</span>
-          <div>
-            <p className="text-sm font-semibold text-amber-900 mb-1">⚠️ Lưu ý giao dịch blockchain</p>
-            <p className="text-xs text-amber-800">
-              Tạo chiến dịch là <strong>giao dịch không thể hoàn tác</strong>. Hãy kiểm tra kỹ trước khi gửi.
-            </p>
-          </div>
+    <form onSubmit={onSubmit} className="create-campaign-form-container">
+      <div className="warning-banner">
+        <span className="text-xl shrink-0" aria-hidden>
+          ⚠️
+        </span>
+        <div>
+          <p className="warning-banner-title">Lưu ý giao dịch blockchain</p>
+          <p>
+            Tạo chiến dịch là <strong>giao dịch không thể hoàn tác</strong>. Hãy
+            kiểm tra kỹ trước khi gửi.
+          </p>
         </div>
       </div>
 
-      <div>
-        <label className="block text-sm font-semibold text-slate-900 mb-2">
-          Tên chiến dịch <span className="text-red-500">*</span>
+      <h2 className="form-section-title">Thông tin cơ bản</h2>
+      <div className="form-field-group">
+        <label htmlFor="campaign-title" className="field-label">
+          Tên chiến dịch <span className="text-red-400">*</span>
         </label>
+        <p className="field-hint">
+          Tên ngắn gọn, dễ nhớ — hiển thị trên danh sách và trang chi tiết.
+        </p>
         <input
+          id="campaign-title"
           type="text"
           name="title"
           value={formData.title}
           onChange={(event) => onFieldChange('title', event.target.value)}
           disabled={isBusy}
-          className={`w-full px-4 py-3 border-2 rounded-xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition disabled:bg-slate-100 text-slate-900 placeholder-slate-400 ${
-            formErrors.title ? 'border-red-500 focus:ring-red-100 focus:border-red-500' : 'border-slate-200'
-          }`}
+          className={inputClass(!!formErrors.title)}
           placeholder="Ví dụ: Quỹ cộng đồng cho trường học"
           maxLength={100}
         />
-        {formErrors.title && <p className="mt-2 text-sm text-red-600">  {formErrors.title}</p>}
-        <p className="mt-2 text-xs text-slate-500">{formData.title.length}/100 ký tự</p>
+        {formErrors.title && (
+          <p className="field-error">{formErrors.title}</p>
+        )}
+        <p className={fieldCounterClass(formData.title.length, 100)}>
+          {formData.title.length}/100 ký tự
+        </p>
       </div>
 
-      <div>
-        <label className="block text-sm font-semibold text-slate-900 mb-2">
-          Mô tả chiến dịch <span className="text-red-500">*</span>
-        </label>
-        <textarea
-          name="description"
-          value={formData.description}
-          onChange={(event) => onFieldChange('description', event.target.value)}
-          disabled={isBusy}
-          rows={6}
-          className={`w-full px-4 py-3 border-2 rounded-xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition disabled:bg-slate-100 text-slate-900 placeholder-slate-400 resize-none ${
-            formErrors.description
-              ? 'border-red-500 focus:ring-red-100 focus:border-red-500'
-              : 'border-slate-200'
-          }`}
-          placeholder="Mô tả mục tiêu, lý do gây quỹ và cách sử dụng tiền."
-          maxLength={1000}
-        />
-        {formErrors.description && <p className="mt-2 text-sm text-red-600">  {formErrors.description}</p>}
-        <p className="mt-2 text-xs text-slate-500">{formData.description.length}/1000 ký tự</p>
-      </div>
+      <h2 className="form-section-title">Mô tả chi tiết</h2>
+      <CampaignDescriptionFields
+        value={formData.description}
+        disabled={isBusy}
+        error={formErrors.description ?? null}
+        onChange={(composed) => onFieldChange('description', composed)}
+      />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-        <div>
-          <label className="block text-sm font-semibold text-slate-900 mb-2">
-            Mục tiêu gây quỹ <span className="text-red-500">*</span>
+      <h2 className="form-section-title">Cài đặt & hình ảnh</h2>
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 sm:gap-6">
+        <div className="form-field-group">
+          <label htmlFor="campaign-goal" className="field-label">
+            Mục tiêu gây quỹ <span className="text-red-400">*</span>
           </label>
+          <p className="field-hint">Tối đa 1000 ETH</p>
           <div className="relative">
             <input
+              id="campaign-goal"
               type="number"
               name="goalEth"
               value={formData.goalEth}
@@ -121,22 +137,25 @@ export default function CreateCampaignForm({
               disabled={isBusy}
               step="0.001"
               min="0"
-              className={`w-full px-4 py-3 pr-12 border-2 rounded-xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition disabled:bg-slate-100 text-slate-900 ${
-                formErrors.goalEth ? 'border-red-500 focus:ring-red-100 focus:border-red-500' : 'border-slate-200'
-              }`}
+              className={`${inputClass(!!formErrors.goalEth)} pr-14`}
               placeholder="1.0"
             />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 font-medium">ETH</span>
+            <span className="create-campaign-suffix absolute right-4 top-1/2 -translate-y-1/2">
+              ETH
+            </span>
           </div>
-          {formErrors.goalEth && <p className="mt-2 text-sm text-red-600">  {formErrors.goalEth}</p>}
-          <p className="mt-2 text-xs text-slate-500">Tối đa: 1000 ETH</p>
+          {formErrors.goalEth && (
+            <p className="field-error">{formErrors.goalEth}</p>
+          )}
         </div>
 
-        <div>
-          <label className="block text-sm font-semibold text-slate-900 mb-2">
-            Thời hạn chiến dịch <span className="text-red-500">*</span>
+        <div className="form-field-group">
+          <label htmlFor="campaign-deadline" className="field-label">
+            Thời hạn chiến dịch <span className="text-red-400">*</span>
           </label>
+          <p className="field-hint">Tối đa 1 năm từ hiện tại</p>
           <input
+            id="campaign-deadline"
             type="datetime-local"
             name="deadline"
             value={formData.deadline}
@@ -144,26 +163,30 @@ export default function CreateCampaignForm({
             disabled={isBusy}
             min={new Date().toISOString().slice(0, 16)}
             aria-label="Chọn thời hạn chiến dịch"
-            className={`w-full px-4 py-3 border-2 rounded-xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition disabled:bg-slate-100 text-slate-900 ${
-              formErrors.deadline ? 'border-red-500 focus:ring-red-100 focus:border-red-500' : 'border-slate-200'
-            }`}
+            className={inputClass(!!formErrors.deadline)}
           />
-          {formErrors.deadline && <p className="mt-2 text-sm text-red-600">  {formErrors.deadline}</p>}
-          <p className="mt-2 text-xs text-slate-500">Tối đa: 1 năm từ hiện tại</p>
+          {formErrors.deadline && (
+            <p className="field-error">{formErrors.deadline}</p>
+          )}
         </div>
       </div>
 
-      {/* Thumbnail Upload */}
-      <div>
-        <label className="block text-sm font-semibold text-slate-900 mb-2">
-          Ảnh thumbnail chiến dịch
-        </label>
+      <div className="form-field-group">
+        <span className="field-label">Ảnh thumbnail chiến dịch</span>
+        <p className="field-hint">
+          JPEG, PNG, WebP, GIF · tối đa 5MB. Không chọn thì dùng ảnh mặc định.
+        </p>
         <div
-          className="relative flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-xl cursor-pointer transition bg-slate-50 hover:bg-slate-100 border-slate-300 hover:border-blue-400"
+          className={`upload-area relative flex h-48 w-full flex-col items-center justify-center ${isDragOver ? 'drag-over' : ''}`}
           onClick={() => !isBusy && fileInputRef.current?.click()}
-          onDragOver={(e) => { e.preventDefault(); }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            if (!isBusy) setIsDragOver(true);
+          }}
+          onDragLeave={() => setIsDragOver(false)}
           onDrop={(e) => {
             e.preventDefault();
+            setIsDragOver(false);
             if (isBusy) return;
             const file = e.dataTransfer.files?.[0];
             if (file) onThumbnailFileChange(file);
@@ -174,22 +197,28 @@ export default function CreateCampaignForm({
             <img
               src={thumbnailPreview}
               alt="Thumbnail preview"
-              className="absolute inset-0 h-full w-full object-cover rounded-xl opacity-90"
+              className="absolute inset-0 h-full w-full rounded-[10px] object-cover opacity-90"
             />
           ) : (
-            <div className="text-center px-4">
-              <span className="text-4xl">🖼️</span>
-              <p className="mt-2 text-sm font-medium text-slate-600">Kéo thả hoặc click để chọn ảnh</p>
-              <p className="text-xs text-slate-400 mt-1">JPEG, PNG, WebP, GIF · tối đa 5MB</p>
+            <div className="upload-area-text px-4 text-center">
+              <span className="text-4xl" aria-hidden>
+                🖼️
+              </span>
+              <p className="mt-2 text-sm">
+                <strong>Kéo thả</strong> hoặc click để chọn ảnh
+              </p>
             </div>
           )}
           {thumbnailPreview && (
-            <div className="absolute inset-0 flex items-end justify-end p-2 rounded-xl">
+            <div className="absolute inset-0 flex items-end justify-end rounded-[10px] p-2">
               <button
                 type="button"
                 disabled={isBusy}
-                onClick={(e) => { e.stopPropagation(); onThumbnailFileChange(null); }}
-                className="rounded-full bg-white/90 border border-slate-200 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 shadow"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onThumbnailFileChange(null);
+                }}
+                className="rounded-full border border-red-400/40 bg-[rgba(10,15,30,0.85)] px-2.5 py-1 text-xs font-semibold text-red-300 backdrop-blur-sm transition hover:bg-red-500/20"
               >
                 Xoá ảnh
               </button>
@@ -201,89 +230,102 @@ export default function CreateCampaignForm({
           type="file"
           accept="image/jpeg,image/png,image/webp,image/gif"
           className="hidden"
+          aria-label="Chọn ảnh thumbnail chiến dịch"
           disabled={isBusy}
           onChange={(e) => {
             const file = e.target.files?.[0] ?? null;
             onThumbnailFileChange(file);
-            // Reset so same file can be re-picked after clearing
             e.target.value = '';
           }}
         />
-        {thumbnailUploadProgress !== null && thumbnailUploadProgress < 100 && (
-          <div className="mt-2">
-            <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-blue-500 transition-all duration-200 rounded-full"
-                style={{ width: `${thumbnailUploadProgress}%` }}
-              />
-            </div>
-            <p className="text-xs text-slate-500 mt-1">Đang tải lên... {thumbnailUploadProgress}%</p>
-          </div>
-        )}
         {thumbnailUploadError && (
-          <p className="mt-1 text-xs text-red-600">  {thumbnailUploadError}</p>
+          <p className="field-error">{thumbnailUploadError}</p>
         )}
-        <p className="mt-1 text-xs text-slate-500">
-          Ảnh sẽ được tải lên Cloudinary. Nếu không chọn, hệ thống sẽ dùng ảnh mặc định.
-        </p>
       </div>
 
-      <div>
-        <label className="block text-sm font-semibold text-slate-900 mb-2">
-          Địa chỉ ví kiểm duyệt <span className="text-red-500">*</span>
+      <div className="form-field-group">
+        <label htmlFor="campaign-reviewer" className="field-label">
+          Kiểm duyệt viên phụ trách <span className="text-red-400">*</span>
         </label>
+        <p className="field-hint">
+          Chọn tổ chức và khu vực phù hợp với chiến dịch của bạn.
+        </p>
         <div className="relative">
           <select
+            id="campaign-reviewer"
             name="reviewerSafe"
-            aria-label="Chọn ví reviewerSafe"
+            aria-label="Chọn kiểm duyệt viên phụ trách"
             value={formData.reviewerSafe}
             onChange={(event) => onFieldChange('reviewerSafe', event.target.value)}
             disabled={isBusy}
-            className={`w-full appearance-none px-4 py-3 pr-10 border-2 rounded-xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition disabled:bg-slate-100 text-slate-900 text-sm ${
-              formErrors.reviewerSafe ? 'border-red-500 focus:ring-red-100 focus:border-red-500' : 'border-slate-200'
-            }`}
+            className={inputClass(!!formErrors.reviewerSafe)}
           >
             {reviewerOptions.length === 0 && (
-              <option value="">Chưa có ví reviewer khả dụng</option>
+              <option value="">Chưa có kiểm duyệt viên khả dụng</option>
             )}
             {reviewerOptions.map((option) => (
               <option key={option.value} value={option.value}>
-                {option.label}
+                {option.organization} — {option.region}
               </option>
             ))}
           </select>
-          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-500">
+          <span
+            className="create-campaign-suffix pointer-events-none absolute inset-y-0 right-4 flex items-center"
+            aria-hidden
+          >
             ▾
           </span>
         </div>
-        {formErrors.reviewerSafe && <p className="mt-2 text-sm text-red-600">  {formErrors.reviewerSafe}</p>}
-        <p className="mt-2 text-xs text-slate-500">
-          Chọn ví reviewerSafe đã có trong hệ thống để hạn chế nhập sai địa chỉ quá dài.
-        </p>
+        {formErrors.reviewerSafe && (
+          <p className="field-error">{formErrors.reviewerSafe}</p>
+        )}
+        {formData.reviewerSafe &&
+          (() => {
+            const selected = reviewerOptions.find(
+              (o) => o.value === formData.reviewerSafe,
+            );
+            if (!selected) return null;
+            return (
+              <div className="reviewer-selected-card">
+                <p>
+                  <strong>Đơn vị kiểm duyệt đã chọn</strong>
+                </p>
+                <p className="mt-2">
+                  <span className="text-slate-300">Tổ chức:</span>{' '}
+                  {selected.organization}
+                </p>
+                <p className="mt-1">
+                  <span className="text-slate-300">Vùng phụ trách:</span>{' '}
+                  {selected.region}
+                </p>
+              </div>
+            );
+          })()}
       </div>
 
-      {/* Beneficiary wallet */}
-      <div>
-        <label className="block text-sm font-semibold text-slate-900 mb-2">
-          Địa chỉ ví nhận tiền <span className="text-red-500">*</span>
+      <div className="form-field-group">
+        <label htmlFor="campaign-beneficiary" className="field-label">
+          Địa chỉ ví nhận tiền <span className="text-red-400">*</span>
         </label>
+        <p className="field-hint">
+          Ví nhận tiền khi chiến dịch được phê duyệt. Mặc định là ví người tạo,
+          có thể đổi sang ví bên thi công.
+        </p>
         <input
+          id="campaign-beneficiary"
           type="text"
           name="beneficiary"
           value={formData.beneficiary}
           onChange={(event) => onFieldChange('beneficiary', event.target.value)}
           disabled={isBusy}
-          className={`w-full px-4 py-3 border-2 rounded-xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition disabled:bg-slate-100 text-slate-900 placeholder-slate-400 font-mono text-sm ${
-            formErrors.beneficiary ? 'border-red-500 focus:ring-red-100 focus:border-red-500' : 'border-slate-200'
-          }`}
+          className={`${inputClass(!!formErrors.beneficiary)} font-mono text-sm`}
           placeholder="0x..."
           maxLength={42}
           spellCheck={false}
         />
-        {formErrors.beneficiary && <p className="mt-2 text-sm text-red-600"> {formErrors.beneficiary}</p>}
-        <p className="mt-2 text-xs text-slate-500">
-          Ví nhận tiền khi chiến dịch được phê duyệt. Mặc định sẽ là ví người tạo, có thể sửa thành ví bên thi công.
-        </p>
+        {formErrors.beneficiary && (
+          <p className="field-error">{formErrors.beneficiary}</p>
+        )}
       </div>
 
       <CreateCampaignStatusAlerts
@@ -293,34 +335,21 @@ export default function CreateCampaignForm({
         errorMessage={errorMessage}
       />
 
-      <div className="flex flex-col sm:flex-row gap-4">
-        <button
-          type="submit"
-          disabled={isBusy}
-          className={`flex-1 py-4 px-6 rounded-xl font-bold text-white text-lg transition-all duration-200 shadow-lg ${
-            isBusy ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:shadow-xl active:scale-[0.98]'
-          }`}
-        >
-          {isBusy ? '⏳ Đợi xác nhận từ ví...' : '🚀 Tạo chiến dịch'}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
+        <button type="submit" disabled={isBusy} className="submit-btn flex-1">
+          🚀 Tạo chiến dịch
         </button>
-        <Link
-          href="/campaigns"
-          className="sm:w-auto py-4 px-8 rounded-xl font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-all duration-200 text-center"
-        >
+        <Link href="/campaigns" className="cancel-btn sm:w-auto sm:shrink-0">
           Hủy
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-          <p className="text-xs text-slate-600">
-            💡 <strong className="text-slate-900">Gợi ý:</strong> Hãy đảm bảo có đủ ETH testnet để trả phí gas.
-          </p>
+      <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="form-tip-card">
+          💡 <strong>Gợi ý:</strong> Hãy đảm bảo có đủ ETH testnet để trả phí gas.
         </div>
-        <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-          <p className="text-xs text-slate-600">
-            🔒 <strong className="text-slate-900">Bảo mật:</strong> Ví ký giao dịch, không lưu private key.
-          </p>
+        <div className="form-tip-card">
+          🔒 <strong>Bảo mật:</strong> Ví ký giao dịch, không lưu private key.
         </div>
       </div>
     </form>

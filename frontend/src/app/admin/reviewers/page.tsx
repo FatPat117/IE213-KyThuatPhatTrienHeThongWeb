@@ -73,8 +73,9 @@ export default function AdminReviewersPage() {
     const { reviewersByCampaignId } = useReadCampaignReviewersBatch(
         campaigns.length,
     );
-    const { addReviewerSafe } = useAddReviewerSafe();
-    const { removeReviewerSafe } = useRemoveReviewerSafe();
+    const { addReviewerSafe, isPending: isAddReviewerPending } = useAddReviewerSafe();
+    const { removeReviewerSafe, isPending: isRemoveReviewerPending } =
+        useRemoveReviewerSafe();
     const {
         isLoading: isConfirming,
         isSuccess: isTxSuccess,
@@ -83,7 +84,14 @@ export default function AdminReviewersPage() {
     } = useWaitForTransactionReceipt({
         hash: txHash,
     });
-    useRegisterWalletTxOverlay(isConfirming);
+    useRegisterWalletTxOverlay(
+        isAddReviewerPending || isRemoveReviewerPending || isConfirming,
+        isConfirming
+            ? "confirming"
+            : isAddReviewerPending || isRemoveReviewerPending
+              ? "signing"
+              : "processing",
+    );
     const [safeMetaByAddress, setSafeMetaByAddress] = useState<
         Record<string, SafeMetaEntry>
     >({});
