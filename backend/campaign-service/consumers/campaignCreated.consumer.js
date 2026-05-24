@@ -216,12 +216,18 @@ async function startCampaignCreatedConsumer() {
             const milestoneCount = Number(payload.milestoneCount || 0);
             const reviewerSafe = await loadReviewerSafe(onChainId);
 
+            const existingCampaign = await Campaign.findOne({ onChainId }).lean();
+            let targetBeneficiary = payload.beneficiary.toLowerCase();
+            if (existingCampaign && existingCampaign.beneficiary) {
+                targetBeneficiary = existingCampaign.beneficiary.toLowerCase();
+            }
+
             const campaign = await Campaign.findOneAndUpdate(
                 { onChainId },
                 {
                     $set: {
                         creator: payload.creator.toLowerCase(),
-                        beneficiary: payload.beneficiary.toLowerCase(),
+                        beneficiary: targetBeneficiary,
                         goalWei: (payload.goalWei || "0").toString(),
                         goal: (payload.goalWei || "0").toString(),
                         deadline: new Date(Number(payload.deadline) * 1000),

@@ -18,6 +18,7 @@ const {
 const {
     getReviewerProfile,
     patchReviewerProfile,
+    listPublicReviewerProfiles,
     listReviewerProfilesForAdmin,
     patchReviewerProfileForAdmin,
     clearReviewerProfileForAdmin,
@@ -43,6 +44,11 @@ router.delete(
     clearReviewerProfileForAdmin,
 );
 
+router.get(
+    "/public/reviewers/profiles",
+    publicRateLimit,
+    listPublicReviewerProfiles,
+);
 router.get("/public/stats", publicRateLimit, getPublicStats);
 router.get("/public/campaigns", publicRateLimit, getPublicCampaigns);
 router.get(

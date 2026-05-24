@@ -1,51 +1,29 @@
 "use client";
 
+import CampaignListRow, {
+    CampaignListRowSkeleton,
+} from "@/components/campaigns/CampaignListRow";
 import BackButton from "@/components/navigation/BackButton";
 import {
-    getCampaignMetadataFromCache,
-    isPlaceholderCampaignDescription,
-    isPlaceholderCampaignTitle,
     useBackendCampaigns,
-    TERMINAL_STATUSES,
     SEPOLIA_CHAIN_ID,
     getPublicCampaignMilestones,
 } from "@/lib";
+import {
+    BTN_PRIMARY,
+    normalizeCampaignListItem,
+} from "@/lib/utils/campaign-display";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { formatEther } from "viem";
 import { useAccount, useChainId } from "wagmi";
 import { showErrorToast } from "@/lib/ui/toast";
 
-function formatEthAmount(value: number) {
-    if (!Number.isFinite(value) || value <= 0) return '0';
-    if (value < 0.01) return value.toFixed(4).replace(/\.?0+$/, '');
-    return value.toFixed(2);
-}
-
-function CampaignCardSkeleton() {
-    return (
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm animate-pulse">
-            <div className="flex items-center gap-3">
-                <div className="h-12 w-12 rounded-full bg-slate-200" />
-                <div className="flex-1 space-y-2">
-                    <div className="h-5 w-2/3 rounded bg-slate-200" />
-                    <div className="h-3 w-1/2 rounded bg-slate-200" />
-                </div>
-            </div>
-            <div className="mt-5 space-y-3">
-                <div className="h-3 w-2/5 rounded bg-slate-200" />
-                <div className="h-3 w-3/5 rounded bg-slate-200" />
-            </div>
-            <div className="mt-5 h-2 w-full rounded-full bg-slate-200" />
-            <div className="mt-4 h-10 w-32 rounded-lg bg-slate-200" />
-        </div>
-    );
-}
-
-const ITEMS_PER_PAGE = 9;
+const ITEMS_PER_PAGE = 8;
 
 function MyCampaignsPageContent() {
+    const router = useRouter();
     const { data: campaigns, isLoading, error, refetch } = useBackendCampaigns();
     const { isConnected, address } = useAccount();
     const chainId = useChainId();
@@ -67,25 +45,11 @@ function MyCampaignsPageContent() {
         () => {
             if (!address) return [];
             return campaigns
-                .filter(c => c.creator.toLowerCase() === address.toLowerCase())
-                .map((campaign) => {
-                    const cached = getCampaignMetadataFromCache(campaign.onChainId);
-                    const status = (campaign.status || "").toLowerCase();
-                    return {
-                        id: campaign.onChainId,
-                        title: !isPlaceholderCampaignTitle(campaign.title, campaign.onChainId)
-                            ? campaign.title
-                            : (cached?.title || `Chiến dịch #${campaign.onChainId}`),
-                        description: !isPlaceholderCampaignDescription(campaign.description)
-                            ? campaign.description
-                            : (cached?.description || "Dữ liệu đang được đồng bộ..."),
-                        creator: campaign.creator,
-                        goal: BigInt(campaign.goal || "0"),
-                        raised: BigInt(campaign.raised || "0"),
-                        status: campaign.status,
-                        completed: TERMINAL_STATUSES.has(status),
-                    };
-                });
+                .filter(
+                    (c) =>
+                        c.creator.toLowerCase() === address.toLowerCase(),
+                )
+                .map(normalizeCampaignListItem);
         },
         [campaigns, address]
     );
@@ -317,11 +281,11 @@ function MyCampaignsPageContent() {
                                 className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2 text-slate-900 focus:border-blue-600 focus:outline-none transition"
                             >
                                 <option value="all">Tất cả trạng thái</option>
-                                <option value="active">🟢 Đang gây quỹ</option>
-                                <option value="pending_approval">⏳ Chờ duyệt</option>
-                                <option value="in_progress">🔵 Đang triển khai</option>
-                                <option value="failed">❌ Thất bại / Bị từ chối</option>
-                                <option value="ended">  Thành công</option>
+                                <option value="active">Đang gây quỹ</option>
+                                <option value="pending_approval">Chờ duyệt</option>
+                                <option value="in_progress">Đang triển khai</option>
+                                <option value="failed">Thất bại / Bị từ chối</option>
+                                <option value="ended">Thành công</option>
                             </select>
                         </div>
 
@@ -351,15 +315,14 @@ function MyCampaignsPageContent() {
                     </div>
                 </div>
 
-                {/* Campaign Grid */}
-                <section className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                <section className="flex flex-col gap-5">
                     {isLoading && normalizedCampaigns.length === 0 &&
-                        Array.from({ length: 6 }).map((_, index) => (
-                            <CampaignCardSkeleton key={`skeleton-${index}`} />
+                        Array.from({ length: 4 }).map((_, index) => (
+                            <CampaignListRowSkeleton key={`skeleton-${index}`} />
                         ))}
 
                     {!isLoading && normalizedCampaigns.length === 0 && (
-                        <div className="col-span-full rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-12 text-center">
+                        <div className="w-full rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-12 text-center">
                             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4 text-3xl">
                                 📝
                             </div>
@@ -375,12 +338,12 @@ function MyCampaignsPageContent() {
                     )}
 
                     {!isLoading && normalizedCampaigns.length > 0 && filteredCampaigns.length === 0 && (
-                        <div className="col-span-full rounded-2xl border border-slate-200 bg-slate-50 p-12 text-center">
+                        <div className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-12 text-center">
                             <p className="text-xl font-semibold text-slate-900 mb-2">Không tìm thấy kết quả</p>
                             <p className="text-slate-600 mb-6">Hãy thử thay đổi bộ lọc hoặc từ khóa tìm kiếm.</p>
                             <button
                                 onClick={() => { setSearchQuery(""); setFilterStatus("all"); }}
-                                className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-slate-900 text-white font-semibold hover:bg-slate-800 transition"
+                                className={BTN_PRIMARY}
                             >
                                 Xóa bộ lọc
                             </button>
@@ -388,96 +351,32 @@ function MyCampaignsPageContent() {
                     )}
 
                     {paginatedCampaigns.map((campaign) => {
-                        const goalEth = Number(formatEther(campaign.goal));
-                        const raisedEth = Number(formatEther(campaign.raised));
-                        const progress = goalEth > 0 ? Math.min((raisedEth / goalEth) * 100, 100) : 0;
-                        const normalizedStatus = (campaign.status || "").toLowerCase();
-                        const isPendingApproval = normalizedStatus === "pending_approval";
-                        const isInProgress = normalizedStatus === "in_progress";
-                        const isActive = !campaign.completed && !isPendingApproval;
-                        const isFailed = ["failed", "partial_failed", "cancelled", "refunded"].includes(normalizedStatus);
-                        const isSuccess = campaign.completed && !isFailed;
-
-                        let statusClasses = "bg-slate-100 text-slate-700 border-slate-200";
-                        if (isPendingApproval) statusClasses = "bg-amber-50 text-amber-700 border-amber-200";
-                        else if (isFailed) statusClasses = "bg-red-50 text-red-700 border-red-200";
-                        else if (isInProgress) statusClasses = "bg-blue-50 text-blue-700 border-blue-200";
-                        else if (isActive) statusClasses = "bg-emerald-50 text-emerald-700 border-emerald-200";
-                        else if (isSuccess) statusClasses = "bg-green-50 text-green-700 border-green-200";
-
-                        let progressBarColor = "bg-slate-400";
-                        if (isFailed) progressBarColor = "bg-red-500";
-                        else if (isInProgress) progressBarColor = "bg-blue-500";
-                        else if (isActive) progressBarColor = "bg-emerald-500";
-                        else if (isSuccess) progressBarColor = "bg-green-500";
-
                         const mStatus = milestoneStatusByCampaignId[campaign.id];
-
                         return (
-                            <div key={campaign.id} className="flex flex-col h-full rounded-xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:shadow-md group">
-                                <div className="p-5 flex-1 flex flex-col">
-                                    <div className="flex items-start justify-between mb-4">
-                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-indigo-600 font-bold text-xs">
-                                            #{campaign.id}
-                                        </div>
-                                        <div className="flex flex-col items-end gap-1">
-                                            <span className={`rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${statusClasses}`}>
-                                                {isPendingApproval ? "Chờ duyệt" :
-                                                 normalizedStatus === "cancelled" ? "Bị từ chối" :
-                                                 isFailed ? "Thất bại" :
-                                                 isInProgress ? "Đang triển khai" :
-                                                 isActive ? "Đang gây quỹ" : "Thành công"}
+                            <CampaignListRow
+                                key={campaign.id}
+                                campaign={campaign}
+                                footerSlot={
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        {mStatus && (
+                                            <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+                                                Mốc 0: {mStatus}
                                             </span>
-                                            {mStatus && (
-                                                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
-                                                    M0: {mStatus}
-                                                </span>
-                                            )}
-                                        </div>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                router.push(
+                                                    `/campaigns/${campaign.id}`,
+                                                )
+                                            }
+                                            className={BTN_PRIMARY}
+                                        >
+                                            Quản lý chiến dịch →
+                                        </button>
                                     </div>
-
-                                    <h3 className="text-lg font-bold text-slate-900 mb-2 line-clamp-2 min-h-[3.5rem]">
-                                        {campaign.title}
-                                    </h3>
-
-                                    <p className="text-sm text-slate-600 mb-6 line-clamp-3 flex-1">
-                                        {campaign.description}
-                                    </p>
-
-                                    <div className="space-y-4 mb-6">
-                                        <div>
-                                            <div className="flex justify-between text-xs font-medium text-slate-500 mb-1">
-                                                <span>{progress.toFixed(1)}% hoàn thành</span>
-                                                <span>{formatEthAmount(raisedEth)} / {formatEthAmount(goalEth)} ETH</span>
-                                            </div>
-                                            <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                                                <div
-                                                    className={`h-full transition-all duration-500 ${progressBarColor}`}
-                                                    style={{ width: `${progress}%` }}
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <div className="bg-slate-50 p-2 rounded-lg">
-                                                <p className="text-[10px] text-slate-500 uppercase font-bold">Đã góp</p>
-                                                <p className="text-sm font-bold text-slate-900">{formatEthAmount(raisedEth)} ETH</p>
-                                            </div>
-                                            <div className="bg-slate-50 p-2 rounded-lg">
-                                                <p className="text-[10px] text-slate-500 uppercase font-bold">Mục tiêu</p>
-                                                <p className="text-sm font-bold text-slate-900">{formatEthAmount(goalEth)} ETH</p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <Link
-                                        href={`/campaigns/${campaign.id}`}
-                                        className="inline-flex w-full items-center justify-center rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-600 shadow-sm"
-                                    >
-                                        Quản lý chiến dịch
-                                    </Link>
-                                </div>
-                            </div>
+                                }
+                            />
                         );
                     })}
                 </section>

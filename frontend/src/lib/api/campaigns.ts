@@ -9,6 +9,7 @@ export interface PublicCampaignItem {
     description: string;
     creator: string;
     reviewerSafe: string;
+    beneficiary?: string;
     goalWei: string;
     totalRaisedWei: string;
     totalDisbursedWei: string;
@@ -276,6 +277,7 @@ export async function updateCampaignMetadata(
         description?: string;
         thumbnailUrl?: string;
         reviewerSafe?: string;
+        beneficiary?: string;
         images?: string[];
         milestones?: Array<{
             milestoneId: number;

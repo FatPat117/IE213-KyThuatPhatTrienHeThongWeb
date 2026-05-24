@@ -63,7 +63,7 @@ export default function DonatePanel({
       {/* Success banner for completed status */}
       {isCompleted && (
         <div className="mb-4 rounded-lg bg-green-400/20 border border-green-400/40 px-4 py-3 text-sm text-green-100 animate-pulse">
-          🎉 Chiến dịch đã hoàn thành thành công! Cảm ơn bạn đã đồng hành.
+          Chiến dịch đã hoàn thành thành công! Cảm ơn bạn đã đồng hành.
         </div>
       )}
 
@@ -126,11 +126,7 @@ export default function DonatePanel({
           }
           className="w-full rounded-lg bg-white text-blue-600 px-6 py-4 text-lg font-bold shadow-lg hover:bg-blue-50 transition disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isPending
-            ? "⏳ Đợi xác nhận từ ví..."
-            : isConfirming
-            ? "🔄 Đang xác nhận..."
-            : !isConnected
+          {!isConnected
             ? "Kết nối ví để quyên góp"
             : !isSepolia
             ? "Sai mạng"

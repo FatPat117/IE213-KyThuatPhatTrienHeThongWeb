@@ -18,6 +18,7 @@ import {
 import { useOwnerSafes } from "@/lib/hooks/use-owner-safes";
 import { useAdminApprove } from "@/lib/contracts/hooks";
 import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
+import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 
 function formatEthFromWei(wei: bigint | number | string) {
     try {
@@ -60,7 +61,7 @@ export default function AdminCampaignApprovalsPage() {
     const { isAdminOnChain, isLoading: isCheckingAdminPermission } =
         useReadContractOwner();
     const { isLoading: isLoadingOwnerSafes } = useOwnerSafes();
-    const { adminApprove } = useAdminApprove();
+    const { adminApprove, isPending: isApprovingOnChain } = useAdminApprove();
     const { adminRejectCampaign: adminRejectOnChain, isPending: isRejectingOnChain } =
         useAdminRejectCampaign();
 
@@ -78,6 +79,19 @@ export default function AdminCampaignApprovalsPage() {
     const [showRejectModal, setShowRejectModal] = useState(false);
     const [isSubmittingRejectionBackend, setIsSubmittingRejectionBackend] = useState(false);
     const isSubmittingRejection = isSubmittingRejectionBackend || isRejectingOnChain;
+
+    const isTxOverlayActive =
+        activeCampaignId !== null ||
+        isApprovingOnChain ||
+        isRejectingOnChain ||
+        isSubmittingRejectionBackend;
+    const txOverlayStage =
+        isApprovingOnChain || isRejectingOnChain
+            ? "signing"
+            : activeCampaignId !== null
+              ? "confirming"
+              : "processing";
+    useRegisterWalletTxOverlay(isTxOverlayActive, txOverlayStage);
 
     useEffect(() => { setMounted(true); }, []);
 
@@ -181,7 +195,7 @@ export default function AdminCampaignApprovalsPage() {
                     </p>
                     <div className="mt-4 space-y-1 text-xs text-slate-500">
                         <p>Wallet: {address ? `${address.slice(0, 10)}...` : "Chưa connect"}</p>
-                        <p>On-chain Admin: {isAdminOnChain ? "  Đã xác thực" : "❌ Chưa có quyền"}</p>
+                        <p>On-chain Admin: {isAdminOnChain ? "  Đã xác thực" : "  Chưa có quyền"}</p>
                     </div>
                 </main>
             </div>
@@ -195,26 +209,6 @@ export default function AdminCampaignApprovalsPage() {
                 <p className="mt-1 text-sm text-slate-600">
                     Danh sách campaign đang ở trạng thái chờ duyệt.
                 </p>
-
-                {isLoadingOwnerSafes && (
-                    <p className="mt-2 text-xs text-slate-500">
-                        Đang kiểm tra quyền Safe...
-                    </p>
-                )}
-
-                {activeCampaignId !== null && (
-                    <div className="mt-4 rounded-lg bg-blue-50 border border-blue-200 p-4 text-blue-800">
-                        <div className="flex items-center gap-2">
-                            <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            <span>
-                                Đã gửi giao dịch duyệt lên blockchain. Vui lòng chờ MetaMask xác nhận xong trước khi tải lại trang.
-                            </span>
-                        </div>
-                    </div>
-                )}
 
                 {isLoadingCampaigns ? (
                     <p className="mt-4 text-sm">Đang tải campaigns...</p>
@@ -363,9 +357,6 @@ export default function AdminCampaignApprovalsPage() {
 
                                                 if (isAdminOnChain) {
                                                     const txHash = await adminApprove(item.id);
-                                                    showSuccessToast(
-                                                        "Đã gửi giao dịch duyệt. Đang chờ xác nhận on-chain...",
-                                                    );
                                                     if (publicClient) {
                                                         await publicClient.waitForTransactionReceipt({
                                                             hash: txHash,
@@ -401,11 +392,9 @@ export default function AdminCampaignApprovalsPage() {
                                             }
                                         }}
                                     >
-                                        {activeCampaignId === item.id
-                                            ? "Đang xử lý..."
-                                            : lastApprovedCampaignId === item.id
-                                                ? "Đã duyệt ✓"
-                                                : "Duyệt chiến dịch"}
+                                        {lastApprovedCampaignId === item.id
+                                            ? "Đã duyệt ✓"
+                                            : "Duyệt chiến dịch"}
                                     </button>
                                     <button
                                         type="button"
@@ -516,7 +505,7 @@ export default function AdminCampaignApprovalsPage() {
                                     }
                                 }}
                             >
-                                {isSubmittingRejection ? "Đang gửi..." : "Xác nhận từ chối"}
+                                Xác nhận từ chối
                             </button>
                         </div>
                     </div>

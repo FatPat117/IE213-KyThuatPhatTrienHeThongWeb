@@ -36,7 +36,9 @@ export function useOwnerSafes(): UseOwnerSafesReturn {
   );
 
   const [safes, setSafes] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(() =>
+    /^0x[a-f0-9]{40}$/.test((address || "").toLowerCase().trim()),
+  );
   const [error, setError] = useState<string | null>(null);
   const [retryAfter, setRetryAfter] = useState<number>(0);
 
@@ -47,6 +49,7 @@ export function useOwnerSafes(): UseOwnerSafesReturn {
       console.log('[useOwnerSafes] Invalid wallet address format:', normalizedWallet);
       setSafes([]);
       setError(null);
+      setIsLoading(false);
       return;
     }
 
@@ -57,6 +60,7 @@ export function useOwnerSafes(): UseOwnerSafesReturn {
       console.log('[useOwnerSafes] Cache HIT for', normalizedWallet, '->', cached.safes.length, 'safes');
       setSafes(cached.safes);
       setError(null);
+      setIsLoading(false);
       return;
     }
 
@@ -179,6 +183,7 @@ export function useOwnerSafes(): UseOwnerSafesReturn {
     } else {
       setSafes([]);
       setError(null);
+      setIsLoading(false);
       // Clear cache for invalid wallet
       if (normalizedWallet) {
         GLOBAL_SAFE_OWNERS_CACHE.delete(normalizedWallet);

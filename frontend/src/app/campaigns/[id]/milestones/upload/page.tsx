@@ -1,10 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState, useRef, type FormEvent } from "react";
-import { useWaitForTransactionReceipt } from "wagmi";
-import { useAccount } from "wagmi";
+import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 import {
     getPublicCampaignMilestones,
     resubmitMilestone,
@@ -13,12 +9,15 @@ import {
     useSubmitMilestoneProof,
 } from "@/lib";
 import { useReadMilestonesOnChain } from "@/lib/contracts/hooks";
-import { useRegisterWalletTxOverlay } from "@/context/wallet-tx-overlay";
 import {
     getWalletErrorMessage,
     isWalletUserRejectedMessage,
 } from "@/lib/errors/normalize";
 import { showErrorToast, showSuccessToast } from "@/lib/ui/toast";
+import Link from "next/link";
+import { useParams, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useAccount, useWaitForTransactionReceipt } from "wagmi";
 
 const DEFAULT_API_BASE_URL = "http://localhost:4000/api";
 
@@ -78,7 +77,18 @@ function MilestoneEvidenceUploadContent() {
         useSubmitMilestoneProof();
     const { isLoading: isConfirmingOnChain, isSuccess: isConfirmedOnChain } =
         useWaitForTransactionReceipt({ hash: submitHash });
-    useRegisterWalletTxOverlay(isSubmittingOnChain || isConfirmingOnChain);
+
+    // ✅ Declare isUploadingFile BEFORE useRegisterWalletTxOverlay
+    const [isUploadingFile, setIsUploadingFile] = useState(false);
+
+    useRegisterWalletTxOverlay(
+        isSubmittingOnChain || isConfirmingOnChain || isUploadingFile,
+        isUploadingFile
+            ? "processing"
+            : isConfirmingOnChain
+              ? "confirming"
+              : "signing",
+    );
 
     const [title, setTitle] = useState("Báo cáo tiến độ");
     const [description, setDescription] = useState("Minh chứng tiến độ mốc giải ngân");
@@ -86,7 +96,6 @@ function MilestoneEvidenceUploadContent() {
         "report" | "photo" | "video" | "document"
     >("photo");
     const [files, setFiles] = useState<File[]>([]);
-    const [isUploadingFile, setIsUploadingFile] = useState(false);
     const [uploadedCids, setUploadedCids] = useState<string[]>(
         sourceCid ? [sourceCid] : [],
     );
@@ -265,10 +274,7 @@ function MilestoneEvidenceUploadContent() {
                 await submitMilestoneProof(campaignId, milestoneIndexOnChain, cid);
             }
             setResultMessage(
-                `Đã gửi ${uploadedCids.length} giao dịch đăng tải minh chứng. Đang chờ xác nhận...`,
-            );
-            showSuccessToast(
-                `Đã gửi ${uploadedCids.length} giao dịch đăng tải minh chứng. Đang chờ xác nhận...`,
+                `Đã gửi ${uploadedCids.length} giao dịch đăng tải minh chứng.`,
             );
         } catch (error) {
             const normalizedMessage = getWalletErrorMessage(error, {
@@ -411,7 +417,7 @@ function MilestoneEvidenceUploadContent() {
                             disabled={!canUpload || isUploadingFile || hasSubmittedOnChain || files.length === 0}
                             className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
                         >
-                            {isUploadingFile ? "Đang upload..." : hasSubmittedOnChain ? "Đã hoàn tất" : "1) Upload file lấy CID"}
+                            {hasSubmittedOnChain ? "Đã hoàn tất" : "1) Upload file lấy CID"}
                         </button>
                         <button
                             type="button"
@@ -425,11 +431,9 @@ function MilestoneEvidenceUploadContent() {
                             onClick={handleSubmitOnChain}
                             className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
                         >
-                            {isSubmittingOnChain || isConfirmingOnChain
-                                ? "Đang chờ xác nhận..."
-                                : hasSubmittedOnChain
-                                    ? "Đã submit on-chain"
-                                    : "2) Đăng tải tất cả CID on-chain"}
+                            {hasSubmittedOnChain
+                                ? "Đã submit on-chain"
+                                : "2) Đăng tải tất cả CID on-chain"}
                         </button>
                     </div>
                     {!isCampaignInProgress && (
