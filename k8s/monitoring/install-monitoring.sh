@@ -1,6 +1,12 @@
 #!/bin/bash
 # Script to install PLG (Prometheus, Grafana, Loki) stack using Helm on K3s
 
+# Export Kubeconfig for K3s if available
+if [ -f "/etc/rancher/k3s/k3s.yaml" ]; then
+    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+fi
+
+
 # 1. Install Helm if not present
 if ! command -v helm &> /dev/null
 then
