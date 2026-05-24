@@ -21,6 +21,12 @@ spec:
         envFrom:
         - secretRef:
             name: backend-env
+        env:
+        - name: MONGO_URI
+          valueFrom:
+            secretKeyRef:
+              name: backend-env
+              key: MONGO_URI_CAMPAIGNS
 ---
 apiVersion: v1
 kind: Service
