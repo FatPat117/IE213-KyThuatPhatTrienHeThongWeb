@@ -10,6 +10,7 @@ import {
     useBackendCampaign,
     useAuth,
     useReadCampaign,
+    mapMilestoneRecord,
 } from "@/lib";
 import {
     getPublicCampaignMilestones,
@@ -22,7 +23,8 @@ import {
     MilestoneTimeline,
 } from "@/components/campaign-milestones";
 import BackButton from "@/components/navigation/BackButton";
-import { useAccount } from "wagmi";
+import { useAccount, useReadContract, useWatchContractEvent } from "wagmi";
+import { showErrorToast } from "@/lib/ui/toast";
 
 export default function CampaignMilestonesPage() {
     const params = useParams();
@@ -40,6 +42,17 @@ export default function CampaignMilestonesPage() {
     const [milestonesWarning, setMilestonesWarning] = useState<string | null>(
         null,
     );
+    const { data: userDonatedWei } = useReadContract({
+        ...contractConfig,
+        functionName: "getDonation",
+        args:
+            id > 0 && address
+                ? [BigInt(id), address]
+                : undefined,
+        query: {
+            enabled: id > 0 && !!address,
+        },
+    });
 
     const progress = useMemo(() => {
         if (!campaign) return 0;
@@ -84,6 +97,12 @@ export default function CampaignMilestonesPage() {
     useEffect(() => {
         loadMilestones();
     }, [loadMilestones]);
+
+    useEffect(() => {
+        const message = error || milestonesError;
+        if (!message) return;
+        showErrorToast(message);
+    }, [error, milestonesError]);
 
     useEffect(() => {
         if (!Number.isFinite(id)) return;
@@ -157,13 +176,110 @@ export default function CampaignMilestonesPage() {
         });
     }, [backendCampaign.data?.createdAt, campaign, progress]);
 
+    const campaignStatusLabel = backendCampaign.data?.status || campaign?.statusLabel || "active";
+
+    const resolvedMilestones = useMemo(() => {
+        if (!backendCampaign.data?.milestones || backendCampaign.data.milestones.length === 0) {
+            return undefined;
+        }
+        return backendCampaign.data.milestones.map((m) => {
+            const mapped = mapMilestoneRecord(m);
+            if (
+                (campaignStatusLabel === "failed" || campaignStatusLabel === "partial_failed") &&
+                ["in_progress", "pending_funding", "resubmittable", "pending_verification"].includes(mapped.status)
+            ) {
+                mapped.status = "failed";
+            }
+            return mapped;
+        });
+    }, [backendCampaign.data?.milestones, campaignStatusLabel]);
+
     const milestonesToRender =
-        milestones.length > 0 ? milestones : fallbackMilestones;
+        resolvedMilestones || (milestones.length > 0 ? milestones : fallbackMilestones);
     const canUploadEvidence =
         Boolean(token) &&
         Boolean(address) &&
         Boolean(campaign?.creator) &&
         campaign?.creator.toLowerCase() === address?.toLowerCase();
+
+    // Determine if the milestone page should refresh backend data after changes
+    const campaignOnChainStatus = campaign?.statusLabel;
+
+    useEffect(() => {
+        // When campaign is in_progress, poll backend milestones to get fresh status
+        if (campaignOnChainStatus === "in_progress" || campaignOnChainStatus === "partial_failed" || campaignOnChainStatus === "completed") {
+            loadMilestones();
+            backendCampaign.refetch();
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [campaignOnChainStatus]);
+
+    useWatchContractEvent({
+        ...contractConfig,
+        eventName: "Donated",
+        onLogs: (logs) => {
+            const relevant = logs.some(
+                (log) => Number((log as { args?: { campaignId?: bigint } }).args?.campaignId ?? 0n) === id,
+            );
+            if (!relevant) return;
+            refetch();
+        },
+    });
+
+    useWatchContractEvent({
+        ...contractConfig,
+        eventName: "FundingComplete",
+        onLogs: (logs) => {
+            const relevant = logs.some(
+                (log) => Number((log as { args?: { campaignId?: bigint } }).args?.campaignId ?? 0n) === id,
+            );
+            if (!relevant) return;
+            refetch();
+            let attempts = 0;
+            const timer = window.setInterval(() => {
+                attempts += 1;
+                backendCampaign.refetch();
+                if (attempts >= 3) window.clearInterval(timer);
+            }, 4000);
+        },
+    });
+
+    useWatchContractEvent({
+        ...contractConfig,
+        eventName: "CampaignFailed",
+        onLogs: (logs) => {
+            const relevant = logs.some(
+                (log) => Number((log as { args?: { campaignId?: bigint } }).args?.campaignId ?? 0n) === id,
+            );
+            if (!relevant) return;
+            refetch();
+            let attempts = 0;
+            const timer = window.setInterval(() => {
+                attempts += 1;
+                backendCampaign.refetch();
+                if (attempts >= 3) window.clearInterval(timer);
+            }, 4000);
+        },
+    });
+
+    useWatchContractEvent({
+        ...contractConfig,
+        eventName: "MilestoneFailed",
+        onLogs: (logs) => {
+            const relevant = logs.some(
+                (log) => Number((log as { args?: { campaignId?: bigint } }).args?.campaignId ?? 0n) === id,
+            );
+            if (!relevant) return;
+            refetch();
+            let attempts = 0;
+            const timer = window.setInterval(() => {
+                attempts += 1;
+                backendCampaign.refetch();
+                if (attempts >= 3) window.clearInterval(timer);
+            }, 4000);
+        },
+    });
+
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
@@ -216,7 +332,7 @@ export default function CampaignMilestonesPage() {
                             Không thể tải timeline mốc
                         </p>
                         <p className="mt-2 text-sm text-red-700">
-                            {error || milestonesError || "Có lỗi xảy ra."}
+                            Đã xảy ra lỗi khi tải timeline mốc.
                         </p>
                         <button
                             onClick={() => {
@@ -255,6 +371,10 @@ export default function CampaignMilestonesPage() {
                                 contractAddress={contractConfig.address}
                                 canUploadEvidence={canUploadEvidence}
                                 raisedWei={campaign.raised}
+                                goalWei={campaign.goal}
+                                userDonatedWei={userDonatedWei as bigint}
+                                currentMilestoneId={campaign.currentMilestoneId}
+                                campaignStatusLabel={campaignStatusLabel}
                             />
                         </div>
                     )}

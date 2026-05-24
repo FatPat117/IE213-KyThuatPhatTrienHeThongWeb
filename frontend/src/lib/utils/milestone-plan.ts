@@ -217,9 +217,10 @@ export function buildTimelineMilestones({
         }
 
         const allocationBps = Math.round(template.allocationPercent * 100);
+        // Mục tiêu cố định: dựa trên goalWei (mục tiêu gây quỹ ban đầu)
         const targetAmountWei =
-            totalRaisedWei > 0n && allocationBps > 0
-                ? (totalRaisedWei * BigInt(allocationBps)) / 10000n
+            goalWei > 0n && allocationBps > 0
+                ? (goalWei * BigInt(allocationBps)) / 10000n
                 : 0n;
 
         return {

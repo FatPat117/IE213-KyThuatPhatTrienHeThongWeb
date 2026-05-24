@@ -81,6 +81,9 @@ async function startMilestoneRefundedConsumer() {
                         claimedAt: new Date(),
                         refundedAt: new Date(),
                         refundTxHash: payload.txHash || null,
+                        refundEventId: payload.txHash && payload.logIndex !== undefined 
+                            ? `${payload.txHash}-${payload.logIndex}` 
+                            : undefined,
                     },
                 },
                 {
@@ -105,7 +108,7 @@ async function startMilestoneRefundedConsumer() {
                 "[campaign-service] milestoneRefunded consumer error:",
                 error.message,
             );
-            channel.nack(msg, false, false);
+            channel.nack(msg, false, true);
         }
     });
 }

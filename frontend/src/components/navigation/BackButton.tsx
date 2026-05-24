@@ -6,6 +6,7 @@ interface BackButtonProps {
   fallbackHref?: string;
   className?: string;
   preferFallback?: boolean;
+  onClick?: () => void;
 }
 
 /**
@@ -13,10 +14,14 @@ interface BackButtonProps {
  * - go to previous page when browser history exists
  * - fallback to a safe route when opened directly
  */
-export default function BackButton({ fallbackHref = '/', className, preferFallback = false }: BackButtonProps) {
+export default function BackButton({ fallbackHref = '/', className, preferFallback = false, onClick }: BackButtonProps) {
   const router = useRouter();
 
   const handleBack = () => {
+    if (onClick) {
+      onClick();
+      return;
+    }
     if (preferFallback) {
       router.push(fallbackHref);
       return;

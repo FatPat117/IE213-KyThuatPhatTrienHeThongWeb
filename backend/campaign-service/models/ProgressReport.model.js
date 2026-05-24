@@ -35,7 +35,6 @@ const ProgressReportSchema = new mongoose.Schema(
         cid: {
             type: String,
             required: [true, "IPFS CID là bắt buộc"],
-            unique: true, // One CID = one report
         },
         // Gateway URL for easy access
         gatewayUrl: {

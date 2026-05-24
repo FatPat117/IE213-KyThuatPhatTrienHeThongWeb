@@ -15,15 +15,18 @@ export {
     useCreateCampaign,
     useDisburseMilestone,
     useDonateToCampaign,
+    useExecuteSafeTransaction,
     useMarkAsFailed,
     useMarkMilestoneFailed,
     useMintCertificate,
+    useProposeSafeTransaction,
     useReadAllCampaigns,
     useReadCampaign,
     useReadCampaignReviewersBatch,
     useReadCampaignCount,
     useReadContractOwner,
     useReadFilteredCampaigns,
+    useReadMilestonesOnChain,
     useReadReviewerSafes,
     useReadReviewerSafesOnChain,
     useReadTotalRaised,
@@ -69,9 +72,16 @@ export {
     useWalletValidation,
 } from "./hooks/use-wallet";
 export {
+    useOwnerSafes,
+} from "./hooks/use-owner-safes";
+export {
+    useReviewerCampaigns,
+} from "./hooks/use-reviewer-campaigns";
+export {
     getCampaignMetadataFromCache,
     isPlaceholderCampaignDescription,
     isPlaceholderCampaignTitle,
+    isPlaceholderThumbnailUrl,
     saveCampaignMetadataToCache,
 } from "./utils/campaign-metadata-cache";
 
@@ -85,11 +95,15 @@ export {
     getPublicCampaignMilestones,
     getPublicCampaigns,
     getPublicStats,
+    rejectCampaign,
     rejectMilestone,
     resubmitMilestone,
     getReviewerAggregates,
     updateCampaignMetadata,
     updateCampaignStatus,
+    getRefundStatus,
+    mapMilestoneRecord,
+    TERMINAL_STATUSES,
 } from "./api/campaigns";
 export {
     getDonationsByCampaign,
@@ -107,3 +121,16 @@ export {
     toAuthUserProfile,
     updateUserProfile,
 } from "./api/users";
+export {
+    getReviewerProfile,
+    getPublicReviewerProfiles,
+    updateReviewerProfile,
+    type ReviewerProfile,
+} from "./api/reviewer-profile";
+export {
+    clearAdminReviewerProfile,
+    getAdminReviewerProfiles,
+    patchAdminReviewerProfile,
+    type ReviewerProfileAdminRecord,
+} from "./api/reviewer-admin";
+export { useIsReviewer } from "./hooks/use-is-reviewer";

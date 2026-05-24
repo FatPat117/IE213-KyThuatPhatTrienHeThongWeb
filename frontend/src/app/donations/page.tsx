@@ -3,6 +3,7 @@
 import DonationHistoryList from "@/components/donations/DonationHistoryList";
 import DonationSummaryCards from "@/components/donations/DonationSummaryCards";
 import BackButton from "@/components/navigation/BackButton";
+import { InlineLoading } from "@/components/ui/loading";
 import TransactionHistoryModal from "@/components/transactions/TransactionHistoryModal";
 import {
     contractConfig,
@@ -18,6 +19,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { formatEther, parseAbiItem } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
+import { showErrorToast } from "@/lib/ui/toast";
 
 function MyDonationsContent() {
     const searchParams = useSearchParams();
@@ -30,7 +32,7 @@ function MyDonationsContent() {
     const [allOnChainDonations, setAllOnChainDonations] = useState<
         DonationRecord[]
     >([]);
-    const [isOnChainLoading, setIsOnChainLoading] = useState(false);
+    const [isOnChainLoading] = useState(false);
     const campaignIdFilter = useMemo(() => {
         const raw = searchParams.get("campaignId");
         if (!raw) return null;
@@ -43,111 +45,6 @@ function MyDonationsContent() {
     );
     const transactionQuery = useBackendTransactions(address ?? null);
     const campaignsQuery = useBackendCampaigns();
-
-    useEffect(() => {
-        const fetchOnChainDonations = async () => {
-            if (!publicClient) return;
-
-            try {
-                setIsOnChainLoading(true);
-                const latestBlock = await publicClient.getBlockNumber();
-                const maxBlocksToScan = 500n;
-                const chunkSize = 10n;
-                const fromBlock =
-                    latestBlock > maxBlocksToScan
-                        ? latestBlock - maxBlocksToScan + 1n
-                        : 0n;
-                const logs: Awaited<ReturnType<typeof publicClient.getLogs>> =
-                    [];
-
-                for (
-                    let chunkFrom = fromBlock;
-                    chunkFrom <= latestBlock;
-                    chunkFrom += chunkSize
-                ) {
-                    const chunkTo =
-                        chunkFrom + chunkSize - 1n > latestBlock
-                            ? latestBlock
-                            : chunkFrom + chunkSize - 1n;
-                    const chunkLogs = await publicClient.getLogs({
-                        address: contractConfig.address,
-                        event: parseAbiItem(
-                            "event Donated(uint256 indexed campaignId, address indexed donor, uint256 amount)",
-                        ),
-                        fromBlock: chunkFrom,
-                        toBlock: chunkTo,
-                    });
-                    logs.push(...chunkLogs);
-                }
-
-                const mapped = await Promise.all(
-                    logs.map(async (log) => {
-                        const args = (
-                            log as {
-                                args?: {
-                                    campaignId?: bigint;
-                                    amount?: bigint;
-                                    donor?: string;
-                                };
-                                blockNumber?: bigint | null;
-                            }
-                        ).args;
-                        const campaignOnChainId = Number(
-                            args?.campaignId ?? 0n,
-                        );
-                        const amountWei = args?.amount ?? 0n;
-                        const donorWallet = (args?.donor ?? "").toString();
-                        const blockNumber = (
-                            log as { blockNumber?: bigint | null }
-                        ).blockNumber;
-                        const block = blockNumber
-                            ? await publicClient.getBlock({ blockNumber })
-                            : null;
-                        return {
-                            txHash: log.transactionHash ?? "",
-                            campaignOnChainId,
-                            donorWallet,
-                            amount: amountWei.toString(),
-                            amountEth: Number(formatEther(amountWei)),
-                            donatedAt: new Date(
-                                block
-                                    ? Number(block.timestamp) * 1000
-                                    : Date.now(),
-                            ).toISOString(),
-                        } satisfies DonationRecord;
-                    }),
-                );
-
-                const sorted = mapped
-                    .filter((item) => item.txHash)
-                    .sort(
-                        (a, b) =>
-                            new Date(b.donatedAt).getTime() -
-                            new Date(a.donatedAt).getTime(),
-                    );
-
-                setAllOnChainDonations(sorted);
-                if (address) {
-                    const lowerAddress = address.toLowerCase();
-                    setOnChainDonations(
-                        sorted.filter(
-                            (item) =>
-                                item.donorWallet.toLowerCase() === lowerAddress,
-                        ),
-                    );
-                } else {
-                    setOnChainDonations([]);
-                }
-            } catch {
-                setOnChainDonations([]);
-                setAllOnChainDonations([]);
-            } finally {
-                setIsOnChainLoading(false);
-            }
-        };
-
-        fetchOnChainDonations();
-    }, [address, publicClient]);
 
     const campaignTitleById = useMemo(() => {
         const map = new Map<number, string>();
@@ -229,6 +126,11 @@ function MyDonationsContent() {
         [allOnChainDonations, campaignTitleById],
     );
 
+    useEffect(() => {
+        if (!donationQuery.error) return;
+        showErrorToast(donationQuery.error);
+    }, [donationQuery.error]);
+
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-5xl mx-auto">
@@ -239,10 +141,6 @@ function MyDonationsContent() {
                             <h1 className="text-3xl font-bold text-slate-900">
                                 Lịch sử quyên góp
                             </h1>
-                            <p className="text-lg text-slate-600">
-                                Minh bạch từ backend indexer + sự kiện on-chain
-                                Donated
-                            </p>
                         </div>
                     </div>
                 </div>
@@ -250,7 +148,7 @@ function MyDonationsContent() {
                 {!isConnected && (
                     <div className="mb-6 rounded-2xl border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-900">
                         Bạn đang xem lịch sử quyên góp toàn hệ thống (on-chain).
-                        Kết nối ví để xem thêm mục "Quyên góp của tôi".
+                        Kết nối ví để xem thêm mục &quot;Quyên góp của tôi&quot;.
                     </div>
                 )}
                 {isConnected && chain?.id !== 11155111 && (
@@ -303,14 +201,7 @@ function MyDonationsContent() {
                             )}
 
                         {(donationQuery.isLoading || isOnChainLoading) && (
-                            <p className="text-sm text-slate-600">
-                                Đang tải dữ liệu...
-                            </p>
-                        )}
-                        {!donationQuery.isLoading && donationQuery.error && (
-                            <p className="text-sm text-red-700">
-                                {donationQuery.error}
-                            </p>
+                            <InlineLoading label="Đang tải dữ liệu quyên góp..." />
                         )}
                         {!donationQuery.isLoading &&
                             !donationQuery.error &&
@@ -333,35 +224,6 @@ function MyDonationsContent() {
                             ))}
                     </div>
                 )}
-
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-8">
-                    <div className="mb-6">
-                        <h2 className="text-xl font-bold text-slate-900">
-                            Lịch sử quyên góp toàn hệ thống
-                        </h2>
-                        <p className="mt-1 text-xs text-slate-600">
-                            Dữ liệu on-chain công khai cho mọi campaign. Bạn có
-                            thể xem nhà tài trợ, campaign, số tiền và lời nhắn
-                            (nếu có).
-                        </p>
-                    </div>
-                    {isOnChainLoading && (
-                        <p className="text-sm text-slate-600">
-                            Đang tải dữ liệu on-chain...
-                        </p>
-                    )}
-                    {!isOnChainLoading && publicDonationItems.length > 0 && (
-                        <DonationHistoryList
-                            donations={publicDonationItems}
-                            showDonor
-                        />
-                    )}
-                    {!isOnChainLoading && publicDonationItems.length === 0 && (
-                        <p className="text-sm text-slate-600">
-                            Chưa có dữ liệu donation on-chain.
-                        </p>
-                    )}
-                </div>
             </div>
 
             <TransactionHistoryModal

@@ -9,6 +9,7 @@ import { useBackendCampaigns, useBackendDonations } from '@/lib';
 import BackButton from '@/components/navigation/BackButton';
 import DonationSummaryCards from '@/components/donations/DonationSummaryCards';
 import type { DonationRecord } from '@/lib/api/types';
+import { showErrorToast } from '@/lib/ui/toast';
 
 type CertificateOverview = {
   tokenId: number;
@@ -64,6 +65,11 @@ export default function DashboardPage() {
 
     loadCertificates();
   }, [address, isConnected]);
+
+  useEffect(() => {
+    if (!certError) return;
+    showErrorToast(certError);
+  }, [certError]);
 
   const myCampaigns = useMemo(
     () =>
@@ -304,8 +310,6 @@ export default function DashboardPage() {
               </div>
               {isCertLoading ? (
                 <p className="text-sm text-slate-600">Đang tải chứng chỉ...</p>
-              ) : certError ? (
-                <p className="text-sm text-red-700">{certError}</p>
               ) : certificates.length === 0 ? (
                 <p className="text-sm text-slate-600">
                   Bạn chưa có chứng chỉ nào. Sau khi donate và mint, chứng chỉ sẽ xuất hiện ở

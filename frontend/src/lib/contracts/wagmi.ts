@@ -22,6 +22,7 @@ const rpcCandidates = Array.from(
 export const config = createConfig({
     chains: [sepolia],
     connectors: [injected()],
+    batch: { multicall: true },
     transports: {
         [sepolia.id]: fallback(
             rpcCandidates.map((url) =>
@@ -29,6 +30,7 @@ export const config = createConfig({
                     timeout: 12_000,
                     retryCount: 1,
                     retryDelay: 400,
+                    batch: true,
                 }),
             ),
         ),

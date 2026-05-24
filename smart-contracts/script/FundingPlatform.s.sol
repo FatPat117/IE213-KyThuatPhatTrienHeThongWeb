@@ -12,20 +12,39 @@ contract DeployFundingPlatform is Script {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(deployerPrivateKey);
 
+        address multisig = vm.envAddress("MULTISIG_ADDRESS");
+        string memory adminsRaw = vm.envString("ADMIN_WALLETS");
+        
+        address[] memory admins;
+        // Check if there is a comma
+        if (bytes(adminsRaw).length > 42) {
+            // Very simple split: take the first 42 characters (0x...addr)
+            bytes memory b = bytes(adminsRaw);
+            bytes memory firstAddr = new bytes(42);
+            for(uint i=0; i<42; i++) {
+                firstAddr[i] = b[i];
+            }
+            admins = new address[](1);
+            admins[0] = vm.parseAddress(string(firstAddr));
+        } else {
+            admins = new address[](1);
+            admins[0] = vm.parseAddress(adminsRaw);
+        }
+
         console.log("FundingPlatform Deployment");
         console.log("Deployer  :", deployer);
-        console.log("Balance   :", deployer.balance);
+        console.log("Multisig  :", multisig);
+        console.log("Admin[0]  :", admins[0]);
         console.log("Chain ID  :", block.chainid);
-
+ 
         vm.startBroadcast(deployerPrivateKey);
-        FundingPlatform platform = new FundingPlatform();
+        FundingPlatform platform = new FundingPlatform(multisig, admins);
         vm.stopBroadcast();
 
         console.log("==========================================");
         console.log("Contract  :", address(platform));
         console.log("NFT Name  :", platform.name());
         console.log("NFT Symbol:", platform.symbol());
-        console.log("Owner     :", platform.owner());
 
         return platform;
     }

@@ -12,16 +12,54 @@ const {
     getPublicCampaignByOnChainId,
     getPublicCampaignMilestones,
     getMilestoneApprovalStatus,
+    getRefundStatus,
+    rejectCampaign,
 } = require("../controllers/campaign.controller");
+const {
+    getReviewerProfile,
+    patchReviewerProfile,
+    listPublicReviewerProfiles,
+    listReviewerProfilesForAdmin,
+    patchReviewerProfileForAdmin,
+    clearReviewerProfileForAdmin,
+} = require("../controllers/reviewerProfile.controller");
 
 const router = express.Router();
 
+router.get("/reviewers/profile", requireAuth, getReviewerProfile);
+router.patch("/reviewers/profile", requireAuth, patchReviewerProfile);
+router.get(
+    "/reviewers/admin/profiles",
+    requireAuth,
+    listReviewerProfilesForAdmin,
+);
+router.patch(
+    "/reviewers/admin/profiles/:walletAddress",
+    requireAuth,
+    patchReviewerProfileForAdmin,
+);
+router.delete(
+    "/reviewers/admin/profiles/:walletAddress",
+    requireAuth,
+    clearReviewerProfileForAdmin,
+);
+
+router.get(
+    "/public/reviewers/profiles",
+    publicRateLimit,
+    listPublicReviewerProfiles,
+);
 router.get("/public/stats", publicRateLimit, getPublicStats);
 router.get("/public/campaigns", publicRateLimit, getPublicCampaigns);
 router.get(
     "/public/campaigns/:onChainId/milestones",
     publicRateLimit,
     getPublicCampaignMilestones,
+);
+router.get(
+    "/public/campaigns/:onChainId/refund-status",
+    publicRateLimit,
+    getRefundStatus,
 );
 router.get(
     "/public/campaigns/:onChainId",
@@ -49,5 +87,6 @@ router.post("/", requireAuth, (_req, res) => {
 
 router.get("/:onChainId", getCampaignById);
 router.patch("/:onChainId/status", requireAuth, updateCampaignStatus);
+router.post("/:onChainId/reject", requireAuth, rejectCampaign);
 
 module.exports = router;

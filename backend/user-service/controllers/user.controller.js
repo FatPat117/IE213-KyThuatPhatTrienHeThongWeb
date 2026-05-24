@@ -5,7 +5,7 @@ const { successRes, errorRes } = require("../utils/response");
 async function getUserProfile(req, res, next) {
     try {
         const user = await userService.getUserByWallet(req.params.wallet);
-        if (!user) return errorRes(res, "User không tồn tại", 404);
+        if (!user) return successRes(res, null);
         return successRes(res, user);
     } catch (err) { next(err); }
 }

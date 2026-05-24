@@ -3,9 +3,10 @@ const User = require("../models/user.model");
 async function upsertUser(walletAddress, updates = {}) {
     const wallet = walletAddress.toLowerCase();
 
-    // Tự động thăng cấp Admin nếu ví khớp với cấu hình INITIAL_ADMIN_WALLET
-    if (process.env.INITIAL_ADMIN_WALLET &&
-        wallet === process.env.INITIAL_ADMIN_WALLET.toLowerCase()) {
+    // Admin role is now primarily handled by auth-service on-chain check.
+    // We don't need to auto-promote here anymore, but keeping it for backward compatibility if needed via ADMIN_WALLETS.
+    const adminList = (process.env.ADMIN_WALLETS || "").toLowerCase().split(",");
+    if (adminList.includes(wallet)) {
         updates.role = "admin";
     }
 
@@ -36,11 +37,10 @@ async function listAdmins() {
 async function updateRole(walletAddress, role) {
     const wallet = walletAddress.toLowerCase();
 
-    // Bảo vệ: Không cho phép hạ cấp Root Admin (định nghĩa trong ENV)
-    if (process.env.INITIAL_ADMIN_WALLET &&
-        wallet === process.env.INITIAL_ADMIN_WALLET.toLowerCase() &&
-        role !== "admin") {
-        throw Object.assign(new Error("Không thể hạ cấp Root Admin cấp cao nhất"), { statusCode: 403 });
+    // Bảo vệ: Không cho phép hạ cấp Admin cấp cao nhất (định nghĩa trong ENV)
+    const adminList = (process.env.ADMIN_WALLETS || "").toLowerCase().split(",");
+    if (adminList.includes(wallet) && role !== "admin") {
+        throw Object.assign(new Error("Không thể hạ cấp Admin cấp cao nhất"), { statusCode: 403 });
     }
 
     return User.findOneAndUpdate(

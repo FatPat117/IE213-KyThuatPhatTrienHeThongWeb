@@ -1,5 +1,5 @@
 const { getChannel, EXCHANGE } = require("../config/rabbitmq");
-const { Campaign, CampaignDonorShare } = require("../models");
+const { Campaign, CampaignDonorShare, Milestone } = require("../models");
 const notificationService = require("../services/notification.service");
 
 const QUEUE =
@@ -159,12 +159,18 @@ async function handleFundingCompleteEvent(event) {
     campaign.totalRaisedWei = normalizedTotalRaisedWei;
     campaign.raised = normalizedTotalRaisedWei;
     await campaign.save();
+
+    // Cập nhật trạng thái mốc đầu tiên sang in_progress (để creator bắt đầu thực hiện và nộp minh chứng)
+    await Milestone.findOneAndUpdate(
+        { campaignId: campaign._id, milestoneId: 0 },
+        { $set: { status: "in_progress" } }
+    );
     if (campaign.creator) {
         await notificationService.createNotification({
             recipientWallet: campaign.creator,
             type: "funding_complete",
-            title: "Campaign đã đủ vốn",
-            message: "Campaign của bạn đã đủ vốn.",
+            title: "Chiến dịch đã đủ vốn",
+            message: "Chiến dịch của bạn đã đủ vốn.",
             campaignOnChainId,
             txHash: transactionHash || "",
         });

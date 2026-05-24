@@ -7,19 +7,34 @@ const { successRes, errorRes } = require("../utils/response");
 const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-change-this";
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
 
-function getAdminWalletSet() {
-    const set = new Set();
-    const initial = (process.env.INITIAL_ADMIN_WALLET || "").trim().toLowerCase();
-    if (/^0x[a-f0-9]{40}$/.test(initial)) {
-        set.add(initial);
-    }
 
-    const list = String(process.env.ADMIN_WALLETS || "")
-        .split(",")
-        .map((item) => item.trim().toLowerCase())
-        .filter((item) => /^0x[a-f0-9]{40}$/.test(item));
-    for (const wallet of list) set.add(wallet);
-    return set;
+async function checkIsAdminOnChain(walletAddress) {
+    try {
+        const rpcUrl = process.env.SEPOLIA_RPC_URL;
+        const contractAddress = process.env.CROWDFUNDING_CONTRACT_ADDRESS;
+
+        if (!rpcUrl || !contractAddress) {
+            console.warn("[auth.controller] RPC_URL or CONTRACT_ADDRESS not found in env");
+            return false;
+        }
+
+        const provider = new ethers.JsonRpcProvider(rpcUrl);
+        const contract = new ethers.Contract(
+            contractAddress,
+            [
+                "function hasRole(bytes32 role, address account) public view returns (bool)",
+                "function ADMIN_ROLE() public view returns (bytes32)"
+            ],
+            provider
+        );
+
+        // Lấy mã Hash của ADMIN_ROLE trực tiếp từ Contract để đảm bảo luôn đúng
+        const adminRoleHash = await contract.ADMIN_ROLE();
+        return await contract.hasRole(adminRoleHash, walletAddress);
+    } catch (error) {
+        console.error("[auth.controller] Error checking admin role on-chain:", error.message);
+        return false;
+    }
 }
 
 /**
@@ -84,10 +99,13 @@ async function verifySignature(req, res, next) {
             return errorRes(res, "Signature không khớp với địa chỉ ví", 401);
         }
 
-        // Đồng bộ role admin từ env mỗi lần đăng nhập.
-        const adminWallets = getAdminWalletSet();
-        if (adminWallets.has(normalizedWallet) && user.role !== "admin") {
+        // Đồng bộ role admin từ on-chain mỗi lần đăng nhập.
+        const isAdmin = await checkIsAdminOnChain(normalizedWallet);
+        if (isAdmin && user.role !== "admin") {
             user.role = "admin";
+        } else if (!isAdmin && user.role === "admin") {
+            // Nếu mất quyền on-chain thì hạ cấp xuống user
+            user.role = "user";
         }
 
         // Xoá nonce sau khi đã dùng (one-time use)
@@ -139,11 +157,14 @@ async function refreshToken(req, res, next) {
         const user = await User.findOne({ walletAddress: decoded.wallet });
         if (!user) return errorRes(res, "User không tồn tại", 404);
 
-        // Đồng bộ role admin từ env khi refresh token.
-        const adminWallets = getAdminWalletSet();
+        // Đồng bộ role admin từ on-chain khi refresh token.
         const normalizedWallet = String(user.walletAddress || "").toLowerCase();
-        if (adminWallets.has(normalizedWallet) && user.role !== "admin") {
+        const isAdmin = await checkIsAdminOnChain(normalizedWallet);
+        if (isAdmin && user.role !== "admin") {
             user.role = "admin";
+            await user.save();
+        } else if (!isAdmin && user.role === "admin") {
+            user.role = "user";
             await user.save();
         }
 

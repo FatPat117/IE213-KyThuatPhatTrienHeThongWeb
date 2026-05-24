@@ -13,6 +13,8 @@ const {
 } = require("../utils/deadlineHelper");
 const { publishMilestoneFailed } = require("../utils/publishMilestoneFailed");
 const { successRes, errorRes } = require("../utils/response");
+const notificationService = require("../services/notification.service");
+const { Reviewer } = require("../models");
 
 function toBigIntWei(value) {
     try {
@@ -155,28 +157,38 @@ const uploadProgressEvidence = async (req, res) => {
             `[milestoneController.uploadProgressEvidence] IPFS ok: campaign=${campaignOnChainId}, milestone=${milestoneIndex}, cid=${cid}`,
         );
 
-        const progressReport = new ProgressReport({
-            campaignId: campaign._id,
-            campaignOnChainId: parseInt(campaignOnChainId, 10),
-            milestoneId: milestone._id,
-            milestoneIndex: parseInt(milestoneIndex, 10),
-            creatorWallet: creatorAddress.toLowerCase(),
-            cid,
-            gatewayUrl: pinataUrl || ipfsUrl || `${pinataGatewayUrl}/ipfs/${cid}`,
-            mimeType: file.mimetype || "application/octet-stream",
-            fileName: originalName,
-            submittedAt: new Date(),
-        });
+        // Check if a report with this CID already exists to avoid E11000 duplicate key error
+        let progressReport = await ProgressReport.findOne({ cid });
 
-        await progressReport.save();
+        if (!progressReport) {
+            progressReport = new ProgressReport({
+                campaignId: campaign._id,
+                campaignOnChainId: parseInt(campaignOnChainId, 10),
+                milestoneId: milestone._id,
+                milestoneIndex: parseInt(milestoneIndex, 10),
+                creatorWallet: creatorAddress.toLowerCase(),
+                cid,
+                gatewayUrl: pinataUrl || ipfsUrl || `${pinataGatewayUrl}/ipfs/${cid}`,
+                mimeType: file.mimetype || "application/octet-stream",
+                fileName: originalName,
+                submittedAt: new Date(),
+            });
+            await progressReport.save();
+        } else {
+            console.log(`[milestoneController.uploadProgressEvidence] Report with CID ${cid} already exists, skipping creation.`);
+        }
 
         const submittedAt = new Date();
+        // 1. Luôn thêm vào evidenceCids (nếu chưa có)
         await Milestone.findByIdAndUpdate(milestone._id, {
-            $push: {
-                reportCids: { cid, submittedAt },
-                evidenceCids: cid,
-            },
+            $addToSet: { evidenceCids: cid },
         });
+
+        // 2. Chỉ push vào reportCids nếu CID này chưa từng xuất hiện
+        await Milestone.updateOne(
+            { _id: milestone._id, "reportCids.cid": { $ne: cid } },
+            { $push: { reportCids: { cid, submittedAt } } },
+        );
 
         const payload = {
             _id: progressReport._id,
@@ -675,14 +687,71 @@ const rejectMilestone = async (req, res) => {
         const assignedReviewerSafe = (campaign.reviewerSafe || "")
             .trim()
             .toLowerCase();
-        if (
-            !assignedReviewerSafe ||
-            assignedReviewerSafe !== reviewerWallet.toLowerCase()
-        ) {
+
+        // 1. Nếu ví người dùng chính là Safe (ít xảy ra)
+        let hasPermission = assignedReviewerSafe === reviewerWallet.toLowerCase();
+
+        // 2. Nếu không phải, kiểm tra xem ví người dùng có phải là Owner của Safe không
+        let threshold = 1;
+        if (!hasPermission && assignedReviewerSafe) {
+            try {
+                console.log(`[rejectMilestone] Fetching threshold for Safe ${assignedReviewerSafe} via RPC...`);
+                const { ethers } = require("ethers");
+                const rpcUrl = process.env.SEPOLIA_RPC_URL || process.env.RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
+                const provider = new ethers.JsonRpcProvider(rpcUrl);
+
+                const safeAbi = [
+                    "function getOwners() public view returns (address[] memory)",
+                    "function getThreshold() public view returns (uint256)"
+                ];
+                const safeContract = new ethers.Contract(assignedReviewerSafe, safeAbi, provider);
+                const [owners, onChainThreshold] = await Promise.all([
+                    safeContract.getOwners(),
+                    safeContract.getThreshold()
+                ]);
+
+                threshold = Number(onChainThreshold);
+                console.log(`[rejectMilestone] Safe ${assignedReviewerSafe} has threshold ${threshold} and ${owners?.length} owners`);
+
+                if (owners && Array.isArray(owners)) {
+                    hasPermission = owners.some(
+                        owner => owner.toLowerCase() === reviewerWallet.toLowerCase()
+                    );
+                }
+            } catch (err) {
+                console.error(`[rejectMilestone] Error fetching Safe owners/threshold via RPC for ${assignedReviewerSafe}:`, err.message);
+                // Fallback to Safe API if RPC fails
+                try {
+                    const { getSafeInfo } = require("../utils/safeUtils");
+                    const info = await getSafeInfo(assignedReviewerSafe);
+                    if (info) {
+                        threshold = Number(info.threshold || 1);
+                        const owners = info.owners || [];
+                        hasPermission = owners.some(o => o.toLowerCase() === reviewerWallet.toLowerCase());
+                        console.log(`[rejectMilestone] Fallback to Safe API: threshold=${threshold}`);
+                    }
+                } catch (apiErr) {
+                    console.error(`[rejectMilestone] Fallback Safe API also failed:`, apiErr.message);
+                }
+            }
+        }
+
+        // 3. Nếu vẫn không được, kiểm tra xem có phải reviewer đăng ký trực tiếp không
+        if (!hasPermission) {
+            const isRegisteredReviewer = await Reviewer.findOne({
+                walletAddress: reviewerWallet.toLowerCase(),
+                isActive: true,
+            });
+            if (isRegisteredReviewer) {
+                hasPermission = true;
+            }
+        }
+
+        if (!hasPermission) {
             return res.status(403).json({
                 status: "error",
                 code: "PERMISSION_DENIED",
-                message: "Only assigned reviewerSafe can reject this milestone",
+                message: "Bạn không có quyền thực hiện thao tác này (ví cá nhân không phải owner của Safe được phân công).",
             });
         }
 
@@ -698,34 +767,128 @@ const rejectMilestone = async (req, res) => {
             });
         }
 
+        // KIỂM TRA THRESHOLD TỪ CHỐI
+        const alreadyVoted = milestone.pendingRejections?.find(
+            v => v.reviewerWallet.toLowerCase() === reviewerWallet.toLowerCase()
+        );
+        if (alreadyVoted) {
+            return res.status(400).json({
+                status: "error",
+                code: "ALREADY_VOTED",
+                message: "Bạn đã biểu quyết từ chối minh chứng này rồi. Vui lòng đợi các kiểm duyệt viên khác."
+            });
+        }
+
+        if (!milestone.pendingRejections) milestone.pendingRejections = [];
+
+        milestone.pendingRejections.push({
+            reviewerWallet: reviewerWallet.toLowerCase(),
+            reason,
+            timestamp: new Date()
+        });
+
+        // Nếu số người bấm từ chối chưa đủ threshold -> chỉ lưu lại và chờ
+        if (milestone.pendingRejections.length < threshold) {
+            await milestone.save();
+            const needed = threshold - milestone.pendingRejections.length;
+            const msg = `Đã ghi nhận phiếu từ chối. Cần thêm ${needed} phiếu nữa để chính thức yêu cầu nộp lại (Số chữ ký cần là: ${threshold}).`;
+            return res.status(200).json({
+                success: true,
+                status: "pending_threshold",
+                message: msg,
+                data: {
+                    pendingVotes: milestone.pendingRejections.length,
+                    threshold,
+                    safeAddress: assignedReviewerSafe,
+                    rejectionCount: milestone.rejectionCount || 0,
+                    message: msg
+                }
+            });
+        }
+
+        // Đã đủ chữ ký -> Tiến hành từ chối chính thức
         const deadlineExceeded = isDeadlineExceeded(milestone.deadline);
+        // retriesLeft is calculated BEFORE incrementing rejectionCount.
+        // We need retriesLeft > 1 so that the CURRENT rejection still leaves
+        // at least 1 retry, i.e. the 3rd rejection (rejectionCount=2 → retriesLeft=1)
+        // should already mark the milestone as failed.
         const retriesLeft =
             Number(milestone.maxRetries || 3) -
             Number(milestone.rejectionCount || 0);
 
-        if (!deadlineExceeded && retriesLeft > 0) {
-            milestone.status = "resubmittable";
-            milestone.rejectionCount =
-                Number(milestone.rejectionCount || 0) + 1;
-            milestone.lastRejectionReason = reason;
-            milestone.lastRejectionTimestamp = new Date();
-            milestone.rejectionHistory.push({
-                timestamp: new Date(),
-                reason,
-                reviewerWallet: reviewerWallet.toLowerCase(),
+        if (!deadlineExceeded && retriesLeft > 1) {
+            const now = new Date();
+            const oldDeadline = milestone.deadline ? new Date(milestone.deadline) : now;
+            const baseDate = oldDeadline > now ? oldDeadline : now;
+            const newDeadline = new Date(baseDate.getTime() + 3 * 24 * 60 * 60 * 1000);
+
+            // Tính toán khoảng thời gian được gia hạn thêm
+            const extensionMs = newDeadline.getTime() - oldDeadline.getTime();
+
+            // Cập nhật nguyên tử mốc hiện tại
+            const updatedMilestone = await Milestone.findOneAndUpdate(
+                { _id: milestone._id },
+                {
+                    $set: {
+                        status: "resubmittable",
+                        lastRejectionReason: reason,
+                        lastRejectionTimestamp: now,
+                        deadline: newDeadline,
+                        pendingRejections: []
+                    },
+                    $inc: { rejectionCount: 1 },
+                    $push: {
+                        rejectionHistory: {
+                            timestamp: now,
+                            reason,
+                            reviewerWallet: reviewerWallet.toLowerCase(),
+                            newDeadline: newDeadline
+                        }
+                    }
+                },
+                { new: true }
+            );
+
+            // GIA HẠN THEO CHUỖI: Cập nhật tất cả các mốc tiếp theo
+            if (extensionMs > 0) {
+                const futureMilestones = await Milestone.find({
+                    campaignOnChainId: Number(campaignOnChainId),
+                    milestoneIndex: { $gt: Number(milestoneIndex) }
+                });
+
+                if (futureMilestones.length > 0) {
+                    await Promise.all(futureMilestones.map(m => {
+                        const mOldDeadline = new Date(m.deadline);
+                        const mNewDeadline = new Date(mOldDeadline.getTime() + extensionMs);
+                        return Milestone.updateOne(
+                            { _id: m._id },
+                            { $set: { deadline: mNewDeadline } }
+                        );
+                    }));
+                    console.log(`[milestone.controller] Cascaded deadline extension (${extensionMs}ms) to ${futureMilestones.length} subsequent milestones`);
+                }
+            }
+
+            // Notify Creator about rejection and resubmission
+            await notificationService.createNotification({
+                recipientWallet: campaign.creator,
+                type: "milestone_rejected",
+                title: `Milestone #${Number(milestoneIndex) + 1} bị từ chối`,
+                message: `Minh chứng của bạn bị từ chối. Bạn đã được cộng thêm 3 ngày. Hạn chót mới: ${newDeadline.toLocaleString("vi-VN")}. Vui lòng nộp lại minh chứng bổ sung trước khi hết hạn.`,
+                campaignOnChainId: Number(campaignOnChainId),
             });
 
-            await milestone.save();
-
-            const remaining = getTimeRemaining(milestone.deadline);
+            const remaining = getTimeRemaining(newDeadline);
             return res.status(200).json({
+                success: true,
                 status: "success",
                 data: {
                     campaignOnChainId: Number(campaignOnChainId),
                     milestoneIndex: Number(milestoneIndex),
-                    milestoneStatus: milestone.status,
-                    retriesLeft: Math.max(0, retriesLeft - 1),
-                    deadline: calculateDeadline(milestone.deadline),
+                    milestoneStatus: updatedMilestone.status,
+                    rejectionCount: updatedMilestone.rejectionCount,
+                    retriesLeft: Math.max(0, (updatedMilestone.maxRetries || 3) - updatedMilestone.rejectionCount),
+                    deadline: calculateDeadline(newDeadline),
                     timeRemaining: remaining,
                     reason,
                     cascadeTriggered: false,
@@ -739,6 +902,9 @@ const rejectMilestone = async (req, res) => {
             : "MAX_RETRIES_EXCEEDED";
         milestone.lastRejectionReason = reason;
         milestone.lastRejectionTimestamp = new Date();
+        milestone.pendingRejections = [];
+
+        if (!milestone.rejectionHistory) milestone.rejectionHistory = [];
         milestone.rejectionHistory.push({
             timestamp: new Date(),
             reason,
@@ -757,17 +923,23 @@ const rejectMilestone = async (req, res) => {
             reason,
         });
 
-        const cascadeResult = published
-            ? {
-                queued: true,
-                message:
-                    "MilestoneFailed event published. Cascade will be handled by consumer.",
-            }
-            : await refundService.handleCampaignCascadeFailure(
-                Number(campaignOnChainId),
-            );
+        // Notify Creator about failure
+        await notificationService.createNotification({
+            recipientWallet: campaign.creator,
+            type: "campaign_failed",
+            title: `Chiến dịch thất bại tại Milestone #${Number(milestoneIndex) + 1}`,
+            message: `Chiến dịch đã thất bại do minh chứng bị từ chối sau khi hết hạn. Hệ thống sẽ bắt đầu quy trình hoàn tiền.`,
+            campaignOnChainId: Number(campaignOnChainId),
+        });
+
+        // Always trigger cascade failure immediately to ensure the campaign status is updated in the DB
+        // and refund records are created for donators to see immediately.
+        const cascadeResult = await refundService.handleCampaignCascadeFailure(
+            Number(campaignOnChainId),
+        );
 
         return res.status(200).json({
+            success: true,
             status: "success",
             data: {
                 campaignOnChainId: Number(campaignOnChainId),
@@ -851,7 +1023,8 @@ const resubmitMilestone = async (req, res) => {
             });
         }
 
-        if (milestone.status !== "resubmittable") {
+        const allowedResubmitStatuses = ["resubmittable", "submitted", "pending_verification", "disbursed"];
+        if (!allowedResubmitStatuses.includes(milestone.status)) {
             return res.status(409).json({
                 status: "error",
                 code: "INVALID_STATUS",
@@ -869,7 +1042,12 @@ const resubmitMilestone = async (req, res) => {
         }
 
         if (evidenceCid) {
-            milestone.evidenceCids.push(evidenceCid);
+            // Chỉ thêm nếu chưa có
+            if (!milestone.evidenceCids.includes(evidenceCid)) {
+                milestone.evidenceCids.push(evidenceCid);
+            }
+
+            if (!milestone.rejectionHistory) milestone.rejectionHistory = [];
             const lastIdx = milestone.rejectionHistory.length - 1;
             if (lastIdx >= 0) {
                 milestone.rejectionHistory[lastIdx].resubmittedAt = new Date();
@@ -883,6 +1061,7 @@ const resubmitMilestone = async (req, res) => {
         await milestone.save();
 
         return res.status(200).json({
+            success: true,
             status: "success",
             data: {
                 campaignOnChainId: Number(campaignOnChainId),

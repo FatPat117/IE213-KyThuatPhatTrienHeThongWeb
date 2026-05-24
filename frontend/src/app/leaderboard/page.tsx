@@ -12,6 +12,7 @@ import {
   useBackendCampaigns,
   useReadAllCampaigns,
 } from '@/lib';
+import { showErrorToast } from '@/lib/ui/toast';
 
 type DonorStat = {
   donor: string;
@@ -113,6 +114,11 @@ export default function LeaderboardPage() {
 
     loadDonorLeaderboard();
   }, [publicClient]);
+
+  useEffect(() => {
+    if (!donorError) return;
+    showErrorToast(donorError);
+  }, [donorError]);
 
   const normalizedCampaigns = useMemo(() => {
     const map = new Map<
@@ -303,8 +309,6 @@ export default function LeaderboardPage() {
               <p className="text-sm text-slate-600">
                 Đang tải dữ liệu nhà tài trợ...
               </p>
-            ) : donorError ? (
-              <p className="text-sm text-red-700">{donorError}</p>
             ) : topDonors.length === 0 ? (
               <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
                 Chưa có dữ liệu quyên góp để xếp hạng. Nếu đã có giao dịch donate trên chuỗi, hãy đảm bảo backend (gateway + donation-service + listener) đang chạy để index sự kiện Donated.
@@ -337,17 +341,6 @@ export default function LeaderboardPage() {
               </div>
             )}
           </section>
-        </div>
-
-        <div className="mt-8 rounded-xl border border-slate-200/80 bg-slate-900 p-6 text-sm text-slate-100 shadow-sm ring-1 ring-slate-900/5">
-          <h2 className="mb-2 text-lg font-bold text-white">Cách tính bảng xếp hạng</h2>
-          <p className="mb-1">
-            • <span className="font-semibold">Chiến dịch</span> dựa trên dữ liệu kết hợp backend campaign-service và contract on-chain.
-          </p>
-          <p>
-            • <span className="font-semibold">Donor</span> lấy từ backend indexer sự kiện{' '}
-            <code className="font-mono">Donated</code> (hoặc on-chain 2.000 block gần nhất nếu API lỗi), quy đổi sang ETH.
-          </p>
         </div>
       </main>
     </div>

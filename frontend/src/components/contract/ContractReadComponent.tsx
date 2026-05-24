@@ -1,16 +1,88 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+    type CSSProperties,
+} from "react";
+import CampaignListRow, {
+    CampaignListRowSkeleton,
+} from "@/components/campaigns/CampaignListRow";
+import FeaturedCampaignCard, {
+    FeaturedCampaignCardSkeleton,
+} from "@/components/campaigns/FeaturedCampaignCard";
 import {
     getDisbursedMilestoneCount,
-    getCampaignMetadataFromCache,
-    isPlaceholderCampaignTitle,
     useBackendCampaigns,
     useContractStats,
-    useReadAllCampaigns,
 } from "@/lib";
+import { normalizeCampaignListItem } from "@/lib/utils/campaign-display";
 import { useWalletStatus } from "@/lib";
+
+function CountUpNumber({
+    value,
+    decimals = 0,
+    className = "",
+    style,
+}: {
+    value: number;
+    decimals?: number;
+    className?: string;
+    style?: CSSProperties;
+}) {
+    const ref = useRef<HTMLParagraphElement>(null);
+    const [display, setDisplay] = useState(0);
+    const lastAnimatedTarget = useRef<number | null>(null);
+
+    useEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+
+        const runCountUp = () => {
+            if (lastAnimatedTarget.current === value) return;
+            lastAnimatedTarget.current = value;
+            const start = performance.now();
+            const duration = 900;
+            const from = 0;
+            const to = value;
+
+            const tick = (now: number) => {
+                const progress = Math.min((now - start) / duration, 1);
+                const eased = 1 - Math.pow(1 - progress, 3);
+                setDisplay(from + (to - from) * eased);
+                if (progress < 1) requestAnimationFrame(tick);
+            };
+
+            requestAnimationFrame(tick);
+        };
+
+        const observer = new IntersectionObserver(
+            ([entry]) => {
+                if (entry.isIntersecting) runCountUp();
+            },
+            { threshold: 0.35 },
+        );
+
+        observer.observe(el);
+        if (el.getBoundingClientRect().top < window.innerHeight) {
+            runCountUp();
+        }
+        return () => observer.disconnect();
+    }, [value]);
+
+    const formatted =
+        decimals > 0 ? display.toFixed(decimals) : String(Math.round(display));
+
+    return (
+        <p ref={ref} className={className} style={style}>
+            {formatted}
+        </p>
+    );
+}
 
 /**
  * Hiển thị thống kê contract
@@ -90,12 +162,18 @@ export function ContractStatsDisplay() {
 
     if (isLoading) {
         return (
-            <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-6">
-                <div className="flex items-center gap-3">
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
-                    <p className="text-sm text-indigo-700">
-                        Đang tải thống kê contract...
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="rounded-xl border-t-2 border-[var(--accent-primary)] bg-[rgba(99,102,241,0.06)] p-6">
+                    <p className="mb-2 text-sm font-medium text-[var(--accent-primary)]">
+                        Tổng chiến dịch
                     </p>
+                    <div className="h-10 w-20 animate-pulse rounded bg-[rgba(99,102,241,0.2)]" />
+                </div>
+                <div className="rounded-xl border-t-2 border-[var(--accent-cyan)] bg-[rgba(6,182,212,0.06)] p-6">
+                    <p className="mb-2 text-sm font-medium text-[var(--accent-cyan)]">
+                        Tổng ETH đã gây quỹ
+                    </p>
+                    <div className="h-10 w-28 animate-pulse rounded bg-[rgba(6,182,212,0.2)]" />
                 </div>
             </div>
         );
@@ -103,18 +181,18 @@ export function ContractStatsDisplay() {
 
     if (isError) {
         return (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-                <p className="text-sm font-semibold text-red-800 mb-2">
-                    ⚠️ Không thể tải dữ liệu
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-6">
+                <p className="mb-2 text-sm font-semibold text-red-300">
+                    Không thể tải dữ liệu
                 </p>
-                <ul className="text-xs text-red-700 space-y-1 mb-4">
+                <ul className="mb-4 space-y-1 text-xs text-red-200/90">
                     {errors.map((error, idx) => (
                         <li key={idx}>• {error || "Có lỗi xảy ra"}</li>
                     ))}
                 </ul>
                 <button
                     onClick={() => refetch()}
-                    className="text-xs px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700"
+                    className="rounded-lg border border-red-400/50 bg-red-500/20 px-3 py-1 text-xs text-red-200 transition hover:bg-red-500/30"
                 >
                     Thử lại
                 </button>
@@ -123,66 +201,40 @@ export function ContractStatsDisplay() {
     }
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {!isConnected && (
-                <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                <div className="rounded-lg border border-[var(--border-glow)] bg-[rgba(99,102,241,0.06)] p-3 text-xs text-[var(--text-secondary)] md:col-span-2">
                     Bạn đang ở chế độ xem (read-only). Kết nối ví để mở khóa các
                     thao tác giao dịch.
                 </div>
             )}
-            {/* Total Campaigns */}
-            <div className="rounded-xl border border-indigo-200/80 bg-indigo-50/80 p-6">
-                <p className="text-sm font-medium text-indigo-600 mb-2">
-                    📊 Tổng chiến dịch
+            <div className="rounded-xl border-t-2 border-[var(--accent-primary)] bg-[rgba(99,102,241,0.06)] p-6">
+                <p className="mb-2 text-sm font-medium text-[var(--accent-primary)]">
+                    Tổng chiến dịch
                 </p>
-                <p className="text-3xl font-bold text-indigo-900">
-                    {campaignCount}
-                </p>
-                <p className="text-xs text-indigo-600 mt-2">
+                <CountUpNumber
+                    value={campaignCount}
+                    className="font-display text-4xl font-bold text-[var(--accent-primary)]"
+                    style={{ textShadow: "0 0 24px rgba(99,102,241,0.35)" }}
+                />
+                <p className="mt-2 text-xs text-[var(--text-secondary)]">
                     Chiến dịch đang được ghi nhận on-chain
                 </p>
             </div>
 
-            {/* Total ETH Raised */}
-            <div className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-lg p-6">
-                <p className="text-sm text-green-600 mb-2 font-medium">
-                    💰 Tổng ETH đã gây quỹ
+            <div className="rounded-xl border-t-2 border-[var(--accent-cyan)] bg-[rgba(6,182,212,0.06)] p-6">
+                <p className="mb-2 text-sm font-medium text-[var(--accent-cyan)]">
+                    Tổng ETH đã gây quỹ
                 </p>
-                <p className="text-3xl font-bold text-green-900">
-                    {totalRaised.toFixed(4)}
-                </p>
-                <p className="text-xs text-green-600 mt-2">
+                <CountUpNumber
+                    value={totalRaised}
+                    decimals={4}
+                    className="font-mono-data text-4xl font-bold text-[var(--accent-cyan)]"
+                    style={{ textShadow: "0 0 24px rgba(6,182,212,0.35)" }}
+                />
+                <p className="mt-2 text-xs text-[var(--text-secondary)]">
                     Tổng hợp tất cả chiến dịch
                 </p>
-            </div>
-
-            {/* Disbursed Milestones */}
-            <div className="md:col-span-2 rounded-xl border border-cyan-200/80 bg-cyan-50/80 p-6">
-                <div className="mb-2 flex items-start justify-between gap-3">
-                    <p className="text-sm font-medium text-cyan-700">
-                        🎯 Số mốc đã giải ngân
-                    </p>
-                    <button
-                        type="button"
-                        onClick={refreshMilestones}
-                        disabled={isRefreshingMilestones}
-                        className="rounded-md border border-cyan-300 bg-white px-3 py-1 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-70"
-                    >
-                        {isRefreshingMilestones ? "Đang làm mới..." : "Làm mới"}
-                    </button>
-                </div>
-                <p className="text-3xl font-bold text-cyan-900">
-                    {disbursedMilestones}
-                </p>
-                <p className="mt-2 text-xs text-cyan-700">
-                    Dữ liệu thật từ API milestones
-                    {lastUpdatedAt ? ` • Cập nhật lúc ${lastUpdatedAt}` : ""}
-                </p>
-                {milestoneError && (
-                    <p className="mt-1 text-xs text-red-600">
-                        {milestoneError}
-                    </p>
-                )}
             </div>
         </div>
     );
@@ -190,15 +242,16 @@ export function ContractStatsDisplay() {
 
 /**
  * Danh sách chiến dịch (read-only)
+ * @param limit - Số lượng chiến dịch tối đa hiển thị (0 = không giới hạn)
+ * @param onlyActive - Chỉ hiển thị chiến dịch đang hoạt động (chưa completed)
  */
-export function CampaignListDisplay() {
-    const {
-        campaigns: onChainCampaigns,
-        isLoading: isOnChainLoading,
-        isError: isOnChainError,
-        error: onChainError,
-        refetch: refetchOnChain,
-    } = useReadAllCampaigns();
+export function CampaignListDisplay({
+    limit = 0,
+    onlyActive = false,
+}: {
+    limit?: number;
+    onlyActive?: boolean;
+} = {}) {
     const {
         data: backendCampaigns,
         isLoading: isBackendLoading,
@@ -207,78 +260,45 @@ export function CampaignListDisplay() {
     } = useBackendCampaigns();
 
     const campaigns = useMemo(() => {
-        const campaignMap = new Map<
-            number,
-            {
-                id: number;
-                title: string;
-                creator: string;
-                goal: bigint;
-                raised: bigint;
-                completed: boolean;
-            }
-        >();
+        const result = backendCampaigns.map(normalizeCampaignListItem);
 
-        backendCampaigns.forEach((campaign) => {
-            campaignMap.set(campaign.onChainId, {
-                id: campaign.onChainId,
-                title: campaign.title || `Chiến dịch #${campaign.onChainId}`,
-                creator: campaign.creator,
-                goal: BigInt(campaign.goal || "0"),
-                raised: BigInt(campaign.raised || "0"),
-                completed: Boolean(campaign.status === "completed"),
-            });
-        });
+        let filtered = [...result].sort((a, b) => b.id - a.id);
 
-        onChainCampaigns.forEach((campaign) => {
-            const existing = campaignMap.get(campaign.id);
-            if (existing) {
-                campaignMap.set(campaign.id, {
-                    ...existing,
-                    creator: campaign.creator || existing.creator,
-                    goal: campaign.goal,
-                    raised: campaign.raised,
-                    completed: campaign.completed,
-                });
-                return;
-            }
+        if (onlyActive) {
+            filtered = filtered.filter(
+                (c) => (c.status || "").toLowerCase() === "active",
+            );
+        }
 
-            campaignMap.set(campaign.id, {
-                id: campaign.id,
-                title: `Chiến dịch #${campaign.id}`,
-                creator: campaign.creator,
-                goal: campaign.goal,
-                raised: campaign.raised,
-                completed: campaign.completed,
-            });
-        });
+        if (limit > 0) {
+            filtered = filtered.slice(0, limit);
+        }
 
-        return Array.from(campaignMap.values()).sort((a, b) => b.id - a.id);
-    }, [backendCampaigns, onChainCampaigns]);
+        return filtered;
+    }, [backendCampaigns, limit, onlyActive]);
 
-    const isLoading = isOnChainLoading || isBackendLoading;
-    const isError = isOnChainError || Boolean(backendError);
-    const error = onChainError || backendError || null;
+    const isLoading = isBackendLoading;
+    const isError = Boolean(backendError);
+    const error = backendError || null;
     const refetch = async () => {
-        await Promise.all([refetchOnChain(), refetchBackend()]);
+        await refetchBackend();
     };
 
     if (isLoading) {
+        const skeletonCount = limit > 0 ? limit : 6;
+        if (limit > 0) {
+            return (
+                <div className="home-featured-campaign-grid">
+                    {Array.from({ length: skeletonCount }).map((_, idx) => (
+                        <FeaturedCampaignCardSkeleton key={idx} />
+                    ))}
+                </div>
+            );
+        }
         return (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {[1, 2, 3, 4, 5, 6].map((idx) => (
-                    <div
-                        key={idx}
-                        className="bg-white border border-slate-200 rounded-xl p-5 animate-pulse shadow-sm"
-                    >
-                        <div className="h-5 bg-slate-200 rounded w-3/4 mb-3" />
-                        <div className="h-3 bg-slate-200 rounded w-1/2 mb-4" />
-                        <div className="grid grid-cols-2 gap-2">
-                            <div className="h-10 bg-slate-200 rounded" />
-                            <div className="h-10 bg-slate-200 rounded" />
-                        </div>
-                        <div className="h-2 bg-slate-200 rounded-full mt-4" />
-                    </div>
+            <div className="flex flex-col gap-4">
+                {Array.from({ length: skeletonCount }).map((_, idx) => (
+                    <CampaignListRowSkeleton key={idx} />
                 ))}
             </div>
         );
@@ -286,14 +306,14 @@ export function CampaignListDisplay() {
 
     if (isError) {
         return (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-                <p className="text-sm font-semibold text-red-800 mb-3">
-                    ⚠️ Không thể tải chiến dịch
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-6">
+                <p className="mb-3 text-sm font-semibold text-red-300">
+                    Không thể tải chiến dịch
                 </p>
-                <p className="text-xs text-red-700 mb-4">{error}</p>
+                <p className="mb-4 text-xs text-red-200/90">{error}</p>
                 <button
                     onClick={() => refetch()}
-                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                    className="rounded-lg border border-red-400/50 bg-red-500/20 px-4 py-2 text-sm text-red-100 transition hover:bg-red-500/30"
                 >
                     Thử lại
                 </button>
@@ -303,128 +323,44 @@ export function CampaignListDisplay() {
 
     if (campaigns.length === 0) {
         return (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 text-center">
-                <p className="text-sm text-amber-700">📭 Chưa có chiến dịch</p>
+            <div className="rounded-lg border border-[var(--accent-gold)]/30 bg-[rgba(245,158,11,0.08)] p-6 text-center">
+                <p className="text-sm text-[var(--accent-gold)]">Chưa có chiến dịch</p>
             </div>
         );
     }
 
     return (
         <div className="space-y-5">
-            <div className="flex justify-between items-center">
-                <h3 className="text-lg font-semibold text-slate-900">
-                    Chiến dịch ({campaigns.length})
-                </h3>
-                <button
-                    onClick={() => refetch()}
-                    className="text-sm px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-medium transition-colors"
-                >
-                    Tải lại
-                </button>
-            </div>
+            {limit === 0 && (
+                <div className="flex items-center justify-between">
+                    <h3 className="font-display text-lg font-semibold text-[var(--text-primary)]">
+                        Chiến dịch ({campaigns.length})
+                    </h3>
+                    <button
+                        onClick={() => refetch()}
+                        className="rounded-lg border border-[var(--border-glow)] bg-[rgba(99,102,241,0.1)] px-4 py-2 text-sm font-medium text-[var(--text-secondary)] transition hover:text-[var(--accent-cyan)]"
+                    >
+                        Tải lại
+                    </button>
+                </div>
+            )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {campaigns.map((campaign) => {
-                    const cached = getCampaignMetadataFromCache(campaign.id);
-                    const effectiveTitle = !isPlaceholderCampaignTitle(
-                        campaign.title,
-                        campaign.id,
-                    )
-                        ? campaign.title
-                        : cached?.title || `Chiến dịch #${campaign.id}`;
-
-                    return (
-                        <Link
+            {limit > 0 ? (
+                <div className="home-featured-campaign-grid">
+                    {campaigns.map((campaign) => (
+                        <FeaturedCampaignCard
                             key={campaign.id}
-                            href={`/campaigns/${campaign.id}`}
-                            className="group block rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200 hover:border-indigo-200 hover:shadow-lg"
-                        >
-                            <div className="flex justify-between items-start mb-3">
-                                <div className="flex-1 min-w-0">
-                                    <h4 className="font-semibold text-slate-900 truncate transition-colors group-hover:text-indigo-600">
-                                        {effectiveTitle}
-                                    </h4>
-                                    <p className="text-xs text-slate-500 mt-1">
-                                        ID: {campaign.id} • Tạo bởi:{" "}
-                                        {campaign.creator.slice(0, 6)}...
-                                    </p>
-                                </div>
-                                <span
-                                    className={`shrink-0 text-xs px-2.5 py-1 rounded-full font-medium ${
-                                        campaign.completed
-                                            ? "bg-green-100 text-green-700"
-                                            : "bg-indigo-100 text-indigo-700"
-                                    }`}
-                                >
-                                    {campaign.completed
-                                        ? "✓ Hoàn thành"
-                                        : "Đang hoạt động"}
-                                </span>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                                <div>
-                                    <p className="text-slate-500 text-xs">
-                                        Mục tiêu
-                                    </p>
-                                    <p className="font-semibold text-slate-900">
-                                        {(Number(campaign.goal) / 1e18).toFixed(
-                                            4,
-                                        )}{" "}
-                                        ETH
-                                    </p>
-                                </div>
-                                <div>
-                                    <p className="text-slate-500 text-xs">
-                                        Đã gây quỹ
-                                    </p>
-                                    <p className="font-semibold text-slate-900 text-indigo-600">
-                                        {(
-                                            Number(campaign.raised) / 1e18
-                                        ).toFixed(4)}{" "}
-                                        ETH
-                                    </p>
-                                </div>
-                            </div>
-
-                            {/* Progress Bar */}
-                            <div className="mt-4">
-                                <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
-                                    <div
-                                        className="h-2 rounded-full bg-indigo-600 transition-all duration-500"
-                                        style={{
-                                            width: `${
-                                                Number(campaign.goal) > 0
-                                                    ? Math.min(
-                                                          (Number(
-                                                              campaign.raised,
-                                                          ) /
-                                                              Number(
-                                                                  campaign.goal,
-                                                              )) *
-                                                              100,
-                                                          100,
-                                                      )
-                                                    : 0
-                                            }%`,
-                                        }}
-                                    />
-                                </div>
-                                <p className="text-xs text-slate-600 mt-1.5">
-                                    {Number(campaign.goal) > 0
-                                        ? (
-                                              (Number(campaign.raised) /
-                                                  Number(campaign.goal)) *
-                                              100
-                                          ).toFixed(1)
-                                        : 0}
-                                    % đạt được
-                                </p>
-                            </div>
-                        </Link>
-                    );
-                })}
-            </div>
+                            campaign={campaign}
+                        />
+                    ))}
+                </div>
+            ) : (
+                <div className="flex flex-col gap-4">
+                    {campaigns.map((campaign) => (
+                        <CampaignListRow key={campaign.id} campaign={campaign} />
+                    ))}
+                </div>
+            )}
         </div>
     );
 }

@@ -209,6 +209,10 @@ async function reconcileCampaignsFromChain(contract) {
 async function startListener() {
     await connectRabbitMQ();
     startMarkFailedDailyJob();
+    
+    // Start consumer for manual sync requests from backend
+    const { startSyncBlockchainFailureConsumer } = require("./consumers/syncBlockchainFailure.consumer");
+    await startSyncBlockchainFailureConsumer();
 
     const result = createContractInstance();
 
@@ -287,6 +291,21 @@ async function startListener() {
             logIndex: meta.logIndex,
         });
     });
+
+    onIfSupported(
+        "CampaignRejected",
+        async (campaignId, rejectedBy, reason, event) => {
+            const meta = normalizeMeta(event);
+            await publish("campaign.rejected", {
+                campaignId: campaignId.toString(),
+                rejectedBy: (rejectedBy || "").toLowerCase(),
+                reason: reason,
+                txHash: meta.txHash,
+                blockNumber: meta.blockNumber,
+                logIndex: meta.logIndex,
+            });
+        },
+    );
 
     onIfSupported(
         "Donated",
