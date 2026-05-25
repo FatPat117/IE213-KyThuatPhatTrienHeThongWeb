@@ -8,6 +8,7 @@ const {
 
 const FUNDING_FAILURE_MILESTONE_SENTINEL = 2n ** 256n - 1n;
 const notificationService = require("./notification.service");
+const { clearPrefix, delCache } = require("../utils/cache");
 
 function toBigInt(value) {
     try {
@@ -602,8 +603,8 @@ async function handleCampaignCascadeFailure(campaignOnChainId, txHash = "") {
             campaign.totalRaisedWei || campaign.raised,
         );
         
-        // Determine failure type: Funding failure if status was 'active' and raised < goal
-        const isFundingFailure = campaign.status === "active" && totalRaisedWei < toBigInt(campaign.goalWei);
+        // Determine failure type: Funding failure if status was 'active' or 'pending_approval' and raised < goal
+        const isFundingFailure = ["active", "pending_approval"].includes(campaign.status) && totalRaisedWei < toBigInt(campaign.goalWei);
 
         const disbursedFromMilestones = sumWei(
             milestones
@@ -647,6 +648,10 @@ async function handleCampaignCascadeFailure(campaignOnChainId, txHash = "") {
         }
 
         console.log(`[refundService.handleCampaignCascadeFailure] Campaign status updated to ${statusToSet}.`);
+
+        // Invalidate cache
+        await delCache(`campaign:detail:${campaignOnChainId}`);
+        await clearPrefix("campaign:list:*");
 
         // Notify creator about failure
         if (campaign.creator) {

@@ -231,6 +231,10 @@ async function hydrateCampaignFromChain(onChainId) {
             { ordered: false },
         );
 
+        // Fetch the milestone IDs and update the campaign
+        const milestones = await Milestone.find({ campaignOnChainId: onChainId }).select('_id').sort({ milestoneId: 1 });
+        await Campaign.updateOne({ onChainId }, { $set: { milestoneIds: milestones.map(m => m._id) } });
+
         return true;
     } catch (error) {
         console.warn(
@@ -727,10 +731,11 @@ async function getPublicCampaignByOnChainId(req, res, next) {
         }
         console.log(`[Cache Miss] getPublicCampaignByOnChainId ${cacheKey}`);
 
-        const campaign = await Campaign.findOne({ onChainId }).lean();
-        if (!campaign) {
+        let campaignDoc = await campaignService.getCampaignById(onChainId);
+        if (!campaignDoc) {
             return errorRes(res, "Campaign not found", 404);
         }
+        const campaign = campaignDoc.toObject ? campaignDoc.toObject() : campaignDoc;
 
         const goal = toBigInt(campaign.goalWei || campaign.goal);
         const totalRaised = toBigInt(
