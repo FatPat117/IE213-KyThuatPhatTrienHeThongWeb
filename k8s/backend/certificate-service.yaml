@@ -12,10 +12,12 @@ spec:
       labels:
         app: certificate-service
     spec:
+      imagePullSecrets:
+      - name: ghcr-secret
       containers:
       - name: certificate-service
-        image: certificate-service:latest
-        imagePullPolicy: IfNotPresent
+        image: ghcr.io/fatpat117/certificate-service:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 4004
         envFrom:

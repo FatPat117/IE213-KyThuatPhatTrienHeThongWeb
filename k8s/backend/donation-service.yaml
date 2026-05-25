@@ -12,10 +12,12 @@ spec:
       labels:
         app: donation-service
     spec:
+      imagePullSecrets:
+      - name: ghcr-secret
       containers:
       - name: donation-service
-        image: donation-service:latest
-        imagePullPolicy: IfNotPresent
+        image: ghcr.io/fatpat117/donation-service:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 4003
         envFrom:

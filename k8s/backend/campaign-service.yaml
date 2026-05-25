@@ -12,10 +12,12 @@ spec:
       labels:
         app: campaign-service
     spec:
+      imagePullSecrets:
+      - name: ghcr-secret
       containers:
       - name: campaign-service
-        image: campaign-service:latest
-        imagePullPolicy: IfNotPresent
+        image: ghcr.io/fatpat117/campaign-service:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 4002
         envFrom:
