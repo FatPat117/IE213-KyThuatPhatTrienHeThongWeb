@@ -1,4 +1,4 @@
-const Notification = require("../models/Notification.model");
+const Notification = require("../models/notification.model");
 
 const ALLOWED_NOTIFICATION_TYPES = new Set([
     "system",

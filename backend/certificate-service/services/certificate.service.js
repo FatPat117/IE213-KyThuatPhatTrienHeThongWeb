@@ -1,4 +1,4 @@
-const Certificate = require("../models/Certificate.model");
+const Certificate = require("../models/certificate.model");
 
 async function createCertificate(data) {
     const { tokenId, ...rest } = data;

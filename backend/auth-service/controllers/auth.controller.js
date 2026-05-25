@@ -1,7 +1,7 @@
 const { ethers } = require("ethers");
 const jwt = require("jsonwebtoken");
 const { v4: uuidv4 } = require("uuid");
-const User = require("../models/User.model");
+const User = require("../models/user.model");
 const { successRes, errorRes } = require("../utils/response");
 
 const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-change-this";

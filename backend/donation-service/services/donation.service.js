@@ -1,4 +1,4 @@
-const Donation = require("../models/Donation.model");
+const Donation = require("../models/donation.model");
 const DONATED_TOPIC0 = "0x1b606d34afacd55873aba0fd274841a10c63e18455f2dffebad2fc60a36b2c83";
 
 function normalizeCampaignTopic(campaignOnChainId) {
