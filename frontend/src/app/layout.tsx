@@ -74,10 +74,10 @@ export default function RootLayout({
               <NetworkAccessGuard />
               <Header />
               <Toaster
-                position="bottom-right"
+                position="top-right"
                 gutter={8}
                 containerStyle={{
-                  bottom: "1rem",
+                  top: "1rem",
                   right: "0.75rem",
                   zIndex: 9990,
                   pointerEvents: "none",
