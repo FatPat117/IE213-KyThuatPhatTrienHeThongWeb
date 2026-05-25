@@ -48,7 +48,7 @@ async function getAllCampaigns(filter = {}, pagination = {}) {
 
 async function getCampaignById(onChainId) {
     let campaign = await Campaign.findOne({ onChainId: Number(onChainId) });
-    if (campaign && (campaign.status === "active" || campaign.status === "in_progress")) {
+    if (campaign && ["pending_approval", "active", "in_progress"].includes(campaign.status)) {
         // Check if it's potentially expired
         const now = new Date();
         const isExpired = campaign.deadline < now;
@@ -75,7 +75,7 @@ async function getCampaignById(onChainId) {
  */
 async function checkAndTriggerAutoFailure(onChainId) {
     const campaign = await Campaign.findOne({ onChainId });
-    if (!campaign || (campaign.status !== "active" && campaign.status !== "in_progress")) {
+    if (!campaign || !["pending_approval", "active", "in_progress"].includes(campaign.status)) {
         return;
     }
 
@@ -101,7 +101,7 @@ async function checkAndTriggerAutoFailure(onChainId) {
 
     // 2. Check for funding deadline failure
     let isFundingFailure = false;
-    if (failedMilestoneId === null && campaign.status === "active") {
+    if (failedMilestoneId === null && ["pending_approval", "active"].includes(campaign.status)) {
         if (campaign.deadline && campaign.deadline < now) {
             const raised = toBigInt(campaign.totalRaisedWei || "0", "totalRaisedWei");
             const goal = toBigInt(campaign.goalWei || "0", "goalWei");
