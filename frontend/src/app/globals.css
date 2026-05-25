@@ -62,10 +62,12 @@ body {
 html,
 body {
     background-color: var(--bg-deep);
+    /* Prevent layout shift when scrollbar appears/disappears */
+    scrollbar-gutter: stable;
 }
 
-/* Header Styles */
-header {
+/* Header Styles - scoped to nav header only, NOT page-level <header> elements */
+.nav-luxury {
     animation: slideDown 0.3s ease-out;
 }
 
