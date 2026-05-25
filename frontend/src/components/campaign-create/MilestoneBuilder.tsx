@@ -592,7 +592,7 @@ export default function MilestoneBuilder({
                                                     *
                                                 </span>
                                             </Label>
-                                            <Input
+                                            <input
                                                 type="datetime-local"
                                                 value={milestone.deadline}
                                                 onChange={(event) =>
@@ -616,9 +616,8 @@ export default function MilestoneBuilder({
                                                 }
                                                 min={deadlineMinDateTime}
                                                 className={cn(
-                                                    milestoneErrors.deadline
-                                                        ? "border-rose-400 focus-visible:ring-rose-200"
-                                                        : "border-slate-200",
+                                                    "create-campaign-input",
+                                                    milestoneErrors.deadline && "create-campaign-input-error"
                                                 )}
                                             />
                                             {milestoneErrors.deadline && (
