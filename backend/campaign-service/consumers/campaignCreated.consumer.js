@@ -296,6 +296,10 @@ async function startCampaignCreatedConsumer() {
                     })),
                     { ordered: false },
                 );
+
+                // Fetch the milestone IDs and update the campaign
+                const milestones = await Milestone.find({ campaignOnChainId: onChainId }).select('_id').sort({ milestoneId: 1 });
+                await Campaign.updateOne({ onChainId }, { $set: { milestoneIds: milestones.map(m => m._id) } });
             }
 
             const adminWallets = await resolveAdminWallets();
