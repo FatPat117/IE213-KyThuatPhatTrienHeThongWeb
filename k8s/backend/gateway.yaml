@@ -12,10 +12,12 @@ spec:
       labels:
         app: gateway
     spec:
+      imagePullSecrets:
+      - name: ghcr-secret
       containers:
       - name: gateway
-        image: gateway:latest
-        imagePullPolicy: IfNotPresent
+        image: ghcr.io/fatpat117/gateway:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 4000
         envFrom:

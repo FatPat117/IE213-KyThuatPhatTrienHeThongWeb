@@ -12,10 +12,12 @@ spec:
       labels:
         app: auth-service
     spec:
+      imagePullSecrets:
+      - name: ghcr-secret
       containers:
       - name: auth-service
-        image: auth-service:latest
-        imagePullPolicy: IfNotPresent
+        image: ghcr.io/fatpat117/auth-service:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 4006
         envFrom:

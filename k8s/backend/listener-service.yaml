@@ -12,10 +12,12 @@ spec:
       labels:
         app: listener-service
     spec:
+      imagePullSecrets:
+      - name: ghcr-secret
       containers:
       - name: listener-service
-        image: listener-service:latest
-        imagePullPolicy: IfNotPresent
+        image: ghcr.io/fatpat117/listener-service:latest
+        imagePullPolicy: Always
         envFrom:
         - secretRef:
             name: backend-env

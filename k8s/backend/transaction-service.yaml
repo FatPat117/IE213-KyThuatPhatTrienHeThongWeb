@@ -12,10 +12,12 @@ spec:
       labels:
         app: transaction-service
     spec:
+      imagePullSecrets:
+      - name: ghcr-secret
       containers:
       - name: transaction-service
-        image: transaction-service:latest
-        imagePullPolicy: IfNotPresent
+        image: ghcr.io/fatpat117/transaction-service:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 4005
         envFrom:

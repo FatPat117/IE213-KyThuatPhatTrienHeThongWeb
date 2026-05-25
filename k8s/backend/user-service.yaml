@@ -12,10 +12,12 @@ spec:
       labels:
         app: user-service
     spec:
+      imagePullSecrets:
+      - name: ghcr-secret
       containers:
       - name: user-service
-        image: user-service:latest
-        imagePullPolicy: IfNotPresent
+        image: ghcr.io/fatpat117/user-service:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 4001
         envFrom:
