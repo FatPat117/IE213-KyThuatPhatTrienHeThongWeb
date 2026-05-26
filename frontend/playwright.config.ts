@@ -1,5 +1,11 @@
 // frontend/playwright.config.ts
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig, devices } from "@playwright/test";
+
+declare const process: { env: Record<string, string | undefined> };
+
+const isCi = !!process.env.CI;
+const baseURL = process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3000";
+const shouldStartWebServer = process.env.PLAYWRIGHT_SKIP_WEB_SERVER !== "1";
 
 /**
  * Playwright E2E config cho dự án Crowdfunding.
@@ -12,37 +18,35 @@ import { defineConfig, devices } from '@playwright/test';
  *   wagmi's mock connector hoặc intercept API calls.
  */
 export default defineConfig({
-  testDir: './e2e',
-  fullyParallel: false,     // Chạy tuần tự để tránh xung đột trạng thái DB
-  forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
-  workers: 1,               // 1 worker để test blockchain state không bị race condition
-  reporter: [
-    ['html', { open: 'never' }],
-    ['list'],
-  ],
-  use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000',
-    trace: 'on-first-retry',
-    screenshot: 'only-on-failure',
-    // Giả lập viewport màn hình desktop tiêu chuẩn
-    viewport: { width: 1280, height: 720 },
-  },
-
-  projects: [
-    {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+    testDir: "./e2e",
+    fullyParallel: false, // Chạy tuần tự để tránh xung đột trạng thái DB
+    forbidOnly: isCi,
+    retries: isCi ? 2 : 0,
+    workers: 1, // 1 worker để test blockchain state không bị race condition
+    reporter: [["html", { open: "never" }], ["list"]],
+    use: {
+        baseURL,
+        trace: "on-first-retry",
+        screenshot: "only-on-failure",
+        // Giả lập viewport màn hình desktop tiêu chuẩn
+        viewport: { width: 1280, height: 720 },
     },
-  ],
 
-  // Tự động khởi động Next.js dev server khi chạy locally
-  webServer: process.env.CI
-    ? undefined
-    : {
-        command: 'npm run dev',
-        url: 'http://localhost:3000',
-        reuseExistingServer: true,
-        timeout: 120_000,
-      },
+    projects: [
+        {
+            name: "chromium",
+            use: { ...devices["Desktop Chrome"] },
+        },
+    ],
+
+    // Tự động khởi động Next.js dev server cho cả local và CI.
+    // Đặt PLAYWRIGHT_SKIP_WEB_SERVER=1 nếu muốn chạy against một server có sẵn.
+    webServer: shouldStartWebServer
+        ? {
+              command: "npm run dev",
+              url: baseURL,
+              reuseExistingServer: !isCi,
+              timeout: 120_000,
+          }
+        : undefined,
 });

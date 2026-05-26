@@ -1,86 +1,235 @@
 // frontend/e2e/helpers/wallet.ts
-// Helpers để giả lập kết nối ví trong E2E tests.
-//
-// CHIẾN LƯỢC VÍ SAFE:
-// - Trong E2E test, chúng ta KHÔNG dùng MetaMask thật (không thể tự động hoá).
-// - Thay vào đó, chúng ta mock các wagmi hooks ở cấp độ API response.
-// - Reviewer Safe được giả lập là một EOA thông thường trong môi trường test.
-// - Anvil cung cấp các pre-funded accounts với private keys đã biết trước.
-//
-// Các địa chỉ test (Anvil default accounts):
+// Helpers để giả lập ví injected trong E2E. Không dùng MetaMask thật.
+
+import { Page } from "@playwright/test";
+
 export const TEST_ACCOUNTS = {
-  // Account 0 - Admin/Creator
-  creator: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
-  // Account 1 - Donor A  
-  donorA: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
-  // Account 2 - Donor B
-  donorB: '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC',
-  // Account 3 - Reviewer (giả lập Safe bằng EOA trong test)
-  reviewer: '0x90F79bf6EB2c4f870365E785982E1f101E93b906',
+    creator: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    donorA: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+    donorB: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+    reviewer: "0x90F79bf6EB2c4f870365E785982E1f101E93b906",
 } as const;
 
-import { Page } from '@playwright/test';
+export const SEPOLIA_CHAIN_ID = 11155111;
+export const SEPOLIA_CHAIN_ID_HEX = "0xaa36a7";
+export const MOCK_TX_HASH =
+    "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+type ConnectMockWalletOptions = {
+    chainId?: number;
+    chainIdHex?: string;
+    txHash?: string;
+    authenticated?: boolean;
+};
 
 /**
- * Inject mock wallet state vào localStorage để bypass MetaMask popup.
- * wagmi v2 lưu trạng thái kết nối trong localStorage.
+ * Inject mock wallet state trước khi page load để wagmi xem như ví đã kết nối.
  */
-export async function connectMockWallet(page: Page, address: string) {
-  await page.addInitScript((walletAddress: string) => {
-    // Mock window.ethereum for injected connector
-    (window as any).ethereum = {
-      isMetaMask: true,
-      request: async (request: { method: string, params?: any[] }) => {
-        if (request.method === 'eth_requestAccounts' || request.method === 'eth_accounts') {
-          return [walletAddress];
-        }
-        if (request.method === 'eth_chainId') {
-          return '0xaa36a7'; // Sepolia (11155111)
-        }
-        return null;
-      },
-      on: () => {},
-      removeListener: () => {},
-      autoRefreshOnNetworkChange: false,
-    };
+export async function connectMockWallet(
+    page: Page,
+    address: string,
+    options: ConnectMockWalletOptions = {},
+) {
+    const chainId = options.chainId ?? SEPOLIA_CHAIN_ID;
+    const chainIdHex = options.chainIdHex ?? SEPOLIA_CHAIN_ID_HEX;
+    const txHash = options.txHash ?? MOCK_TX_HASH;
+    const authenticated = options.authenticated ?? true;
 
-    // Mock wagmi store (v2/v3 style)
-    // We use a simple object instead of Map for JSON compatibility
-    localStorage.setItem('wagmi.store', JSON.stringify({
-      state: {
-        connections: {
-          'injected': {
-            accounts: [walletAddress],
-            chainId: 11155111,
-            connector: { id: 'injected', name: 'Mock Wallet', type: 'injected' },
-          }
+    await page.addInitScript(
+        ({
+            walletAddress,
+            selectedChainId,
+            selectedChainIdHex,
+            mockTxHash,
+            shouldSeedAuth,
+        }) => {
+            const listeners = new Map<
+                string,
+                Array<(...args: unknown[]) => void>
+            >();
+
+            const emit = (eventName: string, payload: unknown) => {
+                for (const listener of listeners.get(eventName) || []) {
+                    listener(payload);
+                }
+            };
+
+            const ethereum = {
+                isMetaMask: true,
+                selectedAddress: walletAddress,
+                chainId: selectedChainIdHex,
+                request: async (request: {
+                    method: string;
+                    params?: unknown[];
+                }) => {
+                    switch (request.method) {
+                        case "eth_requestAccounts":
+                            emit("accountsChanged", [walletAddress]);
+                            return [walletAddress];
+                        case "eth_accounts":
+                            return [walletAddress];
+                        case "wallet_requestPermissions":
+                            emit("accountsChanged", [walletAddress]);
+                            return [
+                                {
+                                    parentCapability: "eth_accounts",
+                                    caveats: [
+                                        {
+                                            type: "restrictReturnedAccounts",
+                                            value: [walletAddress],
+                                        },
+                                    ],
+                                },
+                            ];
+                        case "wallet_getPermissions":
+                            return [
+                                {
+                                    parentCapability: "eth_accounts",
+                                    caveats: [
+                                        {
+                                            type: "restrictReturnedAccounts",
+                                            value: [walletAddress],
+                                        },
+                                    ],
+                                },
+                            ];
+                        case "eth_chainId":
+                            return selectedChainIdHex;
+                        case "net_version":
+                            return String(selectedChainId);
+                        case "wallet_switchEthereumChain":
+                        case "wallet_addEthereumChain":
+                            emit("chainChanged", selectedChainIdHex);
+                            return null;
+                        case "personal_sign":
+                        case "eth_signTypedData_v4":
+                            return `0x${"1".repeat(130)}`;
+                        case "eth_sendTransaction":
+                            return mockTxHash;
+                        case "eth_estimateGas":
+                            return "0x7a120";
+                        case "eth_getCode":
+                            return "0x6080604052";
+                        case "eth_getTransactionCount":
+                            return "0x1";
+                        case "eth_gasPrice":
+                        case "eth_maxPriorityFeePerGas":
+                            return "0x3b9aca00";
+                        case "eth_feeHistory":
+                            return {
+                                oldestBlock: "0x4ffffb",
+                                baseFeePerGas: [
+                                    "0x3b9aca00",
+                                    "0x3b9aca00",
+                                    "0x3b9aca00",
+                                ],
+                                gasUsedRatio: [0.2, 0.3],
+                                reward: [["0x3b9aca00"], ["0x3b9aca00"]],
+                            };
+                        case "eth_getBalance":
+                            return "0xde0b6b3a7640000";
+                        case "eth_blockNumber":
+                            return "0x500000";
+                        case "eth_getTransactionReceipt":
+                            return {
+                                transactionHash: mockTxHash,
+                                status: "0x1",
+                                blockNumber: "0x500001",
+                                confirmations: "0x1",
+                                logs: [],
+                            };
+                        default:
+                            return null;
+                    }
+                },
+                on: (
+                    eventName: string,
+                    listener: (...args: unknown[]) => void,
+                ) => {
+                    const current = listeners.get(eventName) || [];
+                    listeners.set(eventName, [...current, listener]);
+                },
+                removeListener: (
+                    eventName: string,
+                    listener: (...args: unknown[]) => void,
+                ) => {
+                    const current = listeners.get(eventName) || [];
+                    listeners.set(
+                        eventName,
+                        current.filter((item) => item !== listener),
+                    );
+                },
+                autoRefreshOnNetworkChange: false,
+            };
+
+            Object.defineProperty(window, "ethereum", {
+                value: ethereum,
+                configurable: true,
+            });
+
+            localStorage.setItem(
+                "wagmi.store",
+                JSON.stringify({
+                    state: {
+                        chainId: selectedChainId,
+                        connections: {
+                            __type: "Map",
+                            value: [
+                                [
+                                    "injected",
+                                    {
+                                        accounts: [walletAddress],
+                                        chainId: selectedChainId,
+                                        connector: {
+                                            id: "injected",
+                                            name: "Mock Wallet",
+                                            type: "injected",
+                                            uid: "injected",
+                                        },
+                                    },
+                                ],
+                            ],
+                        },
+                        current: "injected",
+                        status: "connected",
+                    },
+                    version: 3,
+                }),
+            );
+            localStorage.setItem("wagmi.injected.connected", "true");
+            localStorage.setItem("wagmi.recentConnectorId", "injected");
+            if (shouldSeedAuth) {
+                localStorage.setItem(
+                    "fundraising_auth",
+                    JSON.stringify({
+                        token: "e2e-token",
+                        user: {
+                            wallet: walletAddress,
+                            role: "user",
+                            displayName: "E2E Wallet",
+                        },
+                    }),
+                );
+            }
         },
-        current: 'injected',
-        status: 'connected',
-      },
-    }));
-    localStorage.setItem('wagmi.connected', 'true');
-    localStorage.setItem('wagmi.recentConnectorId', 'injected');
-  }, address);
+        {
+            walletAddress: address,
+            selectedChainId: chainId,
+            selectedChainIdHex: chainIdHex,
+            mockTxHash: txHash,
+            shouldSeedAuth: authenticated,
+        },
+    );
 }
 
-/**
- * Intercept và auto-confirm blockchain transactions bằng cách mock fetch responses.
- * Dùng cho các test cần simulate transaction confirmation.
- */
-export async function mockSuccessfulTransaction(page: Page, txHash: string) {
-  await page.route('**/api/campaigns/**/refund-status**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        success: true,
-        data: {
-          status: 'refunded',
-          refundedWei: '700000000000000000',
-          eligibleRefundWei: '700000000000000000',
-        },
-      }),
+export async function disconnectMockWallet(page: Page) {
+    await page.addInitScript(() => {
+        localStorage.removeItem("wagmi.store");
+        localStorage.removeItem("wagmi.injected.connected");
+        localStorage.removeItem("wagmi.recentConnectorId");
+        Object.defineProperty(window, "ethereum", {
+            value: undefined,
+            configurable: true,
+        });
     });
-  });
 }
