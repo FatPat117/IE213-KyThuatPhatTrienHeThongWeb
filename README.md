@@ -24,7 +24,9 @@ Hệ thống áp dụng các kỹ thuật tối ưu theo yêu cầu đồ án (c
 - **Tối ưu tương tác Web3:** Tích hợp cơ chế cache hợp lý để giảm thiểu số lần gọi RPC lặp lại; cải thiện trải nghiệm người dùng (UX) với các thông báo giao dịch mượt mà, không gây treo giao diện khi chờ xác nhận từ blockchain.
 
 ## 4. Thông tin triển khai & Smart Contract
-- **Link Demo Online:** Backend: http://20.17.163.158/api  Frontend: https://crowdfundingvn.vercel.app/
+- **Link Demo Online:**
+- **Backend** http://20.17.163.158/api
+- **Frontend** https://ie-213-ky-thuat-phat-trien-he-thong-delta.vercel.app/
 - **Mạng Blockchain:** Ethereum Sepolia Testnet
 - **Địa chỉ Smart Contract chính:** `0xC6c147727cE6021e2A309d227c5b73346E38CF72`
 - **Mã nguồn Contract:** Nằm tại thư mục `smart-contracts/` (bao gồm code và script deploy/test).

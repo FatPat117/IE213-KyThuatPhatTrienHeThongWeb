@@ -14,8 +14,9 @@ Hệ thống đã hoàn thiện theo các tiêu chí đánh giá của giảng v
 
 - **Mạng Testnet sử dụng:** Ethereum Sepolia Testnet.
 - **Địa chỉ Smart Contract:** `0xC6c147727cE6021e2A309d227c5b73346E38CF72`
-- **Link Demo Online:** `[Link Demo]`
-- **Video Demo dự án:** `[Link Video]`
+- **Link Demo Online:**
+- **Backend** http://20.17.163.158/api
+- **Frontend** https://ie-213-ky-thuat-phat-trien-he-thong-delta.vercel.app/
 
 > **Lưu ý:** Hướng dẫn cài đặt và vận hành hệ thống chi tiết (bao gồm Docker, cấu hình môi trường) đã được đặt tại [README.md](../README.md) ở thư mục gốc của dự án.
 
