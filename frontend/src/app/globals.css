@@ -276,7 +276,8 @@ html {
         );
 }
 
-.app-luxury > *:not([data-wallet-tx-overlay]):not([data-notification-panel]):not(header) {
+.app-luxury > .page-shell,
+.app-luxury > main {
     position: relative;
     z-index: 1;
 }
@@ -346,17 +347,6 @@ header.nav-luxury {
     }
     66% {
         transform: translate(-20px, 10px) rotate(240deg);
-    }
-}
-
-@keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(24px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
     }
 }
 
@@ -470,22 +460,7 @@ header.nav-luxury {
         200px 200px;
 }
 
-/* Fade-in: chỉ ẩn sau khi JS gắn class fade-pending (tránh màn hình trống) */
-.app-luxury [data-fade-in].fade-pending {
-    opacity: 0;
-    transform: translateY(24px);
-}
-
-.app-luxury [data-fade-in].fade-pending.is-visible {
-    animation: fadeInUp 0.65s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .app-luxury [data-fade-in].fade-pending {
-        opacity: 1;
-        transform: none;
-    }
-}
+/* Fade-in removed intentionally to keep all content visible on small screens */
 
 .app-luxury .glass-card {
     background: rgba(13, 20, 38, 0.8);

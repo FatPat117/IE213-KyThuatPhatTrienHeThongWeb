@@ -159,30 +159,27 @@ export default function Header() {
 
     return (
         <>
-            <div
-                className={`lg:hidden fixed inset-0 z-[100] bg-black/60 backdrop-blur-[2px] transition-opacity duration-300 ${
-                    isMobileMenuOpen
-                        ? "opacity-100 pointer-events-auto"
-                        : "opacity-0 pointer-events-none"
-                }`}
-                aria-hidden={isMobileMenuOpen ? "false" : "true"}
-            >
-                <button
-                    type="button"
-                    className="absolute inset-0 w-full h-full cursor-default"
-                    aria-label="Đóng menu"
-                    tabIndex={isMobileMenuOpen ? 0 : -1}
-                    onClick={closeMobileMenu}
-                />
-            </div>
+            {isMobileMenuOpen ? (
+                <div
+                    className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-[2px] transition-opacity duration-300 lg:hidden"
+                    aria-hidden="false"
+                >
+                    <button
+                        type="button"
+                        className="absolute inset-0 h-full w-full cursor-default"
+                        aria-label="Đóng menu"
+                        tabIndex={0}
+                        onClick={closeMobileMenu}
+                    />
+                </div>
+            ) : null}
 
             <aside
                 id="mobile-nav-menu"
                 role="dialog"
-                aria-modal={isMobileMenuOpen ? "true" : "false"}
+                aria-modal={isMobileMenuOpen}
                 aria-label="Menu điều hướng"
-                aria-hidden={isMobileMenuOpen ? "false" : "true"}
-                inert={!isMobileMenuOpen ? true : undefined}
+                aria-hidden={!isMobileMenuOpen}
                 className={`lg:hidden fixed top-0 left-0 z-[101] flex h-dvh w-[min(85vw,20rem)] flex-col border-r border-[rgba(99,102,241,0.2)] bg-[var(--bg-secondary)] shadow-2xl transition-transform duration-300 ease-out ${
                     isMobileMenuOpen
                         ? "translate-x-0 pointer-events-auto"
@@ -371,7 +368,7 @@ export default function Header() {
                                     ? "Đóng menu"
                                     : "Mở menu"
                             }
-                            aria-expanded={isMobileMenuOpen ? "true" : "false"}
+                            aria-expanded={isMobileMenuOpen}
                             aria-controls="mobile-nav-menu"
                         >
                             <svg

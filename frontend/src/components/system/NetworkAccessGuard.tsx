@@ -17,8 +17,8 @@ export function NetworkAccessGuard() {
     chain?.name || `Chain #${resolvedChainId || 'unknown'}`;
 
   return (
-    <div className="fixed inset-0 z-95 bg-slate-950/55 backdrop-blur-[2px]">
-      <div className="flex min-h-screen items-center justify-center px-4">
+    <div className="fixed inset-0 z-[95] bg-slate-950/55 backdrop-blur-[2px]">
+      <div className="flex min-h-dvh items-center justify-center px-4">
         <div className="w-full max-w-lg rounded-2xl border-2 border-red-400 bg-white p-6 shadow-2xl sm:p-8">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-red-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-red-800">
             Sai mạng
