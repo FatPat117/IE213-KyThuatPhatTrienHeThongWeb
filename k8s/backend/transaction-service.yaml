@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: transaction-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: transaction-service
+  template:
+    metadata:
+      labels:
+        app: transaction-service
+    spec:
+      imagePullSecrets:
+      - name: ghcr-secret
+      containers:
+      - name: transaction-service
+        image: ghcr.io/fatpat117/transaction-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 4005
+        envFrom:
+        - secretRef:
+            name: backend-env
+        env:
+        - name: MONGO_URI
+          valueFrom:
+            secretKeyRef:
+              name: backend-env
+              key: MONGO_URI_TRANSACTIONS
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: transaction-service
+spec:
+  selector:
+    app: transaction-service
+  ports:
+    - port: 4005
+      targetPort: 4005
+

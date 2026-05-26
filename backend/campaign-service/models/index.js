@@ -4,14 +4,14 @@
  * Models are auto-registered with Mongoose when required
  */
 
-const Campaign = require("./Campaign.model");
-const Milestone = require("./Milestone.model");
-const ProgressReport = require("./ProgressReport.model");
-const Reviewer = require("./Reviewer.model");
-const Notification = require("./Notification.model");
-const CampaignDonorShare = require("./CampaignDonorShare.model");
-const CampaignRefund = require("./CampaignRefund.model");
-const Donation = require("./Donation.model");
+const Campaign = require("./campaign.model");
+const Milestone = require("./milestone.model");
+const ProgressReport = require("./progressReport.model");
+const Reviewer = require("./reviewer.model");
+const Notification = require("./notification.model");
+const CampaignDonorShare = require("./campaignDonorShare.model");
+const CampaignRefund = require("./campaignRefund.model");
+const Donation = require("./donation.model");
 
 module.exports = {
     Campaign,

@@ -1062,7 +1062,7 @@ export default function CampaignDetailPage() {
         <div className="page-shell min-h-screen text-[var(--text-primary)]">
             <main className="mx-auto w-full max-w-6xl px-6 py-12 md:px-10">
                 {/* Page Header */}
-                <header className="flex flex-col gap-4 mb-8">
+                <div className="flex flex-col gap-4 mb-8">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                             <BackButton
@@ -1082,7 +1082,7 @@ export default function CampaignDetailPage() {
                             </div>
                         </div>
                     </div>
-                </header>
+                </div>
 
                 {/* Loading State - chỉ block khi on-chain data chưa sẵn */}
                 {isLoading && (
@@ -1157,8 +1157,8 @@ export default function CampaignDetailPage() {
                 {/* Campaign Content - hiển thị khi on-chain data sẵn, backend data được merge khi tải xong */}
                 {!isLoading && !isError && campaign && (
                     <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
-                        {/* Left Column - Main Content */}
-                        <div className="space-y-6">
+                    {/* Left Column - Main Content */}
+                        <div className="min-w-0 space-y-6">
                             <MilestonePreviewCard
                                 campaignId={campaign.id}
                                 campaignDeadline={campaign.deadline}
@@ -1374,7 +1374,7 @@ export default function CampaignDetailPage() {
                         </div>
 
                         {/* Right Column - Actions */}
-                        <div className="lg:sticky lg:top-6 h-fit space-y-4">
+                        <div className="min-w-0 lg:sticky lg:top-6 h-fit space-y-4">
                             {hasMounted && (
                                 <>
                                     {shouldMarkAsFailed && (

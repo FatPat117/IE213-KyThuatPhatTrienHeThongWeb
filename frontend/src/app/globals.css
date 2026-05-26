@@ -62,10 +62,12 @@ body {
 html,
 body {
     background-color: var(--bg-deep);
+    /* Prevent layout shift when scrollbar appears/disappears */
+    scrollbar-gutter: stable;
 }
 
-/* Header Styles */
-header {
+/* Header Styles - scoped to nav header only, NOT page-level <header> elements */
+.nav-luxury {
     animation: slideDown 0.3s ease-out;
 }
 
@@ -276,7 +278,8 @@ html {
         );
 }
 
-.app-luxury > *:not([data-wallet-tx-overlay]):not([data-notification-panel]):not(header) {
+.app-luxury > .page-shell,
+.app-luxury > main {
     position: relative;
     z-index: 1;
 }
@@ -346,17 +349,6 @@ header.nav-luxury {
     }
     66% {
         transform: translate(-20px, 10px) rotate(240deg);
-    }
-}
-
-@keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(24px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
     }
 }
 
@@ -470,22 +462,7 @@ header.nav-luxury {
         200px 200px;
 }
 
-/* Fade-in: chỉ ẩn sau khi JS gắn class fade-pending (tránh màn hình trống) */
-.app-luxury [data-fade-in].fade-pending {
-    opacity: 0;
-    transform: translateY(24px);
-}
-
-.app-luxury [data-fade-in].fade-pending.is-visible {
-    animation: fadeInUp 0.65s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .app-luxury [data-fade-in].fade-pending {
-        opacity: 1;
-        transform: none;
-    }
-}
+/* Fade-in removed intentionally to keep all content visible on small screens */
 
 .app-luxury .glass-card {
     background: rgba(13, 20, 38, 0.8);
@@ -1693,9 +1670,7 @@ header.nav-luxury {
     color: #f87171;
 }
 
-.create-campaign-form-container input.create-campaign-input,
-.create-campaign-form-container textarea.create-campaign-input,
-.create-campaign-form-container select.create-campaign-input {
+.create-campaign-input {
     width: 100%;
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.12);
@@ -1704,46 +1679,42 @@ header.nav-luxury {
     font-size: 15px;
     padding: 12px 16px;
     transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    color-scheme: dark;
 }
 
-.create-campaign-form-container textarea.create-campaign-input {
+textarea.create-campaign-input {
     resize: vertical;
     min-height: 100px;
     line-height: 1.5;
 }
 
-.create-campaign-form-container input.create-campaign-input::placeholder,
-.create-campaign-form-container textarea.create-campaign-input::placeholder {
+.create-campaign-input::placeholder {
     color: rgba(148, 163, 184, 0.5);
     font-style: italic;
     font-size: 14px;
 }
 
-.create-campaign-form-container input.create-campaign-input:focus,
-.create-campaign-form-container textarea.create-campaign-input:focus,
-.create-campaign-form-container select.create-campaign-input:focus {
+.create-campaign-input:focus {
     border-color: #6366f1;
     box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
     outline: none;
     background: rgba(255, 255, 255, 0.08);
 }
 
-.create-campaign-form-container input.create-campaign-input:disabled,
-.create-campaign-form-container textarea.create-campaign-input:disabled,
-.create-campaign-form-container select.create-campaign-input:disabled {
+.create-campaign-input:disabled {
     opacity: 0.55;
     cursor: not-allowed;
 }
 
-.create-campaign-form-container .create-campaign-input-error {
+.create-campaign-input-error {
     border-color: rgba(239, 68, 68, 0.7) !important;
 }
 
-.create-campaign-form-container .create-campaign-input-error:focus {
+.create-campaign-input-error:focus {
     box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15) !important;
 }
 
-.create-campaign-form-container select.create-campaign-input {
+select.create-campaign-input {
     appearance: none;
     padding-right: 2.5rem;
     cursor: pointer;

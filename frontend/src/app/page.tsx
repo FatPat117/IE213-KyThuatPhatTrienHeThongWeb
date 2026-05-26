@@ -98,45 +98,6 @@ export default function Home() {
         null,
     );
 
-    const buildCardsFromSafes = useCallback(
-        async (safes: string[]): Promise<ReviewerCard[]> => {
-            const normalized = Array.from(
-                new Set(
-                    safes
-                        .map((item) => item.trim().toLowerCase())
-                        .filter((item) => /^0x[a-f0-9]{40}$/.test(item)),
-                ),
-            );
-            const cards = await Promise.all(
-                normalized.map(async (safe) => {
-                    let profile: Awaited<
-                        ReturnType<typeof getUserProfile>
-                    > | null = null;
-                    try {
-                        profile = await getUserProfile(safe);
-                    } catch {
-                        profile = null;
-                    }
-                    return {
-                        id: safe,
-                        name:
-                            profile?.displayName?.trim() ||
-                            shortenAddress(safe),
-                        role: "Kiểm duyệt viên đa chữ ký",
-                        organizationName: "Chưa rõ tổ chức",
-                        region: "Chưa rõ vùng phụ trách",
-                        image: profile?.avatarUrl?.trim() || "",
-                        safeAddress: safe,
-                        campaignCount: 0,
-                        totalDisbursedEth: "0.0000",
-                    };
-                }),
-            );
-            return cards;
-        },
-        [],
-    );
-
     const refreshReviewers = useCallback(async () => {
         try {
             setIsRefreshingReviewers(true);
@@ -212,42 +173,6 @@ export default function Home() {
 
         return () => clearInterval(interval);
     }, [refreshReviewers]);
-
-    useEffect(() => {
-        const nodes = document.querySelectorAll("[data-fade-in]");
-        if (!nodes.length) return;
-
-        const reveal = (node: Element) => {
-            node.classList.add("is-visible");
-        };
-
-        const observer = new IntersectionObserver(
-            (entries) => {
-                entries.forEach((entry) => {
-                    if (entry.isIntersecting) {
-                        reveal(entry.target);
-                        observer.unobserve(entry.target);
-                    }
-                });
-            },
-            { threshold: 0.08, rootMargin: "0px 0px 0px 0px" },
-        );
-
-        nodes.forEach((node) => {
-            node.classList.add("fade-pending");
-            const rect = node.getBoundingClientRect();
-            const inView =
-                rect.top < window.innerHeight * 0.92 &&
-                rect.bottom > 0;
-            if (inView) {
-                reveal(node);
-            } else {
-                observer.observe(node);
-            }
-        });
-
-        return () => observer.disconnect();
-    }, [isLoadingReviewers, reviewers.length]);
 
     const reviewerCarousel = useMemo(() => {
         if (reviewers.length <= 1) return reviewers;

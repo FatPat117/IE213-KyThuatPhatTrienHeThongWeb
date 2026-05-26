@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: donation-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: donation-service
+  template:
+    metadata:
+      labels:
+        app: donation-service
+    spec:
+      imagePullSecrets:
+      - name: ghcr-secret
+      containers:
+      - name: donation-service
+        image: ghcr.io/fatpat117/donation-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 4003
+        envFrom:
+        - secretRef:
+            name: backend-env
+        env:
+        - name: MONGO_URI
+          valueFrom:
+            secretKeyRef:
+              name: backend-env
+              key: MONGO_URI_DONATIONS
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: donation-service
+spec:
+  selector:
+    app: donation-service
+  ports:
+    - port: 4003
+      targetPort: 4003
+

@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      imagePullSecrets:
+      - name: ghcr-secret
+      containers:
+      - name: auth-service
+        image: ghcr.io/fatpat117/auth-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 4006
+        envFrom:
+        - secretRef:
+            name: backend-env
+        env:
+        - name: MONGO_URI
+          valueFrom:
+            secretKeyRef:
+              name: backend-env
+              key: MONGO_URI_USERS
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+spec:
+  selector:
+    app: auth-service
+  ports:
+    - port: 4006
+      targetPort: 4006
+

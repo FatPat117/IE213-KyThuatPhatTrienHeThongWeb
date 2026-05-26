@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: listener-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: listener-service
+  template:
+    metadata:
+      labels:
+        app: listener-service
+    spec:
+      imagePullSecrets:
+      - name: ghcr-secret
+      containers:
+      - name: listener-service
+        image: ghcr.io/fatpat117/listener-service:latest
+        imagePullPolicy: Always
+        envFrom:
+        - secretRef:
+            name: backend-env
+

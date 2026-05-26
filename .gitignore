@@ -50,6 +50,7 @@ coverage/
 # Misc
 *.local
 .cache
+tools/
 
 /smart-contracts/lib/
 

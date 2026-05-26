@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: certificate-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: certificate-service
+  template:
+    metadata:
+      labels:
+        app: certificate-service
+    spec:
+      imagePullSecrets:
+      - name: ghcr-secret
+      containers:
+      - name: certificate-service
+        image: ghcr.io/fatpat117/certificate-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 4004
+        envFrom:
+        - secretRef:
+            name: backend-env
+        env:
+        - name: MONGO_URI
+          valueFrom:
+            secretKeyRef:
+              name: backend-env
+              key: MONGO_URI_CERTIFICATES
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: certificate-service
+spec:
+  selector:
+    app: certificate-service
+  ports:
+    - port: 4004
+      targetPort: 4004
+

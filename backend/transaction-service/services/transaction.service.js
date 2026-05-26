@@ -1,4 +1,4 @@
-const Transaction = require("../models/Transaction.model");
+const Transaction = require("../models/transaction.model");
 
 const CAMPAIGN_SERVICE_URL =
     process.env.CAMPAIGN_SERVICE_URL || "http://campaign-service:4002";

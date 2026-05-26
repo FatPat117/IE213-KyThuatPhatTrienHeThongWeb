@@ -54,7 +54,7 @@ function startDeadlineCheckerJob() {
 
             // --- Check Campaign Funding Deadlines ---
             const expiredCampaigns = await Campaign.find({
-                status: "active",
+                status: { $in: ["active", "pending_approval"] },
                 deadline: { $lte: now },
             });
 
